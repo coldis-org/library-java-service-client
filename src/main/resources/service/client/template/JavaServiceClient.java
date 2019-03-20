@@ -63,12 +63,12 @@ public class ${metadata.name}#{if}(!${metadata.superclass.isEmpty()}) extends ${
 		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(${Collection.class.isAssignableFrom(
 				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.name})#{elseif}(
 				${parameter.type.endsWith("[]")})List.of(${parameter.name}).toArray(new String[] {})#{else}${parameter.name} == null ? null : ${parameter.name}.toString()#{end});
-#{elseif}(${parameter.kind.toLowerCase().equals("partParameter")})
+#{elseif}(${parameter.kind.toLowerCase().equals("partparameter")})
 		// Adds the part parameter to the map.
 		partParameters.put("${parameter.name}",
 				#{if}(${Collection.class.isAssignableFrom(
 				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.name})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.name}).toArray(new String[] {})#{else}${parameter.name}#{end});
+				${parameter.type.endsWith("[]")})List.of(${parameter.name})#{else}List.of(${parameter.name})#{end});
 #{end}
 #{end}
 		// Executes the operation and returns the response.
