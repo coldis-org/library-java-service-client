@@ -37,7 +37,7 @@ public class DtoTestObjectDto implements Serializable {
 	/**
 	 * test4.
 	 */
-	private java.util.Map<String, Object> test4;
+	private org.coldis.library.test.service.client.dto.DtoTestObject2Dto test4;
 
 	/**
 	 * test5.
@@ -100,7 +100,7 @@ public class DtoTestObjectDto implements Serializable {
 			org.coldis.library.test.service.client.dto.DtoTestObject2Dto test1,
 			java.util.List<org.coldis.library.test.service.client.dto.DtoTestObject2Dto> test2,
 			java.lang.String test3,
-			java.util.Map<String, Object> test4,
+			org.coldis.library.test.service.client.dto.DtoTestObject2Dto test4,
 			java.lang.String test5,
 			org.coldis.library.test.service.client.dto.DtoTestObject2Dto[] test6,
 			int test7,
@@ -187,7 +187,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test4.
 	 * @return The test4.
 	 */
-	public java.util.Map<String, Object> getTest4() {
+	public org.coldis.library.test.service.client.dto.DtoTestObject2Dto getTest4() {
 		return test4;
 	}
 	/**
@@ -196,7 +196,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * @param test4
 	 *            The test4.
 	 */
-	public void setTest4(final java.util.Map<String, Object> test4) {
+	public void setTest4(final org.coldis.library.test.service.client.dto.DtoTestObject2Dto test4) {
 		this.test4 = test4;
 	}
 	/**
