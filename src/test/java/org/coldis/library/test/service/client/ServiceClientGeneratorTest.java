@@ -2,6 +2,7 @@ package org.coldis.library.test.service.client;
 
 import java.util.List;
 
+import org.apache.commons.io.IOUtils;
 import org.coldis.library.serialization.json.JsonHelper;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.client.dto.DtoTestObject2Dto;
@@ -75,7 +76,7 @@ public class ServiceClientGeneratorTest {
 			final String serializedDto = JsonHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.
 			final DtoTestObjectDto deserializedDto = JsonHelper.deserialize(this.objectMapper,
-					new String(org.apache.commons.io.IOUtils.toByteArray(this.serviceClient
+					new String(IOUtils.toByteArray(this.serviceClient
 							.test3(new FileResource("test", serializedDto.getBytes())).getInputStream())),
 					new TypeReference<DtoTestObjectDto>() {
 			}, true);
