@@ -70,7 +70,7 @@ public class DtoTestObject implements IdentifiedObject {
 	private Integer test9;
 
 	/**
-	 * @see IdentifiedObject.com.rebelbank.common.spring.model.generic.IdentifiedEntity#getId()
+	 * @see org.coldis.library.model.IdentifiedObject#getId()
 	 */
 	@Override
 	public Long getId() {

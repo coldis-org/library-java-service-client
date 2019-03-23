@@ -25,7 +25,7 @@ public class DtoTestObject2 implements IdentifiedObject {
 	private String test;
 
 	/**
-	 * @see br.com.rebelbank.common.spring.model.generic.IdentifiedEntity#getId()
+	 * @see org.coldis.library.model.IdentifiedObject#getId()
 	 */
 	@Override
 	public Long getId() {
@@ -90,14 +90,16 @@ public class DtoTestObject2 implements IdentifiedObject {
 			if (other.id != null) {
 				return false;
 			}
-		} else if (!this.id.equals(other.id)) {
+		}
+		else if (!this.id.equals(other.id)) {
 			return false;
 		}
 		if (this.test == null) {
 			if (other.test != null) {
 				return false;
 			}
-		} else if (!this.test.equals(other.test)) {
+		}
+		else if (!this.test.equals(other.test)) {
 			return false;
 		}
 		return true;
