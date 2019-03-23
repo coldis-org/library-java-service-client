@@ -1,4 +1,4 @@
-package ${metadata.namespace};
+package ${serviceClient.namespace};
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,30 +16,30 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
 /**
-  *${metadata.docComment}  */
+  *${serviceClient.docComment}  */
 @Service
-public class ${metadata.name}#{if}(!${metadata.superclass.isEmpty()}) extends ${metadata.superclass}#{end} {
+public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} {
 
 	/**
 	 * Serial.
 	 */
-	private static final long serialVersionUID = ${metadata.namespace.hashCode()}${metadata.name.hashCode()}L;
+	private static final long serialVersionUID = ${serviceClient.namespace.hashCode()}${serviceClient.name.hashCode()}L;
 	
 	/**
 	 * No arguments constructor.
 	 */
-	public ${metadata.name}() {
+	public ${serviceClient.name}() {
 		super();
 	}
 
-#{foreach}( ${operation} in ${metadata.operations} )
+#{foreach}( ${operation} in ${serviceClient.operations} )
 	/**
 	 *${operation.docComment}  */
 	public ${operation.returnType} ${operation.name}(
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("${metadata.endpoint}${operation.path}?");
+		final StringBuilder path = new StringBuilder("${serviceClient.endpoint}${operation.path}?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

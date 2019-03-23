@@ -49,7 +49,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientGenerator.class);
 
 	/**
-	 * Gets a service client template.
+	 * Gets a template.
 	 *
 	 * @param  velocityEngine  Velocity engine.
 	 * @param  resourcesFolder The resources folder to be used.
@@ -58,6 +58,9 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 */
 	private Template getTemplate(final VelocityEngine velocityEngine, final String resourcesFolder,
 			final String templatePath) {
+		// Configures the resource loader to also look at the classpath.
+		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
+		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
 		// Velocity template.
 		Template velocityTemplate = null;
 		// Tries to get the template for the given path.
@@ -86,17 +89,12 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 */
 	private void generateServiceClient(final TypeElement originalService,
 			final ServiceClientMetadata serviceClientTypeMetadata) throws IOException {
-		// Velocity engine.
+		// Gets the velocity engine and initializes it.
 		final VelocityEngine velocityEngine = new VelocityEngine();
-		// Configures the resource loader to also look at the classpath.
-		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
-		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
-		// Initializes the engine.
 		velocityEngine.init();
-		// Creates a new velocity context.
+		// Creates a new velocity context and sets its variables.
 		final VelocityContext velocityContext = new VelocityContext();
-		// Sets the context values.
-		velocityContext.put("metadata", serviceClientTypeMetadata);
+		velocityContext.put("serviceClient", serviceClientTypeMetadata);
 		velocityContext.put("newLine", "\r\n");
 		velocityContext.put("tab", "\t");
 		// Gets the template for the service client.
