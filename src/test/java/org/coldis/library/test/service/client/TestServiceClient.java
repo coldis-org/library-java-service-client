@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
@@ -22,11 +23,6 @@ import org.springframework.util.MultiValueMap;
 public class TestServiceClient extends org.coldis.library.service.client.GenericRestServiceClient {
 
 	/**
-	 * Serial.
-	 */
-	private static final long serialVersionUID = 668911799-988826802L;
-	
-	/**
 	 * No arguments constructor.
 	 */
 	public TestServiceClient() {
@@ -39,7 +35,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public void test1(
 			) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("http://localhost:8080/test?");
+		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -75,7 +71,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 			java.lang.Integer test4,
 			int[] test5) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("http://localhost:8080/test?");
+		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -113,7 +109,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public org.springframework.core.io.Resource test3(
 			org.coldis.library.service.model.FileResource teste) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("http://localhost:8080/test/test?");
+		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -142,7 +138,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public java.lang.Integer test4(
 			java.lang.Long test) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("http://localhost:8080/test/test?");
+		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -156,6 +152,34 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 		// Adds the URI parameter to the map.
 		uriParameters.put("test", test);
 		path.append("test={test}&");
+		// Executes the operation and returns the response.
+		return this.executeOperation(path.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType).getBody();
+	}
+	
+	/**
+	 * Test service.
+
+ @param  test Test argument.
+ @return      Test object.
+  */
+	public java.lang.Integer test5(
+			java.lang.Long test) throws BusinessException, IntegrationException {
+		// Operation parameters.
+		StringBuilder path = new StringBuilder("http://localhost:8080/test/a/{test}?");
+		final HttpMethod method = HttpMethod.GET;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<java.lang.Integer> returnType =
+				new ParameterizedTypeReference<java.lang.Integer>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+				MediaType.APPLICATION_JSON_UTF8_VALUE);
+		// Adds the path parameter to the map.
+		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
 		// Executes the operation and returns the response.
 		return this.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

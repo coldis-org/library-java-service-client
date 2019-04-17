@@ -84,6 +84,7 @@ public class ServiceClientGeneratorTest {
 			Assertions.assertEquals(originalDto, deserializedDto);
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test4(1L));
+			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test5(1L));
 		}
 	}
 
