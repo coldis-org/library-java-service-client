@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
@@ -21,11 +22,6 @@ import org.springframework.util.MultiValueMap;
 public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} {
 
 	/**
-	 * Serial.
-	 */
-	private static final long serialVersionUID = ${serviceClient.namespace.hashCode()}${serviceClient.name.hashCode()}L;
-	
-	/**
 	 * No arguments constructor.
 	 */
 	public ${serviceClient.name}() {
@@ -39,7 +35,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException, IntegrationException {
 		// Operation parameters.
-		final StringBuilder path = new StringBuilder("${serviceClient.endpoint}${operation.path}?");
+		StringBuilder path = new StringBuilder("${serviceClient.endpoint}/${operation.path}?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -54,6 +50,9 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{if}(${parameter.kind.toLowerCase().equals("body")})
 		// Sets the operation body.
 		body = ${parameter.name};
+#{elseif}(${parameter.kind.toLowerCase().equals("pathparameter")})
+		// Adds the path parameter to the map.
+		path = new StringBuilder(path.toString().replace("{${parameter.name}}", Objects.toString(${parameter.name})));
 #{elseif}(${parameter.kind.toLowerCase().equals("uriparameter")})
 		// Adds the URI parameter to the map.
 		uriParameters.put("${parameter.name}", ${parameter.name});

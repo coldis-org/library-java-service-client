@@ -58,9 +58,6 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 */
 	private Template getTemplate(final VelocityEngine velocityEngine, final String resourcesFolder,
 			final String templatePath) {
-		// Configures the resource loader to also look at the classpath.
-		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
-		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
 		// Velocity template.
 		Template velocityTemplate = null;
 		// Tries to get the template for the given path.
@@ -89,9 +86,12 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 */
 	private void generateServiceClient(final TypeElement originalService,
 			final ServiceClientMetadata serviceClientTypeMetadata) throws IOException {
-		// Gets the velocity engine and initializes it.
+		// Gets the velocity engine.
 		final VelocityEngine velocityEngine = new VelocityEngine();
-		velocityEngine.init();
+		// Configures the resource loader to also look at the classpath.
+		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
+		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
+		// Initializes the velocity engine.
 		// Creates a new velocity context and sets its variables.
 		final VelocityContext velocityContext = new VelocityContext();
 		velocityContext.put("serviceClient", serviceClientTypeMetadata);
