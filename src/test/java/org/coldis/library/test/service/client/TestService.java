@@ -48,9 +48,9 @@ public class TestService {
 	@RequestMapping(method = RequestMethod.PUT)
 	public DtoTestObject test2(@RequestBody @ServiceClientOperationParameter(kind = "body") final DtoTestObject test1,
 			@RequestHeader @ServiceClientOperationParameter(kind = "header") final String test2,
-			@RequestParam @ServiceClientOperationParameter(kind = "uriParameter") final String test3,
+			@RequestParam @ServiceClientOperationParameter(kind = "uri") final String test3,
 			@RequestHeader @ServiceClientOperationParameter(kind = "header") final Integer test4,
-			@RequestParam @ServiceClientOperationParameter(kind = "uriParameter") final int[] test5) {
+			@RequestParam @ServiceClientOperationParameter(kind = "uri") final int[] test5) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
 		test1.setTest7(test4);
@@ -68,7 +68,7 @@ public class TestService {
 	@ServiceClientOperation(path = "/test", method = "PUT", mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public Resource test3(@RequestPart(name = "teste") @ServiceClientOperationParameter(
 			type = "org.coldis.library.service.model.FileResource", name = "teste",
-			kind = "partParameter") final Resource test) {
+			kind = "part") final Resource test) {
 		return test;
 	}
 
@@ -80,7 +80,7 @@ public class TestService {
 	 */
 	@RequestMapping(path = "test", method = RequestMethod.GET)
 	@ServiceClientOperation(path = "/test", method = "GET", returnType = "java.lang.Integer")
-	public Long test4(@RequestParam @ServiceClientOperationParameter(kind = "uriParameter") final Long test) {
+	public Long test4(@RequestParam @ServiceClientOperationParameter(kind = "uri") final Long test) {
 		return test;
 	}
 
@@ -92,7 +92,7 @@ public class TestService {
 	 */
 	@RequestMapping(path = "a/{test}", method = RequestMethod.GET)
 	@ServiceClientOperation(path = "a/{test}", method = "GET", returnType = "java.lang.Integer")
-	public Long test5(@PathVariable @ServiceClientOperationParameter(kind = "pathParameter") final Long test) {
+	public Long test5(@PathVariable @ServiceClientOperationParameter(kind = "path") final Long test) {
 		return test;
 	}
 
