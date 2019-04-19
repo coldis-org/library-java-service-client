@@ -1,5 +1,6 @@
 package org.coldis.library.service.client.generator;
 
+import java.io.File;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,12 +24,12 @@ public class ServiceClientMetadata implements Serializable {
 	private String context;
 
 	/**
-	 * Resources path.
+	 * Target path.
 	 */
-	private String resourcesPath;
+	private String targetPath;
 
 	/**
-	 * Template relative path (from resources).
+	 * Template path.
 	 */
 	private String templatePath;
 
@@ -71,8 +72,8 @@ public class ServiceClientMetadata implements Serializable {
 	 * Default constructor.
 	 *
 	 * @param context       Service client context.
-	 * @param resourcesPath Resources path.
-	 * @param templatePath  Template relative path (from resources).
+	 * @param targetPath    Target path.
+	 * @param templatePath  Template path.
 	 * @param fileExtension The service client file extension.
 	 * @param namespace     Service client namespace.
 	 * @param superclass    Service client superclass.
@@ -81,12 +82,12 @@ public class ServiceClientMetadata implements Serializable {
 	 * @param endpoint      Service client endpoint.
 	 * @param operations    Service client operations metadata.
 	 */
-	public ServiceClientMetadata(final String context, final String resourcesPath, final String templatePath,
+	public ServiceClientMetadata(final String context, final String targetPath, final String templatePath,
 			final String fileExtension, final String namespace, final String superclass, final String name,
 			final String docComment, final String endpoint, final List<ServiceClientOperationMetadata> operations) {
 		super();
 		this.context = context;
-		this.resourcesPath = resourcesPath;
+		this.targetPath = targetPath;
 		this.templatePath = templatePath;
 		this.fileExtension = fileExtension;
 		this.namespace = namespace;
@@ -116,21 +117,21 @@ public class ServiceClientMetadata implements Serializable {
 	}
 
 	/**
-	 * Gets the resourcesPath.
+	 * Gets the targetPath.
 	 *
-	 * @return The resourcesPath.
+	 * @return The targetPath.
 	 */
-	public String getResourcesPath() {
-		return this.resourcesPath;
+	public String getTargetPath() {
+		return this.targetPath;
 	}
 
 	/**
-	 * Sets the resourcesPath.
+	 * Sets the targetPath.
 	 *
-	 * @param resourcesPath New resourcesPath.
+	 * @param targetPath New targetPath.
 	 */
-	public void setResourcesPath(final String resourcesPath) {
-		this.resourcesPath = resourcesPath;
+	public void setTargetPath(final String targetPath) {
+		this.targetPath = targetPath;
 	}
 
 	/**
@@ -185,6 +186,15 @@ public class ServiceClientMetadata implements Serializable {
 	 */
 	public void setNamespace(final String namespace) {
 		this.namespace = namespace;
+	}
+
+	/**
+	 * Gets the file namespace.
+	 *
+	 * @return The file namespace.
+	 */
+	public String getFileNamespace() {
+		return this.namespace.replace(".", File.separator);
 	}
 
 	/**
@@ -288,8 +298,8 @@ public class ServiceClientMetadata implements Serializable {
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.context, this.docComment, this.endpoint, this.fileExtension, this.name, this.namespace, this.operations, this.resourcesPath,
-				this.superclass, this.templatePath);
+		return Objects.hash(this.context, this.docComment, this.endpoint, this.fileExtension, this.name, this.namespace,
+				this.operations, this.targetPath, this.superclass, this.templatePath);
 	}
 
 	/**
@@ -308,10 +318,12 @@ public class ServiceClientMetadata implements Serializable {
 		}
 		final ServiceClientMetadata other = (ServiceClientMetadata) obj;
 		return Objects.equals(this.context, other.context) && Objects.equals(this.docComment, other.docComment)
-				&& Objects.equals(this.endpoint, other.endpoint) && Objects.equals(this.fileExtension, other.fileExtension)
-				&& Objects.equals(this.name, other.name) && Objects.equals(this.namespace, other.namespace)
-				&& Objects.equals(this.operations, other.operations) && Objects.equals(this.resourcesPath, other.resourcesPath)
-				&& Objects.equals(this.superclass, other.superclass) && Objects.equals(this.templatePath, other.templatePath);
+				&& Objects.equals(this.endpoint, other.endpoint)
+				&& Objects.equals(this.fileExtension, other.fileExtension) && Objects.equals(this.name, other.name)
+				&& Objects.equals(this.namespace, other.namespace) && Objects.equals(this.operations, other.operations)
+				&& Objects.equals(this.targetPath, other.targetPath)
+				&& Objects.equals(this.superclass, other.superclass)
+				&& Objects.equals(this.templatePath, other.templatePath);
 	}
 
 }
