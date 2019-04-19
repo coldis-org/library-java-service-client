@@ -1,5 +1,7 @@
 package org.coldis.library.service.client.generator;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
@@ -24,8 +26,8 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.NoType;
 import javax.lang.model.type.TypeMirror;
-import javax.tools.StandardLocation;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
@@ -49,35 +51,6 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientGenerator.class);
 
 	/**
-	 * Gets a template.
-	 *
-	 * @param  velocityEngine  Velocity engine.
-	 * @param  resourcesFolder The resources folder to be used.
-	 * @param  templatePath    The template path.
-	 * @return                 The velocity template.
-	 */
-	private Template getTemplate(final VelocityEngine velocityEngine, final String resourcesFolder,
-			final String templatePath) {
-		// Velocity template.
-		Template velocityTemplate = null;
-		// Tries to get the template for the given path.
-		try {
-			velocityTemplate = velocityEngine.getTemplate(resourcesFolder + templatePath);
-		}
-		// If the template cannot be retrieved
-		catch (final Exception exception) {
-			// Ignores it.
-		}
-		// If the template has not been found yet.
-		if (velocityTemplate == null) {
-			// Tries to get the template from the class path.
-			velocityTemplate = velocityEngine.getTemplate(templatePath);
-		}
-		// Returns the found template.
-		return velocityTemplate;
-	}
-
-	/**
 	 * Generates a service client from a original type.
 	 *
 	 * @param  originalService           Original type information.
@@ -92,29 +65,25 @@ public class ServiceClientGenerator extends AbstractProcessor {
 		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
 		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
 		// Initializes the velocity engine.
+		velocityEngine.init();
 		// Creates a new velocity context and sets its variables.
 		final VelocityContext velocityContext = new VelocityContext();
 		velocityContext.put("serviceClient", serviceClientTypeMetadata);
 		velocityContext.put("newLine", "\r\n");
 		velocityContext.put("tab", "\t");
 		// Gets the template for the service client.
-		final Template serviceClientTemplate = this.getTemplate(velocityEngine,
-				serviceClientTypeMetadata.getResourcesPath(), serviceClientTypeMetadata.getTemplatePath());
+		final Template serviceClientTemplate = velocityEngine.getTemplate(serviceClientTypeMetadata.getTemplatePath());
 		// Prepares the writer for the service client.
-		final Boolean javaSource = serviceClientTypeMetadata.getTemplatePath().endsWith(".java");
-		final Writer serviceClientWriter = javaSource
-				? this.processingEnv.getFiler()
-						.createSourceFile(
-								serviceClientTypeMetadata.getNamespace() + "." + serviceClientTypeMetadata.getName())
-						.openWriter()
-						: this.processingEnv.getFiler().createResource(StandardLocation.SOURCE_PATH /* FIXME */,
-								serviceClientTypeMetadata.getNamespace(),
-								serviceClientTypeMetadata.getName() + "." + serviceClientTypeMetadata.getFileExtension())
-						.openWriter();
-						// Writes the generated class code.
-						serviceClientTemplate.merge(velocityContext, serviceClientWriter);
-						// Closes the class writer.
-						serviceClientWriter.close();
+		final File serviceClientFile = new File(
+				serviceClientTypeMetadata.getTargetPath() + File.separator
+				+ serviceClientTypeMetadata.getFileNamespace(),
+				serviceClientTypeMetadata.getName() + "." + serviceClientTypeMetadata.getFileExtension());
+		FileUtils.forceMkdir(serviceClientFile.getParentFile());
+		final Writer serviceClientWriter = new FileWriter(serviceClientFile);
+		// Writes the generated class code.
+		serviceClientTemplate.merge(velocityContext, serviceClientWriter);
+		// Closes the class writer.
+		serviceClientWriter.close();
 	}
 
 	/**
@@ -130,7 +99,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			final ServiceClient serviceClientTypeAnno, final Boolean alsoGetOperationsMetadata) {
 		// Gets the default type metadata.
 		final ServiceClientMetadata serviceClientTypeMetadata = new ServiceClientMetadata(
-				serviceClientTypeAnno.context(), serviceClientTypeAnno.resourcesPath(),
+				serviceClientTypeAnno.context(), serviceClientTypeAnno.targetPath(),
 				serviceClientTypeAnno.templatePath(), serviceClientTypeAnno.fileExtension(),
 				serviceClientTypeAnno.namespace(), serviceClientTypeAnno.superclass(),
 				serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client"

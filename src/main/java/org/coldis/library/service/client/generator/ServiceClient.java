@@ -22,9 +22,9 @@ public @interface ServiceClient {
 	public String context() default "";
 
 	/**
-	 * Resources path. Default is "src/main/resources".
+	 * Target path. Default is "src/main/java".
 	 */
-	public String resourcesPath() default "src/main/resources/";
+	public String targetPath() default "src/main/java";
 
 	/**
 	 * Template relative path (from resources).
