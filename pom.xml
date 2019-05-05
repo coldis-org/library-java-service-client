@@ -6,12 +6,12 @@
 
 	<parent>
 		<groupId>org.coldis</groupId>
-		<artifactId>common-config</artifactId>
+		<artifactId>configuration</artifactId>
 		<version>0.0.1-SNAPSHOT</version>
 	</parent>
 
 	<groupId>org.coldis.library</groupId>
-	<artifactId>utils-service-client</artifactId>
+	<artifactId>service-client</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
@@ -22,9 +22,9 @@
 	</properties>
 
 	<scm>
-		<url>https://github.com/coldis-org/utils-service-client</url>
-		<connection>scm:git:https://github.com/coldis-org/utils-service-client.git</connection>
-		<developerConnection>scm:git:git@github.com:coldis-org/utils-service-client.git</developerConnection>
+		<url>https://github.com/coldis-org/library-java-service-client</url>
+		<connection>scm:git:https://github.com/coldis-org/library-java-service-client.git</connection>
+		<developerConnection>scm:git:git@github.com:coldis-org/library-java-service-client.git</developerConnection>
 		<tag>HEAD</tag>
 	</scm>
 
@@ -32,17 +32,17 @@
 
 		<dependency>
 			<groupId>org.coldis.library</groupId>
-			<artifactId>utils-core</artifactId>
+			<artifactId>core</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>
-			<artifactId>utils-dto</artifactId>
+			<artifactId>dto</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>
-			<artifactId>utils-serialization</artifactId>
+			<artifactId>serialization</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
@@ -86,7 +86,7 @@
 
 		<dependency>
 			<groupId>org.coldis.library</groupId>
-			<artifactId>utils-test</artifactId>
+			<artifactId>test</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 			<scope>test</scope>
 		</dependency>
