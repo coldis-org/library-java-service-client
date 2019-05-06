@@ -3,7 +3,7 @@ package org.coldis.library.test.service.client;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
-import org.coldis.library.serialization.json.JsonHelper;
+import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.client.dto.DtoTestObject2Dto;
 import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
@@ -55,7 +55,7 @@ public class ServiceClientGeneratorTest {
 			// Tests the first service.
 			this.serviceClient.test1();
 			// Clones the test object.
-			final DtoTestObjectDto clonedDto = JsonHelper.deepClone(this.objectMapper, originalDto,
+			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto,
 					new TypeReference<DtoTestObjectDto>() {
 			});
 			// Re-sets the attributes to be changed in the service call.
@@ -73,9 +73,9 @@ public class ServiceClientGeneratorTest {
 			// Makes sure the object is transformed as expected on service call.
 			Assertions.assertEquals(clonedDto, this.serviceClient.test2(originalDto, "5", "6", 7, new int[] { 8 }));
 			// Serializes the test object.
-			final String serializedDto = JsonHelper.serialize(this.objectMapper, originalDto, null, false);
+			final String serializedDto = ObjectMapperHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.
-			final DtoTestObjectDto deserializedDto = JsonHelper.deserialize(this.objectMapper,
+			final DtoTestObjectDto deserializedDto = ObjectMapperHelper.deserialize(this.objectMapper,
 					new String(IOUtils.toByteArray(this.serviceClient
 							.test3(new FileResource("test", serializedDto.getBytes())).getInputStream())),
 					new TypeReference<DtoTestObjectDto>() {

@@ -10,7 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.model.SimpleMessage;
-import org.coldis.library.serialization.json.JsonHelper;
+import org.coldis.library.serialization.ObjectMapperHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -267,7 +267,7 @@ public class GenericRestServiceClient {
 				// If there is an exception response.
 				if (!StringUtils.isEmpty(exceptionResponse)) {
 					// Tries to get the exception messages.
-					exceptionMessages = JsonHelper.deserialize(this.objectMapper, exceptionResponse,
+					exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse,
 							SimpleMessage[].class, true);
 				}
 				// If no messages are available.
