@@ -3,7 +3,6 @@ package org.coldis.library.service.client.generator;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Service client operation metadata.
@@ -51,19 +50,26 @@ public class ServiceClientOperationMetadata implements Serializable {
 	private List<ServiceClientOperationParameterMetadata> parameters;
 
 	/**
+	 * If an asynchronous operation call should also be generated.
+	 */
+	private Boolean asynchronous;
+
+	/**
 	 * Default constructor.
 	 *
-	 * @param name       Operation name.
-	 * @param docComment Operation documentation comment.
-	 * @param path       Operation path.
-	 * @param method     Operation method.
-	 * @param mediaType  Operation media type.
-	 * @param returnType Operation return type.
-	 * @param parameters Operation parameters.
+	 * @param name         Operation name.
+	 * @param docComment   Operation documentation comment.
+	 * @param path         Operation path.
+	 * @param method       Operation method.
+	 * @param mediaType    Operation media type.
+	 * @param returnType   Operation return type.
+	 * @param parameters   Operation parameters.
+	 * @param asynchronous If an asynchronous operation call should also be
+	 *                         generated.
 	 */
 	public ServiceClientOperationMetadata(final String name, final String docComment, final String path,
 			final String method, final String mediaType, final String returnType,
-			final List<ServiceClientOperationParameterMetadata> parameters) {
+			final List<ServiceClientOperationParameterMetadata> parameters, final Boolean asynchronous) {
 		super();
 		this.name = name;
 		this.docComment = docComment;
@@ -72,6 +78,7 @@ public class ServiceClientOperationMetadata implements Serializable {
 		this.mediaType = mediaType;
 		this.returnType = returnType;
 		this.parameters = parameters;
+		this.asynchronous = asynchronous;
 	}
 
 	/**
@@ -207,33 +214,21 @@ public class ServiceClientOperationMetadata implements Serializable {
 	}
 
 	/**
-	 * @see java.lang.Object#hashCode()
+	 * Gets the asynchronous.
+	 *
+	 * @return The asynchronous.
 	 */
-	@Override
-	public int hashCode() {
-		return Objects.hash(this.docComment, this.mediaType, this.method, this.name, this.parameters, this.path,
-				this.returnType);
+	public Boolean getAsynchronous() {
+		return this.asynchronous;
 	}
 
 	/**
-	 * @see java.lang.Object#equals(java.lang.Object)
+	 * Sets the asynchronous.
+	 *
+	 * @param asynchronous New asynchronous.
 	 */
-	@Override
-	public boolean equals(final Object obj) {
-		if (this == obj) {
-			return true;
-		}
-		if (obj == null) {
-			return false;
-		}
-		if (!(obj instanceof ServiceClientOperationMetadata)) {
-			return false;
-		}
-		final ServiceClientOperationMetadata other = (ServiceClientOperationMetadata) obj;
-		return Objects.equals(this.docComment, other.docComment) && Objects.equals(this.mediaType, other.mediaType)
-				&& Objects.equals(this.method, other.method) && Objects.equals(this.name, other.name)
-				&& Objects.equals(this.parameters, other.parameters) && Objects.equals(this.path, other.path)
-				&& Objects.equals(this.returnType, other.returnType);
+	public void setAsynchronous(final Boolean asynchronous) {
+		this.asynchronous = asynchronous;
 	}
 
 }

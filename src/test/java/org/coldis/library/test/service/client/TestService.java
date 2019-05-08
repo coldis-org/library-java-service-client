@@ -1,5 +1,8 @@
 package org.coldis.library.test.service.client;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.coldis.library.service.client.generator.ServiceClient;
 import org.coldis.library.service.client.generator.ServiceClientOperation;
 import org.coldis.library.service.client.generator.ServiceClientOperationParameter;
@@ -19,10 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping(path = "test")
-@ServiceClient(namespace = "org.coldis.library.test.service.client",
+@ServiceClient(targetPath = "src/test/java", namespace = "org.coldis.library.test.service.client",
 superclass = "org.coldis.library.service.client.GenericRestServiceClient",
 endpoint = "http://localhost:8080/test")
 public class TestService {
+
+	/**
+	 * Internal state.
+	 */
+	private final Map<String, Object> state = new HashMap<>();
 
 	/**
 	 * Test service.
@@ -90,10 +98,25 @@ public class TestService {
 	 * @param  test Test argument.
 	 * @return      Test object.
 	 */
-	@RequestMapping(path = "a/{test}", method = RequestMethod.GET)
-	@ServiceClientOperation(path = "a/{test}", method = "GET", returnType = "java.lang.Integer")
+	@RequestMapping(path = "async/{test}", method = RequestMethod.GET)
+	@ServiceClientOperation(path = "async/{test}", method = "GET", returnType = "java.lang.Integer",
+	asynchronous = true)
 	public Long test5(@PathVariable @ServiceClientOperationParameter(kind = "path") final Long test) {
+		this.state.put("test5", test);
 		return test;
+	}
+
+	/**
+	 * Test service.
+	 *
+	 * @param  test Test argument.
+	 * @return      Test object.
+	 */
+	@RequestMapping(path = "a/{test}", method = RequestMethod.GET)
+	@ServiceClientOperation(path = "a/{test}", method = "GET")
+	public Map<String, Object> test6(@PathVariable @ServiceClientOperationParameter(kind = "path") final Long test) {
+		this.state.put("test6", test);
+		return this.state;
 	}
 
 }

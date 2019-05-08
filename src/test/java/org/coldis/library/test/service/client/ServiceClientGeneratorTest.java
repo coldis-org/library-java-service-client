@@ -3,8 +3,12 @@ package org.coldis.library.test.service.client;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
+import org.coldis.library.exception.BusinessException;
+import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.model.FileResource;
+import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.service.client.dto.DtoTestObject2Dto;
 import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
 import org.junit.jupiter.api.Assertions;
@@ -20,7 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * Service client generator test.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.DEFINED_PORT)
-public class ServiceClientGeneratorTest {
+public class ServiceClientGeneratorTest extends TestHelper {
 
 	/**
 	 * Simples JSON object test data.
@@ -84,7 +88,17 @@ public class ServiceClientGeneratorTest {
 			Assertions.assertEquals(originalDto, deserializedDto);
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test4(1L));
-			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test5(1L));
+			Assertions.assertEquals(Integer.valueOf(5), this.serviceClient.test5(5L));
+			this.serviceClient.test5Async(10L);
+			Assertions.assertEquals(Integer.valueOf(11), this.serviceClient.test6(11L).get("test6"));
+			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
+				try {
+					return this.serviceClient.test6(11L);
+				}
+				catch (final BusinessException exception) {
+					throw new IntegrationException(new SimpleMessage(), exception);
+				}
+			}, state -> state.get("test5").equals(10), TestHelper.REGULAR_WAIT, TestHelper.SHORT_WAIT));
 		}
 	}
 

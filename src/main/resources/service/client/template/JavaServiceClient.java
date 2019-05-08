@@ -9,10 +9,14 @@ import java.util.Objects;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
@@ -20,6 +24,12 @@ import org.springframework.util.MultiValueMap;
   *${serviceClient.docComment}  */
 @Service
 public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} {
+	
+	/**
+	 * JMS template.
+	 */
+	@Autowired(required = false)
+	private JmsTemplate jmsTemplate;
 
 	/**
 	 * No arguments constructor.
@@ -33,7 +43,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 *${operation.docComment}  */
 	public ${operation.returnType} ${operation.name}(
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
-			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException, IntegrationException {
+			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder("${serviceClient.endpoint}/${operation.path}?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
@@ -76,6 +86,40 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 	}
 	
+#{if}(${operation.asynchronous})
+	/**
+	 * ${operation.name} queue.
+	 */
+	public static final String ${operation.name}Queue = "${operation.name}Queue.queue";
+	
+	/**
+	 *${operation.docComment}  */
+	@Transactional
+	@JmsListener(destination = "${operation.name}Queue.queue")
+	public void ${operation.name}(Map<String, ?> parameters) throws BusinessException {
+		${operation.name}(
+#{foreach}( ${parameter} in ${operation.parameters} )#{set}($currentItemIdx = 0)
+				(${parameter.type}) parameters.get("${parameter.name}")#{if}(${currentItemIdx} > 0), #{end}#{set}($currentItemIdx = $currentItemIdx + 1)
+#{end}
+			);
+	}
+
+	
+	/**
+	 *${operation.docComment}  */
+	@Transactional
+	public void ${operation.name}Async(
+			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
+			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
+		jmsTemplate.convertAndSend(${operation.name}Queue, 
+				Map.of(
+#{foreach}( ${parameter} in ${operation.parameters} )
+						#{set}($currentItemIdx = 0)"${parameter.name}", ${parameter.name}#{if}(${currentItemIdx} > 0),
+						#{end}#{set}($currentItemIdx = $currentItemIdx + 1)
+#{end}
+					));
+	}
+#{end}
 #{end}
 
 }

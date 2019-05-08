@@ -51,4 +51,9 @@ public @interface ServiceClientOperation {
 	 */
 	public String returnType() default "";
 
+	/**
+	 * If an asynchronous operation call should also be generated.
+	 */
+	public boolean asynchronous() default false;
+
 }

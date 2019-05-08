@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Service client generator.
  */
-@SupportedSourceVersion(value = SourceVersion.RELEASE_10)
+@SupportedSourceVersion(value = SourceVersion.RELEASE_11)
 @SupportedAnnotationTypes(value = { "org.coldis.library.service.client.generator.ServiceClient",
 "org.coldis.library.service.client.generator.ServiceClients" })
 public class ServiceClientGenerator extends AbstractProcessor {
@@ -233,7 +233,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			// Gets the default operation metadata.
 			serviceClientOperationMetadata = new ServiceClientOperationMetadata(defaultOperName,
 					this.processingEnv.getElementUtils().getDocComment(operation), "", "", "",
-					operationOriginalReturnType.toString(), operationParams);
+					operationOriginalReturnType.toString(), operationParams, false);
 			// Gets the DTOs in operation hierarchy.
 			Map<String, String> dtoTypesInOperHier = DtoGenerator.getDtoTypesInHierarchy(operationOriginalReturnType,
 					context, new HashMap<>());
@@ -275,6 +275,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 				serviceClientOperationMetadata.setReturnType(serviceClientOperationAnno.returnType().isEmpty()
 						? serviceClientOperationMetadata.getReturnType()
 								: serviceClientOperationAnno.returnType());
+				serviceClientOperationMetadata.setAsynchronous(serviceClientOperationAnno.asynchronous());
 			}
 		}
 		// Returns the operation metadata.
