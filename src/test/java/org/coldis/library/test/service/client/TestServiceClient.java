@@ -9,10 +9,14 @@ import java.util.Objects;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
@@ -21,6 +25,12 @@ import org.springframework.util.MultiValueMap;
   */
 @Service
 public class TestServiceClient extends org.coldis.library.service.client.GenericRestServiceClient {
+	
+	/**
+	 * JMS template.
+	 */
+	@Autowired(required = false)
+	private JmsTemplate jmsTemplate;
 
 	/**
 	 * No arguments constructor.
@@ -33,7 +43,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	 * Test service.
   */
 	public void test1(
-			) throws BusinessException, IntegrationException {
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
 		final HttpMethod method = HttpMethod.GET;
@@ -69,7 +79,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 			java.lang.String test2,
 			java.lang.String test3,
 			java.lang.Integer test4,
-			int[] test5) throws BusinessException, IntegrationException {
+			int[] test5) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
 		final HttpMethod method = HttpMethod.PUT;
@@ -107,7 +117,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
  @return      Test object.
   */
 	public org.springframework.core.io.Resource test3(
-			org.coldis.library.service.model.FileResource teste) throws BusinessException, IntegrationException {
+			org.coldis.library.service.model.FileResource teste) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
 		final HttpMethod method = HttpMethod.PUT;
@@ -136,7 +146,7 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
  @return      Test object.
   */
 	public java.lang.Integer test4(
-			java.lang.Long test) throws BusinessException, IntegrationException {
+			java.lang.Long test) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
 		final HttpMethod method = HttpMethod.GET;
@@ -165,9 +175,9 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
  @return      Test object.
   */
 	public java.lang.Integer test5(
-			java.lang.Long test) throws BusinessException, IntegrationException {
+			java.lang.Long test) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test/a/{test}?");
+		StringBuilder path = new StringBuilder("http://localhost:8080/test/async/{test}?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -175,6 +185,66 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
 		final ParameterizedTypeReference<java.lang.Integer> returnType =
 				new ParameterizedTypeReference<java.lang.Integer>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+				MediaType.APPLICATION_JSON_UTF8_VALUE);
+		// Adds the path parameter to the map.
+		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
+		// Executes the operation and returns the response.
+		return this.executeOperation(path.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType).getBody();
+	}
+	
+	/**
+	 * test5 queue.
+	 */
+	public static final String test5Queue = "test5Queue.queue";
+	
+	/**
+	 * Test service.
+
+ @param  test Test argument.
+ @return      Test object.
+  */
+	@Transactional
+	@JmsListener(destination = "test5Queue.queue")
+	public void test5(Map<String, ?> parameters) throws BusinessException {
+		test5(
+				(java.lang.Long) parameters.get("test")			);
+	}
+
+	
+	/**
+	 * Test service.
+
+ @param  test Test argument.
+ @return      Test object.
+  */
+	@Transactional
+	public void test5Async(
+			java.lang.Long test) throws BusinessException {
+		jmsTemplate.convertAndSend(test5Queue, 
+				Map.of(
+"test", test					));
+	}
+	/**
+	 * Test service.
+
+ @param  test Test argument.
+ @return      Test object.
+  */
+	public java.util.Map<java.lang.String,java.lang.Object> test6(
+			java.lang.Long test) throws BusinessException {
+		// Operation parameters.
+		StringBuilder path = new StringBuilder("http://localhost:8080/test/a/{test}?");
+		final HttpMethod method = HttpMethod.GET;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<java.util.Map<java.lang.String,java.lang.Object>> returnType =
+				new ParameterizedTypeReference<java.util.Map<java.lang.String,java.lang.Object>>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 				MediaType.APPLICATION_JSON_UTF8_VALUE);
