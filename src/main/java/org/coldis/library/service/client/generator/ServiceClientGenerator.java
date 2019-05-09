@@ -71,6 +71,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 		velocityContext.put("serviceClient", serviceClientTypeMetadata);
 		velocityContext.put("newLine", "\r\n");
 		velocityContext.put("tab", "\t");
+		velocityContext.put("h", "#");
 		// Gets the template for the service client.
 		final Template serviceClientTemplate = velocityEngine.getTemplate(serviceClientTypeMetadata.getTemplatePath());
 		// Prepares the writer for the service client.
@@ -136,7 +137,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 								serviceClientTypeMetadata.getOperations().add(serviceClientOperationMetadata);
 							}
 							// Adds the operation to the already added list.
-							alreadyAddedOperations.add(currentOperation.getSimpleName().toString());
+							alreadyAddedOperations.add(currentOperation.toString());
 						}
 					}
 				}

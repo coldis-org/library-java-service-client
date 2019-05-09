@@ -9,7 +9,12 @@ import java.util.Objects;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.EmbeddedValueResolver;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -24,8 +29,13 @@ import org.springframework.util.MultiValueMap;
   * Test service.
   */
 @Service
-public class TestServiceClient extends org.coldis.library.service.client.GenericRestServiceClient {
+public class TestServiceClient extends org.coldis.library.service.client.GenericRestServiceClient implements ApplicationContextAware {
 	
+	/**
+	 * Value resolver.
+	 */
+	private EmbeddedValueResolver embeddedValueResolver;
+
 	/**
 	 * JMS template.
 	 */
@@ -38,6 +48,15 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public TestServiceClient() {
 		super();
 	}
+	
+	/**
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext applicationContext) throws BeansException {
+		this.embeddedValueResolver = new EmbeddedValueResolver(
+				(ConfigurableBeanFactory) applicationContext.getAutowireCapableBeanFactory());
+	}
 
 	/**
 	 * Test service.
@@ -45,7 +64,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public void test1(
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test/?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -81,7 +101,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 			java.lang.Integer test4,
 			int[] test5) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test/?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test/?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -119,7 +140,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public org.springframework.core.io.Resource test3(
 			org.coldis.library.service.model.FileResource teste) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test//test?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -148,7 +170,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public java.lang.Integer test4(
 			java.lang.Long test) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test//test?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test//test?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -177,7 +200,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public java.lang.Integer test5(
 			java.lang.Long test) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test/async/{test}?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test/async/{test}?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -237,7 +261,8 @@ public class TestServiceClient extends org.coldis.library.service.client.Generic
 	public java.util.Map<java.lang.String,java.lang.Object> test6(
 			java.lang.Long test) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("http://localhost:8080/test/a/{test}?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("http://localhost:8080/test/a/{test}?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

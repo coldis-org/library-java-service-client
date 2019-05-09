@@ -196,7 +196,7 @@ public class GenericRestServiceClient {
 	 * Extension point to handle REST operation execution exceptions. No handling is
 	 * done by default.
 	 *
-	 * @param                     <ResponseType> REST operation response type.
+	 * @param  <ResponseType>     REST operation response type.
 	 * @param  path               REST operation path.
 	 * @param  method             REST operation method.
 	 * @param  headers            REST operation headers.
@@ -217,7 +217,7 @@ public class GenericRestServiceClient {
 	/**
 	 * Executes a REST operation.
 	 *
-	 * @param                       <ResponseType> REST operation response type.
+	 * @param  <ResponseType>       REST operation response type.
 	 * @param  path                 REST operation path.
 	 * @param  method               REST operation method.
 	 * @param  headers              REST operation headers.
@@ -233,12 +233,12 @@ public class GenericRestServiceClient {
 			final MultiValueMap<String, String> headers, final Object body, final Map<String, Object> uriParameters,
 			final ParameterizedTypeReference<ResponseType> responseType)
 					throws IntegrationException, BusinessException {
+		// Modifies the headers as for service client implementation.
+		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
 		// Tries to execute the REST operation.
 		try {
-			// Modifies the headers as for service client implementation.
-			this.autoModifyHeaders(headers);
 			// Creates a new HTTP entity for the current headers and body.
-			final HttpEntity<Object> httpEntity = new HttpEntity<>(body, headers);
+			final HttpEntity<Object> httpEntity = new HttpEntity<>(body, actualHeaders);
 			// Executes the REST operation and returns the response.
 			return this.getRestTemplate().exchange(path, method, httpEntity, responseType, uriParameters);
 		}
@@ -248,7 +248,8 @@ public class GenericRestServiceClient {
 			Exception actualException = originalException;
 			// Tries to handle the operation exception.
 			try {
-				return this.autoHandleExecutionExceptions(path, method, headers, body, responseType, actualException);
+				return this.autoHandleExecutionExceptions(path, method, actualHeaders, body, responseType,
+						actualException);
 			}
 			// If the REST operation exception cannot be handled.
 			catch (final Exception newException) {

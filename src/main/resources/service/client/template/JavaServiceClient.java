@@ -9,7 +9,12 @@ import java.util.Objects;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.EmbeddedValueResolver;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -23,8 +28,13 @@ import org.springframework.util.MultiValueMap;
 /**
   *${serviceClient.docComment}  */
 @Service
-public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} {
+public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} implements ApplicationContextAware {
 	
+	/**
+	 * Value resolver.
+	 */
+	private EmbeddedValueResolver embeddedValueResolver;
+
 	/**
 	 * JMS template.
 	 */
@@ -37,6 +47,15 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public ${serviceClient.name}() {
 		super();
 	}
+	
+	/**
+	 * @see org.springframework.context.ApplicationContextAware${h}setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext applicationContext) throws BeansException {
+		this.embeddedValueResolver = new EmbeddedValueResolver(
+				(ConfigurableBeanFactory) applicationContext.getAutowireCapableBeanFactory());
+	}
 
 #{foreach}( ${operation} in ${serviceClient.operations} )
 	/**
@@ -45,7 +64,8 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder("${serviceClient.endpoint}/${operation.path}?");
+		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+				.resolveStringValue("${serviceClient.endpoint}/${operation.path}?"));
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
