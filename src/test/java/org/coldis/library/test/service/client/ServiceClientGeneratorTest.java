@@ -53,7 +53,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 	 * @throws Exception If the test does not succeed.
 	 */
 	@Test
-	public void test00DtoCreation() throws Exception {
+	public void test00ServiceClientCreation() throws Exception {
 		// For each test data.
 		for (final DtoTestObjectDto originalDto : ServiceClientGeneratorTest.TEST_DATA) {
 			// Tests the first service.
