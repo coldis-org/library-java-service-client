@@ -12,7 +12,7 @@ public class DtoTestObject2Dto implements Serializable {
 	/**
 	 * Serial.
 	 */
-	private static final long serialVersionUID = 3588762001922639325L;
+	private static final long serialVersionUID = 1922639325L;
 	
 	/**
 	 * id.
@@ -33,21 +33,6 @@ public class DtoTestObject2Dto implements Serializable {
 	}
 
 	/**
-	 * Default constructor.
- 	 * @param id
- 	 *            id.
- 	 * @param test
- 	 *            test.
-	 */
-	public DtoTestObject2Dto(
-			java.lang.Long id,
-			java.lang.String test) {
-		super();
-		this.id = id;
-		this.test = test;
-	}
-
-	/**
 	 * Gets the id.
 	 * @return The id.
 	 */
@@ -62,6 +47,18 @@ public class DtoTestObject2Dto implements Serializable {
 	 */
 	public void setId(final java.lang.Long id) {
 		this.id = id;
+	}
+	
+	/**
+	 * Sets the id and returns the updated object.
+	 *
+	 * @param id
+	 *            The id.
+	 * @return The updated object.
+	 */
+	public DtoTestObject2Dto withId(final java.lang.Long id) {
+		this.setId(id);
+		return this;
 	}
 	/**
 	 * Gets the test.
@@ -78,6 +75,18 @@ public class DtoTestObject2Dto implements Serializable {
 	 */
 	public void setTest(final java.lang.String test) {
 		this.test = test;
+	}
+	
+	/**
+	 * Sets the test and returns the updated object.
+	 *
+	 * @param test
+	 *            The test.
+	 * @return The updated object.
+	 */
+	public DtoTestObject2Dto withTest(final java.lang.String test) {
+		this.setTest(test);
+		return this;
 	}
 
 	/**
