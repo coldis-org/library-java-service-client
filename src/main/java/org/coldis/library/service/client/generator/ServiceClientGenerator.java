@@ -125,7 +125,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 						// Gets the default operation name.
 						final String operationName = currentOperation.getSimpleName().toString();
 						// If the operation has not been added yet (for override operations).
-						if (!alreadyAddedOperations.contains(currentOperation.getSimpleName().toString())
+						if (!alreadyAddedOperations.contains(currentOperation.toString())
 								&& (!"class".equals(operationName))) {
 							// Gets the operation metadata.
 							final ServiceClientOperationMetadata serviceClientOperationMetadata = this
