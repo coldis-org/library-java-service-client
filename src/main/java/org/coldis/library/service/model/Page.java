@@ -12,6 +12,11 @@ import java.util.List;
 public class Page<ObjectType> implements Serializable {
 
 	/**
+	 * Serial.
+	 */
+	private static final long serialVersionUID = 6446414558737364910L;
+
+	/**
 	 * Page number.
 	 */
 	private Integer number;
