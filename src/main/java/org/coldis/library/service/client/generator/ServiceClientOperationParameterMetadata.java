@@ -26,7 +26,7 @@ public class ServiceClientOperationParameterMetadata implements Serializable {
 	/**
 	 * Operation parameter kind.
 	 */
-	private String kind;
+	private ServiceOperationParameterKind kind;
 
 	/**
 	 * Default constructor.
@@ -35,7 +35,8 @@ public class ServiceClientOperationParameterMetadata implements Serializable {
 	 * @param name Operation parameter name.
 	 * @param kind Operation parameter kind.
 	 */
-	public ServiceClientOperationParameterMetadata(final String type, final String name, final String kind) {
+	public ServiceClientOperationParameterMetadata(final String type, final String name,
+			final ServiceOperationParameterKind kind) {
 		super();
 		this.type = type;
 		this.name = name;
@@ -83,7 +84,7 @@ public class ServiceClientOperationParameterMetadata implements Serializable {
 	 *
 	 * @return The kind.
 	 */
-	public String getKind() {
+	public ServiceOperationParameterKind getKind() {
 		return this.kind;
 	}
 
@@ -92,7 +93,7 @@ public class ServiceClientOperationParameterMetadata implements Serializable {
 	 *
 	 * @param kind New kind.
 	 */
-	public void setKind(final String kind) {
+	public void setKind(final ServiceOperationParameterKind kind) {
 		this.kind = kind;
 	}
 

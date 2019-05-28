@@ -28,6 +28,6 @@ public @interface ServiceClientOperationParameter {
 	/**
 	 * Service client operation parameter kind.
 	 */
-	public String kind() default "";
+	public ServiceOperationParameterKind kind() default ServiceOperationParameterKind.INHERITED;
 
 }
