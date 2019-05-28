@@ -28,6 +28,8 @@ import javax.lang.model.type.NoType;
 import javax.lang.model.type.TypeMirror;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
@@ -36,6 +38,12 @@ import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
 import org.coldis.library.dto.DtoGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 
 /**
  * Service client generator.
@@ -107,6 +115,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 						: serviceClientTypeAnno.name(),
 						this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(),
 						null);
+		// TODO Get request mapping information.
 		// If operations metadata should also be retrieved.
 		if (alsoGetOperationsMetadata) {
 			// Operations of service client.
@@ -155,22 +164,22 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 * Gets the service client operation metadata from an operation getter and a
 	 * context.
 	 *
-	 * @param  operationGetter Operation getter.
+	 * @param  operationMethod Operation methods.
 	 * @param  context         service client context.
 	 * @return                 The service client operation metadata from an
 	 *                         operation getter and a context.
 	 */
-	private static ServiceClientOperation getServiceClientOperationAnno(final Element operationGetter,
+	private static ServiceClientOperation getServiceClientOperationAnno(final Element operationMethod,
 			final String context) {
 		// Gets service client operation metadata annotation.
-		ServiceClientOperation serviceClientOperationAnno = operationGetter.getAnnotation(ServiceClientOperation.class);
+		ServiceClientOperation serviceClientOperationAnno = operationMethod.getAnnotation(ServiceClientOperation.class);
 		// If the service client operation annotation does not match the service client
 		// context.
 		if ((serviceClientOperationAnno == null) || !serviceClientOperationAnno.context().equals(context)) {
 			// Re-sets the service client operation annotation.
 			serviceClientOperationAnno = null;
 			// Gets service client operations metadata annotation.
-			final ServiceClientOperations serviceClientOperationsAnno = operationGetter
+			final ServiceClientOperations serviceClientOperationsAnno = operationMethod
 					.getAnnotation(ServiceClientOperations.class);
 			// If there is a service client operations annotation.
 			if (serviceClientOperationsAnno != null) {
@@ -214,22 +223,90 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			// Gets the operation parameters.
 			final List<ServiceClientOperationParameterMetadata> operationParams = new ArrayList<>();
 			for (final VariableElement currentOperationParam : operationOriginalParamsTypes) {
+				// Operation parameter information.
+				final ServiceClientOperationParameterMetadata serviceClientOperationParameterMetadata = new ServiceClientOperationParameterMetadata(
+						currentOperationParam.asType().toString(), currentOperationParam.getSimpleName().toString(),
+						ServiceOperationParameterKind.REQUEST_PARAMETER);
+				// Gets parameter request mapping.
+				final PathVariable pathVariable = currentOperationParam.getAnnotation(PathVariable.class);
+				final RequestPart requestPart = currentOperationParam.getAnnotation(RequestPart.class);
+				final RequestParam requestParam = currentOperationParam.getAnnotation(RequestParam.class);
+				final RequestHeader requestHeader = currentOperationParam.getAnnotation(RequestHeader.class);
+				final RequestBody requestBody = currentOperationParam.getAnnotation(RequestBody.class);
+				// If there is path variable information.
+				if (pathVariable != null) {
+					// Sets the parameter name.
+					serviceClientOperationParameterMetadata
+					.setName(StringUtils.isBlank(pathVariable.name())
+							? (StringUtils.isBlank(pathVariable.value())
+									? serviceClientOperationParameterMetadata.getName()
+											: pathVariable.value())
+									: pathVariable.name());
+					// Sets the parameter kind.
+					serviceClientOperationParameterMetadata.setKind(ServiceOperationParameterKind.PATH_VARIABLE);
+				}
+				// If there is request part information.
+				else if (requestPart != null) {
+					// Sets the parameter name.
+					serviceClientOperationParameterMetadata.setName(
+							StringUtils.isBlank(requestPart.name())
+							? (StringUtils.isBlank(requestPart.value())
+									? serviceClientOperationParameterMetadata.getName()
+											: requestPart.value())
+									: requestPart.name());
+					// Sets the parameter kind.
+					serviceClientOperationParameterMetadata.setKind(ServiceOperationParameterKind.REQUEST_PART);
+				}
+				// If there is request parameter information.
+				else if (requestParam != null) {
+					// Sets the parameter name.
+					serviceClientOperationParameterMetadata
+					.setName(StringUtils.isBlank(requestParam.name())
+							? (StringUtils.isBlank(requestParam.value())
+									? serviceClientOperationParameterMetadata.getName()
+											: requestParam.value())
+									: requestParam.name());
+					// Sets the parameter kind.
+					serviceClientOperationParameterMetadata.setKind(ServiceOperationParameterKind.REQUEST_PARAMETER);
+				}
+				// If there is request header information.
+				else if (requestHeader != null) {
+					// Sets the parameter name.
+					serviceClientOperationParameterMetadata
+					.setName(StringUtils.isBlank(requestHeader.name())
+							? (StringUtils.isBlank(requestHeader.value())
+									? serviceClientOperationParameterMetadata.getName()
+											: requestHeader.value())
+									: requestHeader.name());
+					// Sets the parameter kind.
+					serviceClientOperationParameterMetadata.setKind(ServiceOperationParameterKind.REQUEST_HEADER);
+				}
+				// If there is request body information.
+				else if (requestBody != null) {
+					// Sets the parameter kind.
+					serviceClientOperationParameterMetadata.setKind(ServiceOperationParameterKind.REQUEST_BODY);
+				}
 				// Gets the operation parameter metadata.
 				final ServiceClientOperationParameter serviceClientOperationParameter = currentOperationParam
 						.getAnnotation(ServiceClientOperationParameter.class);
-				// Gets the actual operation parameter metadata.
-				final String operationParamType = (serviceClientOperationParameter != null)
-						&& !serviceClientOperationParameter.type().isEmpty() ? serviceClientOperationParameter.type()
-								: currentOperationParam.asType().toString();
-						final String operationParamName = (serviceClientOperationParameter != null)
-								&& !serviceClientOperationParameter.name().isEmpty() ? serviceClientOperationParameter.name()
-										: currentOperationParam.getSimpleName().toString();
-								final String operationParamKind = (serviceClientOperationParameter != null)
-										? serviceClientOperationParameter.kind()
-												: "";
-										// Adds the operation parameter metadata do the list.
-										operationParams.add(new ServiceClientOperationParameterMetadata(operationParamType, operationParamName,
-												operationParamKind));
+				// If there is operation parameter metadata.
+				if (serviceClientOperationParameter != null) {
+					// Gets the actual operation parameter metadata.
+					serviceClientOperationParameterMetadata
+					.setType(StringUtils.isBlank(serviceClientOperationParameter.type())
+							? serviceClientOperationParameterMetadata.getType()
+									: serviceClientOperationParameter.type());
+					serviceClientOperationParameterMetadata
+					.setName(StringUtils.isBlank(serviceClientOperationParameter.name())
+							? serviceClientOperationParameterMetadata.getName()
+									: serviceClientOperationParameter.name());
+					serviceClientOperationParameterMetadata
+					.setKind(serviceClientOperationParameter.kind() != ServiceOperationParameterKind.INHERITED
+					? serviceClientOperationParameter.kind()
+							: serviceClientOperationParameterMetadata.getKind());
+				}
+				// Adds the operation parameter metadata do the list.
+				operationParams.add(serviceClientOperationParameterMetadata);
 			}
 			// Gets the default operation metadata.
 			serviceClientOperationMetadata = new ServiceClientOperationMetadata(defaultOperName,
@@ -257,23 +334,39 @@ public class ServiceClientGenerator extends AbstractProcessor {
 							.replaceAll(dtoTypeInOperHier.getKey(), dtoTypeInOperHier.getValue()));
 				}
 			}
+			// Tries to get the request mapping annotation.
+			final RequestMapping requestMapping = operation.getAnnotation(RequestMapping.class);
+			// If there is request mapping information.
+			if (requestMapping != null) {
+				// Sets the operation path, method and media type.
+				serviceClientOperationMetadata
+				.setPath(ArrayUtils.isEmpty(requestMapping.path()) ? serviceClientOperationMetadata.getPath()
+						: requestMapping.path()[0]);
+				serviceClientOperationMetadata.setMethod(
+						ArrayUtils.isEmpty(requestMapping.method()) ? serviceClientOperationMetadata.getMethod()
+								: requestMapping.method()[0].name());
+				serviceClientOperationMetadata.setMediaType(
+						ArrayUtils.isEmpty(requestMapping.consumes()) ? serviceClientOperationMetadata.getMediaType()
+								: requestMapping.consumes()[0]);
+			}
 			// If the operation metadata annotation is present.
 			if (serviceClientOperationAnno != null) {
 				// Updates the service client operation metadata from the annotation
 				// information.
-				serviceClientOperationMetadata
-				.setName(serviceClientOperationAnno.name().isEmpty() ? serviceClientOperationMetadata.getName()
-						: serviceClientOperationAnno.name());
-				serviceClientOperationMetadata
-				.setPath(serviceClientOperationAnno.path().isEmpty() ? serviceClientOperationMetadata.getPath()
-						: serviceClientOperationAnno.path());
-				serviceClientOperationMetadata.setMethod(
-						serviceClientOperationAnno.method().isEmpty() ? serviceClientOperationMetadata.getMethod()
+				serviceClientOperationMetadata.setName(StringUtils.isBlank(serviceClientOperationAnno.name())
+						? serviceClientOperationMetadata.getName()
+								: serviceClientOperationAnno.name());
+				serviceClientOperationMetadata.setPath(StringUtils.isBlank(serviceClientOperationAnno.path())
+						? serviceClientOperationMetadata.getPath()
+								: serviceClientOperationAnno.path());
+				serviceClientOperationMetadata.setMethod(StringUtils.isBlank(serviceClientOperationAnno.method())
+						? serviceClientOperationMetadata.getMethod()
 								: serviceClientOperationAnno.method());
-				serviceClientOperationMetadata.setMediaType(
-						serviceClientOperationAnno.mediaType().isEmpty() ? serviceClientOperationMetadata.getMediaType()
+				serviceClientOperationMetadata.setMediaType(StringUtils.isBlank(serviceClientOperationAnno.mediaType())
+						? serviceClientOperationMetadata.getMediaType()
 								: serviceClientOperationAnno.mediaType());
-				serviceClientOperationMetadata.setReturnType(serviceClientOperationAnno.returnType().isEmpty()
+				serviceClientOperationMetadata
+				.setReturnType(StringUtils.isBlank(serviceClientOperationAnno.returnType())
 						? serviceClientOperationMetadata.getReturnType()
 								: serviceClientOperationAnno.returnType());
 				serviceClientOperationMetadata.setAsynchronous(serviceClientOperationAnno.asynchronous());

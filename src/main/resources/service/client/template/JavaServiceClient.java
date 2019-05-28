@@ -77,22 +77,22 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 				#{if}(${operation.mediaType.isEmpty()})MediaType.APPLICATION_JSON_UTF8_VALUE#{else}"${operation.mediaType.toUpperCase()}"#{end});
 #{foreach}( ${parameter} in ${operation.parameters} )
-#{if}(${parameter.kind.toLowerCase().equals("body")})
+#{if}(${parameter.kind.name().equals("REQUEST_BODY")})
 		// Sets the operation body.
 		body = ${parameter.name};
-#{elseif}(${parameter.kind.toLowerCase().equals("path")})
+#{elseif}(${parameter.kind.name().equals("PATH_VARIABLE")})
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{${parameter.name}}", Objects.toString(${parameter.name})));
-#{elseif}(${parameter.kind.toLowerCase().equals("uri")})
+#{elseif}(${parameter.kind.name().equals("REQUEST_PARAMETER")})
 		// Adds the URI parameter to the map.
 		uriParameters.put("${parameter.name}", ${parameter.name});
 		path.append("${parameter.name}={${parameter.name}}&");
-#{elseif}(${parameter.kind.toLowerCase().equals("header")})
+#{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		// Adds the header to the map.
 		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(${Collection.class.isAssignableFrom(
 				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.name})#{elseif}(
 				${parameter.type.endsWith("[]")})List.of(${parameter.name}).toArray(new String[] {})#{else}${parameter.name} == null ? null : ${parameter.name}.toString()#{end});
-#{elseif}(${parameter.kind.toLowerCase().equals("part")})
+#{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
 		// Adds the part parameter to the map.
 		partParameters.put("${parameter.name}",
 				#{if}(${Collection.class.isAssignableFrom(
