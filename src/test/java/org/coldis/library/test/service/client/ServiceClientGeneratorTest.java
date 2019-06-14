@@ -108,7 +108,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 				catch (final BusinessException exception) {
 					throw new IntegrationException(new SimpleMessage(), exception);
 				}
-			}, state -> state.get("test5").equals(10), TestHelper.REGULAR_WAIT, TestHelper.SHORT_WAIT));
+			}, state -> state.get("test5").equals(10), TestHelper.LONG_WAIT, TestHelper.SHORT_WAIT));
 		}
 	}
 
@@ -164,7 +164,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 				catch (final BusinessException exception) {
 					throw new IntegrationException(new SimpleMessage(), exception);
 				}
-			}, state -> state.get("test5").equals(10), TestHelper.REGULAR_WAIT, TestHelper.SHORT_WAIT));
+			}, state -> state.get("test5").equals(10), TestHelper.LONG_WAIT, TestHelper.SHORT_WAIT));
 		}
 	}
 
