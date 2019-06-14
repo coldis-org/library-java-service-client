@@ -12,9 +12,9 @@ import org.coldis.library.service.client.GenericRestServiceClient;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
-import org.springframework.beans.factory.config.EmbeddedValueResolver;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.EmbeddedValueResolverAware;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -24,16 +24,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringValueResolver;
 
 /**
   *${serviceClient.docComment}  */
 @Service
-public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} implements ApplicationContextAware {
+public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} implements EmbeddedValueResolverAware {
 	
 	/**
 	 * Value resolver.
 	 */
-	private EmbeddedValueResolver embeddedValueResolver;
+	private StringValueResolver valueResolver;
 
 	/**
 	 * JMS template.
@@ -49,12 +50,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	}
 	
 	/**
-	 * @see org.springframework.context.ApplicationContextAware${h}setApplicationContext(org.springframework.context.ApplicationContext)
+	 * @see org.springframework.context.EmbeddedValueResolverAware#
+	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
 	 */
 	@Override
-	public void setApplicationContext(final ApplicationContext applicationContext) throws BeansException {
-		this.embeddedValueResolver = new EmbeddedValueResolver(
-				(ConfigurableBeanFactory) applicationContext.getAutowireCapableBeanFactory());
+	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
+		valueResolver = resolver;
 	}
 
 #{foreach}( ${operation} in ${serviceClient.operations} )
@@ -64,7 +65,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.embeddedValueResolver
+		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("${serviceClient.endpoint}/${operation.path}?"));
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();

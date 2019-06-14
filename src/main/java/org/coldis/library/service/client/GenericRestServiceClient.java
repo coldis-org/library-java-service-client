@@ -3,6 +3,7 @@ package org.coldis.library.service.client;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.commons.collections4.EnumerationUtils;
@@ -235,12 +236,14 @@ public class GenericRestServiceClient {
 					throws IntegrationException, BusinessException {
 		// Modifies the headers as for service client implementation.
 		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
+		// Makes sure parameters are not null.
+		final Map<String, Object> actualUriParameters = (uriParameters == null ? new HashMap<>() : uriParameters);
 		// Tries to execute the REST operation.
 		try {
 			// Creates a new HTTP entity for the current headers and body.
 			final HttpEntity<Object> httpEntity = new HttpEntity<>(body, actualHeaders);
 			// Executes the REST operation and returns the response.
-			return this.getRestTemplate().exchange(path, method, httpEntity, responseType, uriParameters);
+			return this.getRestTemplate().exchange(path, method, httpEntity, responseType, actualUriParameters);
 		}
 		// If the REST operation raises an exception.
 		catch (final Exception originalException) {

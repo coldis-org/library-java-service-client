@@ -7,7 +7,7 @@
 	<parent>
 		<groupId>org.coldis</groupId>
 		<artifactId>configuration</artifactId>
-		<version>0.0.1-SNAPSHOT</version>
+		<version>0.0.5</version>
 	</parent>
 
 	<groupId>org.coldis.library</groupId>
@@ -19,6 +19,8 @@
 
 	<properties>
 		<project.config.source.test.compile.annotationProcessors>org.coldis.library.dto.DtoGenerator,org.coldis.library.service.client.generator.ServiceClientGenerator</project.config.source.test.compile.annotationProcessors>
+		<project.config.spring.test.args>${project.config.spring.aop.args}</project.config.spring.test.args>
+		<project.config.spring.aop.phase>process-resources</project.config.spring.aop.phase>
 	</properties>
 
 	<scm>
@@ -33,17 +35,17 @@
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>core</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>0.0.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>dto</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>0.0.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>serialization</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>0.0.1</version>
 		</dependency>
 
 		<dependency>
@@ -108,7 +110,7 @@
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>test</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>0.0.1</version>
 			<scope>test</scope>
 		</dependency>
 
