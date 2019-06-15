@@ -41,6 +41,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 */
 	@Autowired(required = false)
 	private JmsTemplate jmsTemplate;
+	
+	/**
+	 * Service client.
+	 */
+	@Autowired
+	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -102,7 +108,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{end}
 #{end}
 		// Executes the operation and returns the response.
-		#{if}(!${operation.returnType.equals("void")})return #{end}this.executeOperation(path.toString(), method, headers,
+		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 	}

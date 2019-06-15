@@ -30,7 +30,7 @@ import org.springframework.util.StringValueResolver;
   * Test service.
   */
 @Service
-public class TestService2Client extends org.coldis.library.service.client.GenericRestServiceClient implements EmbeddedValueResolverAware {
+public class TestService2Client implements EmbeddedValueResolverAware {
 	
 	/**
 	 * Value resolver.
@@ -42,6 +42,12 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 	 */
 	@Autowired(required = false)
 	private JmsTemplate jmsTemplate;
+	
+	/**
+	 * Service client.
+	 */
+	@Autowired
+	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -78,7 +84,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 				MediaType.APPLICATION_JSON_UTF8_VALUE);
 		// Executes the operation and returns the response.
-		this.executeOperation(path.toString(), method, headers,
+		this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType);
 	}
@@ -127,7 +133,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		uriParameters.put("test5", test5);
 		path.append("test5={test5}&");
 		// Executes the operation and returns the response.
-		return this.executeOperation(path.toString(), method, headers,
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 	}
@@ -157,7 +163,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		partParameters.put("teste",
 				List.of(teste));
 		// Executes the operation and returns the response.
-		return this.executeOperation(path.toString(), method, headers,
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 	}
@@ -187,7 +193,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		uriParameters.put("test", test);
 		path.append("test={test}&");
 		// Executes the operation and returns the response.
-		return this.executeOperation(path.toString(), method, headers,
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 	}
@@ -216,7 +222,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
 		// Executes the operation and returns the response.
-		return this.executeOperation(path.toString(), method, headers,
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 	}
@@ -277,7 +283,7 @@ public class TestService2Client extends org.coldis.library.service.client.Generi
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
 		// Executes the operation and returns the response.
-		return this.executeOperation(path.toString(), method, headers,
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 	}

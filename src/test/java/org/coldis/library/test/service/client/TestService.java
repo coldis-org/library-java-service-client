@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping(path = "test")
 @ServiceClient(targetPath = "src/test/java", namespace = "org.coldis.library.test.service.client",
-superclass = "org.coldis.library.service.client.GenericRestServiceClient",
 endpoint = "http://localhost:8080/test")
 public class TestService {
 
