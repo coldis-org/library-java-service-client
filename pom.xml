@@ -10,7 +10,7 @@
 
 	<groupId>org.coldis.library</groupId>
 	<artifactId>service-client</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
+	<version>0.0.2</version>
 	<packaging>jar</packaging>
 
 	<name>Service client utilities</name>
@@ -23,7 +23,7 @@
 		<url>https://github.com/coldis-org/library-java-service-client</url>
 		<connection>scm:git:https://github.com/coldis-org/library-java-service-client.git</connection>
 		<developerConnection>scm:git:git@github.com:coldis-org/library-java-service-client.git</developerConnection>
-		<tag>HEAD</tag>
+		<tag>service-client-0.0.2</tag>
 	</scm>
 
 	<dependencies>
