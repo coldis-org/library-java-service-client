@@ -186,10 +186,12 @@ public class GenericRestServiceClient {
 	 * Extension point to modify headers before a REST operation call. No
 	 * modification is made by default.
 	 *
-	 * @param  headers Current headers.
-	 * @return         Returns the updated headers.
+	 * @param  headers           Current headers.
+	 * @return                   Returns the updated headers.
+	 * @throws BusinessException If the headers cannot be modified.
 	 */
-	protected MultiValueMap<String, String> autoModifyHeaders(final MultiValueMap<String, String> headers) {
+	protected MultiValueMap<String, String> autoModifyHeaders(final MultiValueMap<String, String> headers)
+			throws BusinessException {
 		return headers;
 	}
 
