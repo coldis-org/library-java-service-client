@@ -11,6 +11,7 @@ import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -46,6 +47,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Service client.
 	 */
 	@Autowired
+	#{if}(!${serviceClient.serviceClientQualifier.isEmpty()})@Qualifier(value = "${serviceClient.serviceClientQualifier}")#{end}
 	private GenericRestServiceClient serviceClient;
 
 	/**

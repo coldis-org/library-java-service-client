@@ -64,6 +64,11 @@ public class ServiceClientMetadata implements Serializable {
 	private String endpoint;
 
 	/**
+	 * Internal service client qualifier to be used.
+	 */
+	private String serviceClientQualifier;
+
+	/**
 	 * Service client operations metadata.
 	 */
 	private List<ServiceClientOperationMetadata> operations;
@@ -71,20 +76,22 @@ public class ServiceClientMetadata implements Serializable {
 	/**
 	 * Default constructor.
 	 *
-	 * @param context       Service client context.
-	 * @param targetPath    Target path.
-	 * @param templatePath  Template path.
-	 * @param fileExtension The service client file extension.
-	 * @param namespace     Service client namespace.
-	 * @param superclass    Service client superclass.
-	 * @param name          Service client name.
-	 * @param docComment    Service client docComment.
-	 * @param endpoint      Service client endpoint.
-	 * @param operations    Service client operations metadata.
+	 * @param context                Service client context.
+	 * @param targetPath             Target path.
+	 * @param templatePath           Template path.
+	 * @param fileExtension          The service client file extension.
+	 * @param namespace              Service client namespace.
+	 * @param superclass             Service client superclass.
+	 * @param name                   Service client name.
+	 * @param docComment             Service client docComment.
+	 * @param endpoint               Service client endpoint.
+	 * @param serviceClientQualifier Internal service client qualifier to be used.
+	 * @param operations             Service client operations metadata.
 	 */
 	public ServiceClientMetadata(final String context, final String targetPath, final String templatePath,
 			final String fileExtension, final String namespace, final String superclass, final String name,
-			final String docComment, final String endpoint, final List<ServiceClientOperationMetadata> operations) {
+			final String docComment, final String endpoint, final String serviceClientQualifier,
+			final List<ServiceClientOperationMetadata> operations) {
 		super();
 		this.context = context;
 		this.targetPath = targetPath;
@@ -95,6 +102,7 @@ public class ServiceClientMetadata implements Serializable {
 		this.name = name;
 		this.docComment = docComment;
 		this.endpoint = endpoint;
+		this.serviceClientQualifier = serviceClientQualifier;
 		this.operations = operations;
 	}
 
@@ -267,6 +275,24 @@ public class ServiceClientMetadata implements Serializable {
 	 */
 	public void setEndpoint(final String endpoint) {
 		this.endpoint = endpoint;
+	}
+
+	/**
+	 * Gets the serviceClientQualifier.
+	 *
+	 * @return The serviceClientQualifier.
+	 */
+	public String getServiceClientQualifier() {
+		return this.serviceClientQualifier;
+	}
+
+	/**
+	 * Sets the serviceClientQualifier.
+	 *
+	 * @param serviceClientQualifier New serviceClientQualifier.
+	 */
+	public void setServiceClientQualifier(final String serviceClientQualifier) {
+		this.serviceClientQualifier = serviceClientQualifier;
 	}
 
 	/**
