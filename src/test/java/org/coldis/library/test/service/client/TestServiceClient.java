@@ -11,6 +11,7 @@ import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -47,7 +48,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	 * Service client.
 	 */
 	@Autowired
-	private GenericRestServiceClient serviceClient;
+		private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
