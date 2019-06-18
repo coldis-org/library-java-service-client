@@ -57,4 +57,8 @@ public @interface ServiceClient {
 	 */
 	public String endpoint() default "";
 
+	/**
+	 * Internal service client qualifier to be used.
+	 */
+	public String serviceClientQualifier() default "";
 }
