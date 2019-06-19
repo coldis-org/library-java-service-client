@@ -19,7 +19,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -281,12 +280,14 @@ public class GenericRestServiceClient {
 				// If no messages are available.
 				if ((exceptionMessages == null) || (exceptionMessages.length == 0)) {
 					// Creates a default message.
-					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error") };
+					exceptionMessages = new SimpleMessage[] {
+									new SimpleMessage("rest.operation.execution.error", exceptionResponse) };
 				}
-				// If the exception status code is for bad request.
-				if (HttpStatus.BAD_REQUEST.equals(httpException.getStatusCode())) {
+				// If the exception status code is for a client error.
+				if (httpException.getStatusCode().is4xxClientError()) {
 					// Throws a business exception with the exception messages.
-					throw new BusinessException(Arrays.asList(exceptionMessages), httpException);
+					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(),
+							httpException);
 				}
 				// If the exception status code is not for bad request.
 				else {
