@@ -263,11 +263,13 @@ public class GenericRestServiceClient {
 			}
 			// Logs the exception.
 			GenericRestServiceClient.LOGGER.error("REST operation execution failed.", actualException);
+			// Exception response.
+			String exceptionResponse = null;
 			// If the exception is a HTTP exception.
 			if (actualException instanceof HttpStatusCodeException) {
 				// Gets the HTTP exception and its response.
 				final HttpStatusCodeException httpException = ((HttpStatusCodeException) actualException);
-				final String exceptionResponse = httpException.getResponseBodyAsString();
+				exceptionResponse = httpException.getResponseBodyAsString();
 				// Exception messages.
 				SimpleMessage[] exceptionMessages = null;
 				// If there is an exception response.
@@ -297,7 +299,8 @@ public class GenericRestServiceClient {
 			// For every other exception.
 			else {
 				// Throws an integration exception with a generic exception message.
-				throw new IntegrationException(new SimpleMessage("rest.operation.execution.error"), actualException);
+				throw new IntegrationException(new SimpleMessage("rest.operation.execution.error", exceptionResponse),
+						actualException);
 			}
 		}
 	}
