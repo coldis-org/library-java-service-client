@@ -33,6 +33,11 @@ public enum ServiceOperationParameterKind {
 	/**
 	 * Inherited.
 	 */
-	INHERITED;
+	INHERITED,
+
+	/**
+	 * Ignored.
+	 */
+	IGNORED;
 
 }

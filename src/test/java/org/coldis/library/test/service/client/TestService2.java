@@ -48,6 +48,7 @@ public class TestService2 {
 	 * @param  test3 Test parameter.
 	 * @param  test4 Test parameter.
 	 * @param  test5 Test parameter.
+	 * @param  test6 Test parameter.
 	 *
 	 * @param  test  Test argument.
 	 * @return       Test object.
@@ -64,11 +65,14 @@ public class TestService2 {
 			@RequestHeader(name = "Test-Test") @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_HEADER) final Integer test4,
 			@RequestParam @ServiceClientOperationParameter(
-					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final int[] test5) {
+					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final int[] test5,
+			@RequestHeader(name = "Test-Test2") @ServiceClientOperationParameter(
+					kind = ServiceOperationParameterKind.IGNORED) final Integer test6) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
 		test1.setTest7(test4);
 		test1.setTest8(test5);
+		test1.setTest9(test6);
 		return test1;
 	}
 

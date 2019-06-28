@@ -59,108 +59,6 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientGenerator.class);
 
 	/**
-	 * Generates a service client from a original type.
-	 *
-	 * @param  originalService           Original type information.
-	 * @param  serviceClientTypeMetadata service client type metadata.
-	 * @throws IOException               If the class cannot be generated.
-	 */
-	private void generateServiceClient(final TypeElement originalService,
-			final ServiceClientMetadata serviceClientTypeMetadata) throws IOException {
-		// Gets the velocity engine.
-		final VelocityEngine velocityEngine = new VelocityEngine();
-		// Configures the resource loader to also look at the classpath.
-		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
-		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
-		// Initializes the velocity engine.
-		velocityEngine.init();
-		// Creates a new velocity context and sets its variables.
-		final VelocityContext velocityContext = new VelocityContext();
-		velocityContext.put("serviceClient", serviceClientTypeMetadata);
-		velocityContext.put("newLine", "\r\n");
-		velocityContext.put("tab", "\t");
-		velocityContext.put("h", "#");
-		// Gets the template for the service client.
-		final Template serviceClientTemplate = velocityEngine.getTemplate(serviceClientTypeMetadata.getTemplatePath());
-		// Prepares the writer for the service client.
-		final File serviceClientFile = new File(
-				serviceClientTypeMetadata.getTargetPath() + File.separator
-				+ serviceClientTypeMetadata.getFileNamespace(),
-				serviceClientTypeMetadata.getName() + "." + serviceClientTypeMetadata.getFileExtension());
-		FileUtils.forceMkdir(serviceClientFile.getParentFile());
-		final Writer serviceClientWriter = new FileWriter(serviceClientFile);
-		// Writes the generated class code.
-		serviceClientTemplate.merge(velocityContext, serviceClientWriter);
-		// Closes the class writer.
-		serviceClientWriter.close();
-	}
-
-	/**
-	 * Gets the service client type metadata.
-	 *
-	 * @param  originalService           The original type.
-	 * @param  serviceClientTypeAnno     The service client type annotation.
-	 * @param  alsoGetOperationsMetadata If operations metadata should also be
-	 *                                       retrieved.
-	 * @return                           The service client type metadata.
-	 */
-	private ServiceClientMetadata getServiceClientMetadata(final TypeElement originalService,
-			final ServiceClient serviceClientTypeAnno, final Boolean alsoGetOperationsMetadata) {
-		// Gets the default type metadata.
-		final ServiceClientMetadata serviceClientTypeMetadata = new ServiceClientMetadata(
-				serviceClientTypeAnno.context(), serviceClientTypeAnno.targetPath(),
-				serviceClientTypeAnno.templatePath(), serviceClientTypeAnno.fileExtension(),
-				serviceClientTypeAnno.namespace(), serviceClientTypeAnno.superclass(),
-				(serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client"
-						: serviceClientTypeAnno.name()),
-				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(),
-				serviceClientTypeAnno.serviceClientQualifier(), null);
-		// TODO Get request mapping information.
-		// If operations metadata should also be retrieved.
-		if (alsoGetOperationsMetadata) {
-			// Operations of service client.
-			final List<String> alreadyAddedOperations = new ArrayList<>();
-			// Current type. Initially the given one, an then its super types.
-			TypeElement currentClass = originalService;
-			// For each type in the hierarchy (except Object).
-			while ((currentClass != null) && !(currentClass instanceof NoType)
-					&& (!Object.class.getName().equals(currentClass.asType().toString()))) {
-				// For each class enclosed element.
-				for (final Element currentOperation : currentClass.getEnclosedElements()) {
-					// If the element is a public method.
-					if (currentOperation.getKind().equals(ElementKind.METHOD)
-							&& currentOperation.getModifiers().contains(Modifier.PUBLIC)
-							&& (!currentOperation.getModifiers().contains(Modifier.STATIC))) {
-						// Gets the default operation name.
-						final String operationName = currentOperation.getSimpleName().toString();
-						// If the operation has not been added yet (for override operations).
-						if (!alreadyAddedOperations.contains(currentOperation.toString())
-								&& (!"class".equals(operationName))) {
-							// Gets the operation metadata.
-							final ServiceClientOperationMetadata serviceClientOperationMetadata = this
-									.getServiceClientOperationMetadata(serviceClientTypeMetadata.getContext(),
-											(ExecutableElement) currentOperation, operationName);
-							// If the operation metadata is retrieved.
-							if (serviceClientOperationMetadata != null) {
-								// Adds the service client operation for later conversion.
-								serviceClientTypeMetadata.getOperations().add(serviceClientOperationMetadata);
-							}
-							// Adds the operation to the already added list.
-							alreadyAddedOperations.add(currentOperation.toString());
-						}
-					}
-				}
-				// The current class is the late class superclass.
-				currentClass = currentClass.getSuperclass() instanceof DeclaredType
-						? (TypeElement) ((DeclaredType) currentClass.getSuperclass()).asElement()
-								: null;
-			}
-		}
-		// Returns the type metadata.
-		return serviceClientTypeMetadata;
-	}
-
-	/**
 	 * Gets the service client operation metadata from an operation getter and a
 	 * context.
 	 *
@@ -340,9 +238,11 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			// If there is request mapping information.
 			if (requestMapping != null) {
 				// Sets the operation path, method and media type.
-				serviceClientOperationMetadata
-				.setPath(ArrayUtils.isEmpty(requestMapping.path()) ? serviceClientOperationMetadata.getPath()
-						: requestMapping.path()[0]);
+				serviceClientOperationMetadata.setPath(
+						ArrayUtils.isEmpty(requestMapping.path())
+						? (ArrayUtils.isEmpty(requestMapping.value()) ? serviceClientOperationMetadata.getPath()
+								: requestMapping.value()[0])
+								: requestMapping.path()[0]);
 				serviceClientOperationMetadata.setMethod(
 						ArrayUtils.isEmpty(requestMapping.method()) ? serviceClientOperationMetadata.getMethod()
 								: requestMapping.method()[0].name());
@@ -375,6 +275,108 @@ public class ServiceClientGenerator extends AbstractProcessor {
 		}
 		// Returns the operation metadata.
 		return serviceClientOperationMetadata;
+	}
+
+	/**
+	 * Gets the service client type metadata.
+	 *
+	 * @param  originalService           The original type.
+	 * @param  serviceClientTypeAnno     The service client type annotation.
+	 * @param  alsoGetOperationsMetadata If operations metadata should also be
+	 *                                       retrieved.
+	 * @return                           The service client type metadata.
+	 */
+	private ServiceClientMetadata getServiceClientMetadata(final TypeElement originalService,
+			final ServiceClient serviceClientTypeAnno, final Boolean alsoGetOperationsMetadata) {
+		// Gets the default type metadata.
+		final ServiceClientMetadata serviceClientTypeMetadata = new ServiceClientMetadata(
+				serviceClientTypeAnno.context(), serviceClientTypeAnno.targetPath(),
+				serviceClientTypeAnno.templatePath(), serviceClientTypeAnno.fileExtension(),
+				serviceClientTypeAnno.namespace(), serviceClientTypeAnno.superclass(),
+				(serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client"
+						: serviceClientTypeAnno.name()),
+				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(),
+				serviceClientTypeAnno.serviceClientQualifier(), null);
+		// TODO Get request mapping information.
+		// If operations metadata should also be retrieved.
+		if (alsoGetOperationsMetadata) {
+			// Operations of service client.
+			final List<String> alreadyAddedOperations = new ArrayList<>();
+			// Current type. Initially the given one, an then its super types.
+			TypeElement currentClass = originalService;
+			// For each type in the hierarchy (except Object).
+			while ((currentClass != null) && !(currentClass instanceof NoType)
+					&& (!Object.class.getName().equals(currentClass.asType().toString()))) {
+				// For each class enclosed element.
+				for (final Element currentOperation : currentClass.getEnclosedElements()) {
+					// If the element is a public method.
+					if (currentOperation.getKind().equals(ElementKind.METHOD)
+							&& currentOperation.getModifiers().contains(Modifier.PUBLIC)
+							&& (!currentOperation.getModifiers().contains(Modifier.STATIC))) {
+						// Gets the default operation name.
+						final String operationName = currentOperation.getSimpleName().toString();
+						// If the operation has not been added yet (for override operations).
+						if (!alreadyAddedOperations.contains(currentOperation.toString())
+								&& (!"class".equals(operationName))) {
+							// Gets the operation metadata.
+							final ServiceClientOperationMetadata serviceClientOperationMetadata = this
+									.getServiceClientOperationMetadata(serviceClientTypeMetadata.getContext(),
+											(ExecutableElement) currentOperation, operationName);
+							// If the operation metadata is retrieved.
+							if (serviceClientOperationMetadata != null) {
+								// Adds the service client operation for later conversion.
+								serviceClientTypeMetadata.getOperations().add(serviceClientOperationMetadata);
+							}
+							// Adds the operation to the already added list.
+							alreadyAddedOperations.add(currentOperation.toString());
+						}
+					}
+				}
+				// The current class is the late class superclass.
+				currentClass = currentClass.getSuperclass() instanceof DeclaredType
+						? (TypeElement) ((DeclaredType) currentClass.getSuperclass()).asElement()
+								: null;
+			}
+		}
+		// Returns the type metadata.
+		return serviceClientTypeMetadata;
+	}
+
+	/**
+	 * Generates a service client from a original type.
+	 *
+	 * @param  originalService           Original type information.
+	 * @param  serviceClientTypeMetadata service client type metadata.
+	 * @throws IOException               If the class cannot be generated.
+	 */
+	private void generateServiceClient(final TypeElement originalService,
+			final ServiceClientMetadata serviceClientTypeMetadata) throws IOException {
+		// Gets the velocity engine.
+		final VelocityEngine velocityEngine = new VelocityEngine();
+		// Configures the resource loader to also look at the classpath.
+		velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
+		velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
+		// Initializes the velocity engine.
+		velocityEngine.init();
+		// Creates a new velocity context and sets its variables.
+		final VelocityContext velocityContext = new VelocityContext();
+		velocityContext.put("serviceClient", serviceClientTypeMetadata);
+		velocityContext.put("newLine", "\r\n");
+		velocityContext.put("tab", "\t");
+		velocityContext.put("h", "#");
+		// Gets the template for the service client.
+		final Template serviceClientTemplate = velocityEngine.getTemplate(serviceClientTypeMetadata.getTemplatePath());
+		// Prepares the writer for the service client.
+		final File serviceClientFile = new File(
+				serviceClientTypeMetadata.getTargetPath() + File.separator
+				+ serviceClientTypeMetadata.getFileNamespace(),
+				serviceClientTypeMetadata.getName() + "." + serviceClientTypeMetadata.getFileExtension());
+		FileUtils.forceMkdir(serviceClientFile.getParentFile());
+		final Writer serviceClientWriter = new FileWriter(serviceClientFile);
+		// Writes the generated class code.
+		serviceClientTemplate.merge(velocityContext, serviceClientWriter);
+		// Closes the class writer.
+		serviceClientWriter.close();
 	}
 
 	/**
