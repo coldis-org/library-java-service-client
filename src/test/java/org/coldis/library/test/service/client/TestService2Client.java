@@ -98,6 +98,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
  @param  test3 Test parameter.
  @param  test4 Test parameter.
  @param  test5 Test parameter.
+ @param  test6 Test parameter.
 
  @param  test  Test argument.
  @return       Test object.

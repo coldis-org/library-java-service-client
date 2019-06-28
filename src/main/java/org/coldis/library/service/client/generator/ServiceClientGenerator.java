@@ -204,8 +204,11 @@ public class ServiceClientGenerator extends AbstractProcessor {
 					? serviceClientOperationParameter.kind()
 							: serviceClientOperationParameterMetadata.getKind());
 				}
-				// Adds the operation parameter metadata do the list.
-				operationParams.add(serviceClientOperationParameterMetadata);
+				// If the parameter should not be ignored.
+				if (!serviceClientOperationParameterMetadata.getKind().equals(ServiceOperationParameterKind.IGNORED)) {
+					// Adds the operation parameter metadata do the list.
+					operationParams.add(serviceClientOperationParameterMetadata);
+				}
 			}
 			// Gets the default operation metadata.
 			serviceClientOperationMetadata = new ServiceClientOperationMetadata(defaultOperName,
