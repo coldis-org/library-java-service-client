@@ -226,6 +226,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 				// Operation parameter information.
 				final ServiceClientOperationParameterMetadata serviceClientOperationParameterMetadata = new ServiceClientOperationParameterMetadata(
 						currentOperationParam.asType().toString(), currentOperationParam.getSimpleName().toString(),
+						currentOperationParam.getSimpleName().toString(),
 						ServiceOperationParameterKind.REQUEST_PARAMETER);
 				// Gets parameter request mapping.
 				final PathVariable pathVariable = currentOperationParam.getAnnotation(PathVariable.class);

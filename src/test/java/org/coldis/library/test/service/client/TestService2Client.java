@@ -129,7 +129,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 		uriParameters.put("test3", test3);
 		path.append("test3={test3}&");
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test4", test4 == null ? null : test4.toString());
+		GenericRestServiceClient.addHeaders(headers, false, "Test-Test", test4 == null ? null : test4.toString());
 		// Adds the URI parameter to the map.
 		uriParameters.put("test5", test5);
 		path.append("test5={test5}&");
@@ -146,7 +146,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
  @return      Test object.
   */
 	public org.springframework.core.io.Resource test3(
-			org.coldis.library.service.model.FileResource teste) throws BusinessException {
+			org.coldis.library.service.model.FileResource test) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2//test?"));
@@ -162,7 +162,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
-				List.of(teste));
+				List.of(test));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

@@ -61,7 +61,7 @@ public class TestService2 {
 					kind = ServiceOperationParameterKind.REQUEST_HEADER) final String test2,
 			@RequestParam @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final String test3,
-			@RequestHeader @ServiceClientOperationParameter(
+			@RequestHeader(name = "Test-Test") @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_HEADER) final Integer test4,
 			@RequestParam @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final int[] test5) {

@@ -71,7 +71,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 *${operation.docComment}  */
 	public ${operation.returnType} ${operation.name}(
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
-			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
+			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("${serviceClient.endpoint}/${operation.path}?"));
@@ -88,25 +88,25 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{foreach}( ${parameter} in ${operation.parameters} )
 #{if}(${parameter.kind.name().equals("REQUEST_BODY")})
 		// Sets the operation body.
-		body = ${parameter.name};
+		body = ${parameter.originalName};
 #{elseif}(${parameter.kind.name().equals("PATH_VARIABLE")})
 		// Adds the path parameter to the map.
-		path = new StringBuilder(path.toString().replace("{${parameter.name}}", Objects.toString(${parameter.name})));
+		path = new StringBuilder(path.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
 #{elseif}(${parameter.kind.name().equals("REQUEST_PARAMETER")})
 		// Adds the URI parameter to the map.
-		uriParameters.put("${parameter.name}", ${parameter.name});
-		path.append("${parameter.name}={${parameter.name}}&");
+		uriParameters.put("${parameter.originalName}", ${parameter.originalName});
+		path.append("${parameter.name}={${parameter.originalName}}&");
 #{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		// Adds the header to the map.
 		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(${Collection.class.isAssignableFrom(
-				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.name})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.name}).toArray(new String[] {})#{else}${parameter.name} == null ? null : ${parameter.name}.toString()#{end});
+				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.originalName})#{elseif}(
+				${parameter.type.endsWith("[]")})List.of(${parameter.originalName}).toArray(new String[] {})#{else}${parameter.originalName} == null ? null : ${parameter.originalName}.toString()#{end});
 #{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
 		// Adds the part parameter to the map.
 		partParameters.put("${parameter.name}",
 				#{if}(${Collection.class.isAssignableFrom(
-				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.name})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.name})#{else}List.of(${parameter.name})#{end});
+				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.originalName})#{elseif}(
+				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})#{else}List.of(${parameter.originalName})#{end});
 #{end}
 #{end}
 		// Executes the operation and returns the response.
@@ -128,7 +128,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public void ${operation.name}(Map<String, ?> parameters) throws BusinessException {
 		${operation.name}(
 #{foreach}( ${parameter} in ${operation.parameters} )#{set}($currentItemIdx = 0)
-				(${parameter.type}) parameters.get("${parameter.name}")#{if}(${currentItemIdx} > 0), #{end}#{set}($currentItemIdx = $currentItemIdx + 1)
+				(${parameter.type}) parameters.get("${parameter.originalName}")#{if}(${currentItemIdx} > 0), #{end}#{set}($currentItemIdx = $currentItemIdx + 1)
 #{end}
 			);
 	}
@@ -139,11 +139,11 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	@Transactional
 	public void ${operation.name}Async(
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
-			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.name}#{end}) throws BusinessException {
+			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}) throws BusinessException {
 		jmsTemplate.convertAndSend(${operation.name}Queue, 
 				Map.of(
 #{foreach}( ${parameter} in ${operation.parameters} )
-						#{set}($currentItemIdx = 0)"${parameter.name}", ${parameter.name}#{if}(${currentItemIdx} > 0),
+						#{set}($currentItemIdx = 0)"${parameter.originalName}", ${parameter.originalName}#{if}(${currentItemIdx} > 0),
 						#{end}#{set}($currentItemIdx = $currentItemIdx + 1)
 #{end}
 					));

@@ -146,7 +146,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  @return      Test object.
   */
 	public org.springframework.core.io.Resource test3(
-			org.coldis.library.service.model.FileResource teste) throws BusinessException {
+			org.coldis.library.service.model.FileResource test) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test/test?"));
@@ -162,7 +162,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 				"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
-				List.of(teste));
+				List.of(test));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
