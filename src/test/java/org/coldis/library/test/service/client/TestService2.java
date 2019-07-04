@@ -30,7 +30,7 @@ public class TestService2 {
 	/**
 	 * Internal state.
 	 */
-	private final Map<String, Object> state = new HashMap<>();
+	private final Map<String, Object> state  = new HashMap<>();
 
 	/**
 	 * Test service.

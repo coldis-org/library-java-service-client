@@ -31,13 +31,13 @@ public class ServiceClientGeneratorTest extends TestHelper {
 	 */
 	private static final DtoTestObjectDto[] TEST_DATA = {
 					new DtoTestObjectDto().withId(10L).withTest1(new DtoTestObject2Dto().withId(1L).withTest("test1"))
-					.withTest2(List.of(new DtoTestObject2Dto().withId(2L).withTest("test2"),
-							new DtoTestObject2Dto().withId(21L).withTest("test21")))
-					.withTest3("test3").withTest4(new DtoTestObject2Dto().withId(4L).withTest("test4"))
-					.withTest5("test5")
-					.withTest6(new DtoTestObject2Dto[] { new DtoTestObject2Dto().withId(6L).withTest("test6"),
-									new DtoTestObject2Dto().withId(61L).withTest("test61") })
-					.withTest7(7).withTest88(new int[] { 2, 3, 4 }).withTest9(9) };
+							.withTest2(List.of(new DtoTestObject2Dto().withId(2L).withTest("test2"),
+									new DtoTestObject2Dto().withId(21L).withTest("test21")))
+							.withTest3("test3").withTest4(new DtoTestObject2Dto().withId(4L).withTest("test4"))
+							.withTest5("test5")
+							.withTest6(new DtoTestObject2Dto[] { new DtoTestObject2Dto().withId(6L).withTest("test6"),
+											new DtoTestObject2Dto().withId(61L).withTest("test61") })
+							.withTest7(7).withTest88(new int[] { 2, 3, 4 }).withTest9(9) };
 
 	/**
 	 * Object mapper.
@@ -63,7 +63,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 	 * @throws Exception If the test does not succeed.
 	 */
 	@Test
-	public void test00ServiceClientCreation() throws Exception {
+	public void testServiceClientCreation() throws Exception {
 		// For each test data.
 		for (final DtoTestObjectDto originalDto : ServiceClientGeneratorTest.TEST_DATA) {
 			// Tests the first service.
@@ -71,7 +71,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Clones the test object.
 			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto,
 					new TypeReference<DtoTestObjectDto>() {
-			});
+					});
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
@@ -93,9 +93,11 @@ public class ServiceClientGeneratorTest extends TestHelper {
 					new String(IOUtils.toByteArray(this.serviceClient
 							.test3(new FileResource("test", serializedDto.getBytes())).getInputStream())),
 					new TypeReference<DtoTestObjectDto>() {
-			}, true);
+					}, true);
 			// Asserts that the response is the serialized object.
 			Assertions.assertEquals(originalDto, deserializedDto);
+
+			Assertions.assertEquals(null, this.serviceClient.test3(null));
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test4(1L));
 			Assertions.assertEquals(Integer.valueOf(5), this.serviceClient.test5(5L));
@@ -119,7 +121,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 	 * @throws Exception If the test does not succeed.
 	 */
 	@Test
-	public void test01ServiceClientCreationInherited() throws Exception {
+	public void testServiceClientCreationInherited() throws Exception {
 		// For each test data.
 		for (final DtoTestObjectDto originalDto : ServiceClientGeneratorTest.TEST_DATA) {
 			// Tests the first service.
@@ -127,7 +129,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Clones the test object.
 			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto,
 					new TypeReference<DtoTestObjectDto>() {
-			});
+					});
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
@@ -149,7 +151,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 					new String(IOUtils.toByteArray(this.service2Client
 							.test3(new FileResource("test", serializedDto.getBytes())).getInputStream())),
 					new TypeReference<DtoTestObjectDto>() {
-			}, true);
+					}, true);
 			// Asserts that the response is the serialized object.
 			Assertions.assertEquals(originalDto, deserializedDto);
 			// Asserts that the response is the same as the request (converted to integer).

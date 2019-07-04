@@ -162,7 +162,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 				"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
-				List.of(test));
+				(test == null ? List.of() : (List.of(test))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

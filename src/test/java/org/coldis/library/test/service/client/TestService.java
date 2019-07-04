@@ -68,7 +68,7 @@ public class TestService {
 	 * @return      Test object.
 	 */
 	@RequestMapping(path = "test", method = RequestMethod.PUT, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public Resource test3(@RequestPart(name = "teste") @ServiceClientOperationParameter(
+	public Resource test3(@RequestPart(name = "teste", required = false) @ServiceClientOperationParameter(
 			type = "org.coldis.library.service.model.FileResource") final Resource test) {
 		return test;
 	}

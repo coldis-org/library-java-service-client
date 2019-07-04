@@ -104,9 +104,9 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
 		// Adds the part parameter to the map.
 		partParameters.put("${parameter.name}",
-				#{if}(${Collection.class.isAssignableFrom(
+				(${parameter.originalName} == null ? List.of() : (#{if}(${Collection.class.isAssignableFrom(
 				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.originalName})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})#{else}List.of(${parameter.originalName})#{end});
+				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})#{else}List.of(${parameter.originalName})#{end})));
 #{end}
 #{end}
 		// Executes the operation and returns the response.
