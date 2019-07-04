@@ -66,7 +66,7 @@ public class TestService2 {
 					kind = ServiceOperationParameterKind.REQUEST_HEADER) final Integer test4,
 			@RequestParam @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final int[] test5,
-			@RequestHeader(name = "Test-Test2") @ServiceClientOperationParameter(
+			@RequestHeader(name = "Test-Test2", required = false) @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.IGNORED) final Integer test6) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
