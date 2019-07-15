@@ -33,7 +33,6 @@ public class ServiceClientAutoConfiguration {
 	 */
 	@Bean(name = "restServiceClient")
 	@Qualifier(value = "restServiceClient")
-	@ConditionalOnMissingBean(value = GenericRestServiceClient.class)
 	public GenericRestServiceClient createRestServiceClient() {
 		return new GenericRestServiceClient();
 	}
