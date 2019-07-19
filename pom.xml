@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.coldis</groupId>
 		<artifactId>configuration</artifactId>
-		<version>0.0.3</version>
+		<version>0.0.6</version>
 	</parent>
 
 	<groupId>org.coldis.library</groupId>
@@ -43,7 +43,7 @@
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>dto</artifactId>
-			<version>0.0.2</version>
+			<version>0.0.3</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>

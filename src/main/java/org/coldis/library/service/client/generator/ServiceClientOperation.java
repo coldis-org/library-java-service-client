@@ -49,7 +49,12 @@ public @interface ServiceClientOperation {
 	/**
 	 * Service client operation return type.
 	 */
-	public String returnType() default "";
+	public Class<?> returnType() default void.class;
+
+	/**
+	 * Service client operation return type.
+	 */
+	public String returnTypeName() default "";
 
 	/**
 	 * If an asynchronous operation call should also be generated.

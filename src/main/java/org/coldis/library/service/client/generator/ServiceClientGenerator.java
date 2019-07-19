@@ -24,6 +24,7 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.ExecutableType;
+import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.NoType;
 import javax.lang.model.type.TypeMirror;
 
@@ -255,6 +256,14 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			}
 			// If the operation metadata annotation is present.
 			if (serviceClientOperationAnno != null) {
+				// Gets the return type value.
+				TypeMirror serviceClientOperationReturnTypeValue = null;
+				try {
+					serviceClientOperationAnno.returnType();
+				}
+				catch (final MirroredTypeException exception) {
+					serviceClientOperationReturnTypeValue = exception.getTypeMirror();
+				}
 				// Updates the service client operation metadata from the annotation
 				// information.
 				serviceClientOperationMetadata.setName(StringUtils.isBlank(serviceClientOperationAnno.name())
@@ -270,9 +279,11 @@ public class ServiceClientGenerator extends AbstractProcessor {
 						? serviceClientOperationMetadata.getMediaType()
 								: serviceClientOperationAnno.mediaType());
 				serviceClientOperationMetadata
-				.setReturnType(StringUtils.isBlank(serviceClientOperationAnno.returnType())
-						? serviceClientOperationMetadata.getReturnType()
-								: serviceClientOperationAnno.returnType());
+				.setReturnType(serviceClientOperationReturnTypeValue.toString().equals("void")
+						? (StringUtils.isBlank(serviceClientOperationAnno.returnTypeName())
+								? serviceClientOperationMetadata.getReturnType()
+										: serviceClientOperationAnno.returnTypeName())
+								: serviceClientOperationReturnTypeValue.toString());
 				serviceClientOperationMetadata.setAsynchronous(serviceClientOperationAnno.asynchronous());
 			}
 		}

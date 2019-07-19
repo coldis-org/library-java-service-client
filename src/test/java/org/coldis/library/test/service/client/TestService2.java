@@ -30,7 +30,7 @@ public class TestService2 {
 	/**
 	 * Internal state.
 	 */
-	private final Map<String, Object> state  = new HashMap<>();
+	private final Map<String, Object> state = new HashMap<>();
 
 	/**
 	 * Test service.
@@ -97,7 +97,7 @@ public class TestService2 {
 	 * @return      Test object.
 	 */
 	@RequestMapping(path = "test", method = RequestMethod.GET)
-	@ServiceClientOperation(path = "/test", method = "GET", returnType = "java.lang.Integer")
+	@ServiceClientOperation(path = "/test", method = "GET", returnType = Integer.class)
 	public Long test4(@RequestParam @ServiceClientOperationParameter(
 			kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final Long test) {
 		return test;
@@ -110,7 +110,7 @@ public class TestService2 {
 	 * @return      Test object.
 	 */
 	@RequestMapping(path = "async/{test}", method = RequestMethod.GET)
-	@ServiceClientOperation(path = "async/{test}", method = "GET", returnType = "java.lang.Integer",
+	@ServiceClientOperation(path = "async/{test}", method = "GET", returnTypeName = "java.lang.Integer",
 	asynchronous = true)
 	public Long test5(@PathVariable @ServiceClientOperationParameter(
 			kind = ServiceOperationParameterKind.PATH_VARIABLE) final Long test) {

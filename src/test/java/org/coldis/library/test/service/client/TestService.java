@@ -80,7 +80,7 @@ public class TestService {
 	 * @return      Test object.
 	 */
 	@RequestMapping(path = "test", method = RequestMethod.GET)
-	@ServiceClientOperation(returnType = "java.lang.Integer")
+	@ServiceClientOperation(returnType = Integer.class)
 	public Long test4(@RequestParam final Long test) {
 		return test;
 	}
@@ -92,7 +92,7 @@ public class TestService {
 	 * @return      Test object.
 	 */
 	@RequestMapping(path = "async/{test}", method = RequestMethod.GET)
-	@ServiceClientOperation(returnType = "java.lang.Integer", asynchronous = true)
+	@ServiceClientOperation(returnTypeName = "java.lang.Integer", asynchronous = true)
 	public Long test5(@PathVariable final Long test) {
 		this.state.put("test5", test);
 		return test;
