@@ -2,11 +2,17 @@ package org.coldis.library.test.service.client.dto;
 
 import java.io.Serializable;
 import java.util.Objects;
+
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
+
 import java.util.Arrays;
 
 /**
  * DtoTestObjectDto.
  */
+@ApiModel(description = "DtoTestObjectDto")
 public class DtoTestObjectDto implements Serializable {
 
 	/**
@@ -76,9 +82,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the id.
 	 * @return The id.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "id",
+			accessMode = AccessMode.READ_WRITE)
 	public java.lang.Long getId() {
 		return id;
 	}
+	
 	/**
 	 * Sets the id.
 	 *
@@ -104,9 +115,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test1.
 	 * @return The test1.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test1",
+			accessMode = AccessMode.READ_WRITE)
 	public org.coldis.library.test.service.client.dto.DtoTestObject2Dto getTest1() {
 		return test1;
 	}
+	
 	/**
 	 * Sets the test1.
 	 *
@@ -132,9 +148,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test2.
 	 * @return The test2.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test2",
+			accessMode = AccessMode.READ_WRITE)
 	public java.util.List<org.coldis.library.test.service.client.dto.DtoTestObject2Dto> getTest2() {
 		return test2;
 	}
+	
 	/**
 	 * Sets the test2.
 	 *
@@ -160,9 +181,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test3.
 	 * @return The test3.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test3",
+			accessMode = AccessMode.READ_WRITE)
 	public java.lang.String getTest3() {
 		return test3;
 	}
+	
 	/**
 	 * Sets the test3.
 	 *
@@ -188,9 +214,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test4.
 	 * @return The test4.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test4",
+			accessMode = AccessMode.READ_WRITE)
 	public org.coldis.library.test.service.client.dto.DtoTestObject2Dto getTest4() {
 		return test4;
 	}
+	
 	/**
 	 * Sets the test4.
 	 *
@@ -216,9 +247,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test5.
 	 * @return The test5.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test5",
+			accessMode = AccessMode.READ_WRITE)
 	public java.lang.String getTest5() {
 		return test5;
 	}
+	
 	/**
 	 * Sets the test5.
 	 *
@@ -244,9 +280,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test6.
 	 * @return The test6.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test6",
+			accessMode = AccessMode.READ_WRITE)
 	public org.coldis.library.test.service.client.dto.DtoTestObject2Dto[] getTest6() {
 		return test6;
 	}
+	
 	/**
 	 * Sets the test6.
 	 *
@@ -272,9 +313,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test7.
 	 * @return The test7.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test7",
+			accessMode = AccessMode.READ_WRITE)
 	public int getTest7() {
 		return test7;
 	}
+	
 	/**
 	 * Sets the test7.
 	 *
@@ -300,9 +346,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test8.
 	 * @return The test8.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test8",
+			accessMode = AccessMode.READ_WRITE)
 	public int[] getTest88() {
 		return test88;
 	}
+	
 	/**
 	 * Sets the test8.
 	 *
@@ -328,9 +379,14 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test9.
 	 * @return The test9.
 	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test9",
+			accessMode = AccessMode.READ_WRITE)
 	public java.lang.Integer getTest9() {
 		return test9;
 	}
+	
 	/**
 	 * Sets the test9.
 	 *
