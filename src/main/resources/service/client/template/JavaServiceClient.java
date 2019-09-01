@@ -111,7 +111,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				(${parameter.originalName} == null ? List.of() : (#{if}(
 				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})
 						#{else}(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
-						new ArrayList((java.util.Collection)${parameter.originalName}) :
+						new ArrayList((java.util.Collection)(java.lang.Object)${parameter.originalName}) :
 						List.of(${parameter.originalName}))#{end})));
 #{end}
 #{end}
