@@ -98,15 +98,21 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		path.append("${parameter.name}={${parameter.originalName}}&");
 #{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(${Collection.class.isAssignableFrom(
-				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.originalName})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.originalName}).toArray(new String[] {})#{else}${parameter.originalName} == null ? null : ${parameter.originalName}.toString()#{end});
+		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(
+				${parameter.type.endsWith("[]")})List.of(${parameter.originalName}).toArray(new String[] {})
+						#{else}(${parameter.originalName} == null ? 
+						List.of(${parameter.originalName}).toArray(new String[] {}) : 
+						(String[])(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
+						((java.util.Collection)(java.lang.Object)${parameter.originalName}).toArray(new String[] {}) :
+						List.of(${parameter.originalName}.toString()).toArray(new String[] {})))#{end});
 #{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
 		// Adds the part parameter to the map.
 		partParameters.put("${parameter.name}",
-				(${parameter.originalName} == null ? List.of() : (#{if}(${Collection.class.isAssignableFrom(
-				${Class.forName(${parameter.type})})})new ArrayList<>(${parameter.originalName})#{elseif}(
-				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})#{else}List.of(${parameter.originalName})#{end})));
+				(${parameter.originalName} == null ? List.of() : (#{if}(
+				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})
+						#{else}(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
+						new ArrayList((java.util.Collection)${parameter.originalName}) :
+						List.of(${parameter.originalName}))#{end})));
 #{end}
 #{end}
 		// Executes the operation and returns the response.

@@ -48,7 +48,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * Service client.
 	 */
 	@Autowired
-		private GenericRestServiceClient serviceClient;
+	@Qualifier(value = "restServiceClient")	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -125,12 +125,20 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 		// Sets the operation body.
 		body = test1;
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test2", test2 == null ? null : test2.toString());
+		GenericRestServiceClient.addHeaders(headers, false, "test2", (test2 == null ? 
+						List.of(test2).toArray(new String[] {}) : 
+						(String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
+						((java.util.Collection)(java.lang.Object)test2).toArray(new String[] {}) :
+						List.of(test2.toString()).toArray(new String[] {}))));
 		// Adds the URI parameter to the map.
 		uriParameters.put("test3", test3);
 		path.append("test3={test3}&");
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "Test-Test", test4 == null ? null : test4.toString());
+		GenericRestServiceClient.addHeaders(headers, false, "Test-Test", (test4 == null ? 
+						List.of(test4).toArray(new String[] {}) : 
+						(String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
+						((java.util.Collection)(java.lang.Object)test4).toArray(new String[] {}) :
+						List.of(test4.toString()).toArray(new String[] {}))));
 		// Adds the URI parameter to the map.
 		uriParameters.put("test5", test5);
 		path.append("test5={test5}&");
@@ -163,7 +171,9 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
-				(test == null ? List.of() : (List.of(test))));
+				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
+						new ArrayList((java.util.Collection)test) :
+						List.of(test)))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

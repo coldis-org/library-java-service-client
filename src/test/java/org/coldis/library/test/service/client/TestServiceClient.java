@@ -48,7 +48,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	 * Service client.
 	 */
 	@Autowired
-		private GenericRestServiceClient serviceClient;
+	@Qualifier(value = "restServiceClient")	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -124,12 +124,20 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		// Sets the operation body.
 		body = test1;
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test2", test2 == null ? null : test2.toString());
+		GenericRestServiceClient.addHeaders(headers, false, "test2", (test2 == null ? 
+						List.of(test2).toArray(new String[] {}) : 
+						(String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
+						((java.util.Collection)(java.lang.Object)test2).toArray(new String[] {}) :
+						List.of(test2.toString()).toArray(new String[] {}))));
 		// Adds the URI parameter to the map.
 		uriParameters.put("test3", test3);
 		path.append("test3={test3}&");
 		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test4", test4 == null ? null : test4.toString());
+		GenericRestServiceClient.addHeaders(headers, false, "test4", (test4 == null ? 
+						List.of(test4).toArray(new String[] {}) : 
+						(String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
+						((java.util.Collection)(java.lang.Object)test4).toArray(new String[] {}) :
+						List.of(test4.toString()).toArray(new String[] {}))));
 		// Adds the URI parameter to the map.
 		uriParameters.put("test5", test5);
 		path.append("test5={test5}&");
@@ -162,7 +170,9 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 				"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
-				(test == null ? List.of() : (List.of(test))));
+				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
+						new ArrayList((java.util.Collection)test) :
+						List.of(test)))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
@@ -283,6 +293,39 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 				MediaType.APPLICATION_JSON_UTF8_VALUE);
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
+		// Executes the operation and returns the response.
+		return this.serviceClient.executeOperation(path.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType).getBody();
+	}
+	
+	/**
+	 * Test service.
+
+ @param  test        Test argument.
+ @return             Test object.
+ @throws IOException Exception.
+  */
+	public java.lang.String test7(
+			java.util.List<org.springframework.core.io.Resource> test) throws BusinessException {
+		// Operation parameters.
+		StringBuilder path = new StringBuilder(this.valueResolver
+				.resolveStringValue("http://localhost:8080/test/parts?"));
+		final HttpMethod method = HttpMethod.POST;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<java.lang.String> returnType =
+				new ParameterizedTypeReference<java.lang.String>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+				"MULTIPART/FORM-DATA");
+		// Adds the part parameter to the map.
+		partParameters.put("test",
+				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
+						new ArrayList((java.util.Collection)test) :
+						List.of(test)))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

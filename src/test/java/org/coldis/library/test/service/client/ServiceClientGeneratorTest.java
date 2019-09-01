@@ -14,8 +14,10 @@ import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.core.io.Resource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +40,12 @@ public class ServiceClientGeneratorTest extends TestHelper {
 					.withTest6(new DtoTestObject2Dto[] { new DtoTestObject2Dto().withId(6L).withTest("test6"),
 									new DtoTestObject2Dto().withId(61L).withTest("test61") })
 					.withTest7(7).withTest88(new int[] { 2, 3, 4 }).withTest9(9) };
+
+	/**
+	 * Test file.
+	 */
+	@Value(value = "classpath:test.txt")
+	private Resource testFile;
 
 	/**
 	 * Object mapper.
@@ -105,13 +113,15 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(Integer.valueOf(11), this.serviceClient.test6(11L).get("test6"));
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
 				try {
-					return this.serviceClient.test6(11L);
+					return this.serviceClient.test6(12L);
 				}
 				catch (final BusinessException exception) {
 					throw new IntegrationException(new SimpleMessage(), exception);
 				}
-			}, state -> state.get("test5").equals(10), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
+			}, state -> state.get("test6").equals(12), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
 		}
+		// Asserts that multipart request succeed.
+		Assertions.assertEquals("Test", this.serviceClient.test7(List.of(this.testFile)));
 	}
 
 	/**
@@ -161,12 +171,12 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(Integer.valueOf(11), this.service2Client.test6(11L).get("test6"));
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
 				try {
-					return this.service2Client.test6(11L);
+					return this.service2Client.test6(12L);
 				}
 				catch (final BusinessException exception) {
 					throw new IntegrationException(new SimpleMessage(), exception);
 				}
-			}, state -> state.get("test5").equals(10), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
+			}, state -> state.get("test6").equals(12), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
 		}
 	}
 

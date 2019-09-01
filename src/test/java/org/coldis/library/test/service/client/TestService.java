@@ -1,5 +1,7 @@
 package org.coldis.library.test.service.client;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -8,6 +10,7 @@ import org.coldis.library.service.client.generator.ServiceClientOperation;
 import org.coldis.library.service.client.generator.ServiceClientOperationParameter;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Test service.
@@ -108,6 +112,21 @@ public class TestService {
 	public Map<String, Object> test6(@PathVariable final Long test) {
 		this.state.put("test6", test);
 		return this.state;
+	}
+
+	/**
+	 * Test service.
+	 *
+	 * @param  test        Test argument.
+	 * @return             Test object.
+	 * @throws IOException Exception.
+	 */
+	@RequestMapping(path = "parts", method = RequestMethod.POST, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public String test7(
+			@RequestPart @ServiceClientOperationParameter(
+					type = "java.util.List<org.springframework.core.io.Resource>") final MultipartFile[] test)
+							throws IOException {
+		return StreamUtils.copyToString(test[0].getInputStream(), Charset.forName("UTF-8"));
 	}
 
 }
