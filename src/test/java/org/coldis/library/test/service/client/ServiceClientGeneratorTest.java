@@ -1,5 +1,6 @@
 package org.coldis.library.test.service.client;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
@@ -84,16 +85,20 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
 			clonedDto.setTest7(3);
-			clonedDto.setTest88(new int[] { 4 });
+			clonedDto.setTest88(new int[] { 4, 5 });
+			clonedDto.setTest10(new ArrayList<>(List.of(6, 7)));
 			// Makes sure the object is transformed as expected on service call.
-			Assertions.assertEquals(clonedDto, this.serviceClient.test2(originalDto, "1", "2", 3, new int[] { 4 }));
+			Assertions.assertEquals(clonedDto, this.serviceClient.test2(originalDto, "1", "2", 3, new int[] { 4, 5 },
+					new ArrayList<>(List.of(6, 7))));
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("5");
 			clonedDto.setTest5("6");
 			clonedDto.setTest7(7);
-			clonedDto.setTest88(new int[] { 8 });
+			clonedDto.setTest88(new int[] { 8, 9 });
+			clonedDto.setTest10(new ArrayList<>(List.of(6, 7)));
 			// Makes sure the object is transformed as expected on service call.
-			Assertions.assertEquals(clonedDto, this.serviceClient.test2(originalDto, "5", "6", 7, new int[] { 8 }));
+			Assertions.assertEquals(clonedDto, this.serviceClient.test2(originalDto, "5", "6", 7, new int[] { 8, 9 },
+					new ArrayList<>(List.of(6, 7))));
 			// Serializes the test object.
 			final String serializedDto = ObjectMapperHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.
@@ -144,16 +149,20 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
 			clonedDto.setTest7(3);
-			clonedDto.setTest88(new int[] { 4 });
+			clonedDto.setTest88(new int[] { 4, 5 });
+			clonedDto.setTest10(new ArrayList<>(List.of(6, 7)));
 			// Makes sure the object is transformed as expected on service call.
-			Assertions.assertEquals(clonedDto, this.service2Client.test2(originalDto, "1", "2", 3, new int[] { 4 }));
+			Assertions.assertEquals(clonedDto, this.service2Client.test2(originalDto, "1", "2", 3, new int[] { 4, 5 },
+					new ArrayList<>(List.of(6, 7))));
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("5");
 			clonedDto.setTest5("6");
 			clonedDto.setTest7(7);
-			clonedDto.setTest88(new int[] { 8 });
+			clonedDto.setTest88(new int[] { 8, 9 });
+			clonedDto.setTest10(new ArrayList<>(List.of(6, 7)));
 			// Makes sure the object is transformed as expected on service call.
-			Assertions.assertEquals(clonedDto, this.service2Client.test2(originalDto, "5", "6", 7, new int[] { 8 }));
+			Assertions.assertEquals(clonedDto, this.service2Client.test2(originalDto, "5", "6", 7, new int[] { 8, 9 },
+					new ArrayList<>(List.of(6, 7))));
 			// Serializes the test object.
 			final String serializedDto = ObjectMapperHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.

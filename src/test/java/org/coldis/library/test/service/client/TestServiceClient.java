@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
@@ -98,8 +99,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  @param  test3 Test parameter.
  @param  test4 Test parameter.
  @param  test5 Test parameter.
-
- @param  test  Test argument.
+ @param  test6 Test parameter.
  @return       Test object.
   */
 	public org.coldis.library.test.service.client.dto.DtoTestObjectDto test2(
@@ -107,7 +107,8 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 			java.lang.String test2,
 			java.lang.String test3,
 			java.lang.Integer test4,
-			int[] test5) throws BusinessException {
+			int[] test5,
+			java.util.List<java.lang.Integer> test6) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test/?"));
@@ -129,18 +130,90 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 						(String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
 						((java.util.Collection)(java.lang.Object)test2).toArray(new String[] {}) :
 						List.of(test2.toString()).toArray(new String[] {}))));
-		// Adds the URI parameter to the map.
-		uriParameters.put("test3", test3);
-		path.append("test3={test3}&");
+		// If the parameter is an array.
+		if (test3 != null && test3.getClass().isArray()) {
+			// For each item.
+			java.util.List test3s = java.util.Arrays.asList(test3);
+			for (Integer parameterItemIndex = 0; parameterItemIndex < test3s.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test3" + parameterItemIndex, test3s.get(parameterItemIndex));
+				path.append("test3={test3" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (test3 != null && java.lang.Iterable.class.isAssignableFrom(test3.getClass())) {
+			// For each item.
+			java.util.Iterator test3s = ((java.lang.Iterable)(java.lang.Object) test3).iterator();
+			for (Integer parameterItemIndex = 0; test3s.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test3" + parameterItemIndex, test3s.next());
+				path.append("test3={test3" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else {
+			// Adds the URI parameter to the map.
+			uriParameters.put("test3", test3);
+			path.append("test3={test3}&");
+		}
 		// Adds the header to the map.
 		GenericRestServiceClient.addHeaders(headers, false, "test4", (test4 == null ? 
 						List.of(test4).toArray(new String[] {}) : 
 						(String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
 						((java.util.Collection)(java.lang.Object)test4).toArray(new String[] {}) :
 						List.of(test4.toString()).toArray(new String[] {}))));
-		// Adds the URI parameter to the map.
-		uriParameters.put("test5", test5);
-		path.append("test5={test5}&");
+		// If the parameter is an array.
+		if (test5 != null && test5.getClass().isArray()) {
+			// For each item.
+			java.util.List test5s = java.util.Arrays.asList(test5);
+			for (Integer parameterItemIndex = 0; parameterItemIndex < test5s.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test5" + parameterItemIndex, test5s.get(parameterItemIndex));
+				path.append("test5={test5" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (test5 != null && java.lang.Iterable.class.isAssignableFrom(test5.getClass())) {
+			// For each item.
+			java.util.Iterator test5s = ((java.lang.Iterable)(java.lang.Object) test5).iterator();
+			for (Integer parameterItemIndex = 0; test5s.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test5" + parameterItemIndex, test5s.next());
+				path.append("test5={test5" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else {
+			// Adds the URI parameter to the map.
+			uriParameters.put("test5", test5);
+			path.append("test5={test5}&");
+		}
+		// If the parameter is an array.
+		if (test6 != null && test6.getClass().isArray()) {
+			// For each item.
+			java.util.List test6s = java.util.Arrays.asList(test6);
+			for (Integer parameterItemIndex = 0; parameterItemIndex < test6s.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test6" + parameterItemIndex, test6s.get(parameterItemIndex));
+				path.append("test6={test6" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (test6 != null && java.lang.Iterable.class.isAssignableFrom(test6.getClass())) {
+			// For each item.
+			java.util.Iterator test6s = ((java.lang.Iterable)(java.lang.Object) test6).iterator();
+			for (Integer parameterItemIndex = 0; test6s.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test6" + parameterItemIndex, test6s.next());
+				path.append("test6={test6" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else {
+			// Adds the URI parameter to the map.
+			uriParameters.put("test6", test6);
+			path.append("test6={test6}&");
+		}
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
@@ -171,7 +244,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
-						new ArrayList((java.util.Collection)test) :
+						new ArrayList((java.util.Collection)(java.lang.Object)test) :
 						List.of(test)))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
@@ -200,9 +273,32 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 				MediaType.APPLICATION_JSON_UTF8_VALUE);
-		// Adds the URI parameter to the map.
-		uriParameters.put("test", test);
-		path.append("test={test}&");
+		// If the parameter is an array.
+		if (test != null && test.getClass().isArray()) {
+			// For each item.
+			java.util.List tests = java.util.Arrays.asList(test);
+			for (Integer parameterItemIndex = 0; parameterItemIndex < tests.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test" + parameterItemIndex, tests.get(parameterItemIndex));
+				path.append("test={test" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (test != null && java.lang.Iterable.class.isAssignableFrom(test.getClass())) {
+			// For each item.
+			java.util.Iterator tests = ((java.lang.Iterable)(java.lang.Object) test).iterator();
+			for (Integer parameterItemIndex = 0; tests.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test" + parameterItemIndex, tests.next());
+				path.append("test={test" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else {
+			// Adds the URI parameter to the map.
+			uriParameters.put("test", test);
+			path.append("test={test}&");
+		}
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
@@ -324,7 +420,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		// Adds the part parameter to the map.
 		partParameters.put("test",
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
-						new ArrayList((java.util.Collection)test) :
+						new ArrayList((java.util.Collection)(java.lang.Object)test) :
 						List.of(test)))));
 		// Executes the operation and returns the response.
 		return this.serviceClient.executeOperation(path.toString(), method, headers,

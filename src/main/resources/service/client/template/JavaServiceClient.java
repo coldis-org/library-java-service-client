@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
@@ -93,9 +94,32 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
 #{elseif}(${parameter.kind.name().equals("REQUEST_PARAMETER")})
-		// Adds the URI parameter to the map.
-		uriParameters.put("${parameter.originalName}", ${parameter.originalName});
-		path.append("${parameter.name}={${parameter.originalName}}&");
+		// If the parameter is an array.
+		if (${parameter.originalName} != null && ${parameter.originalName}.getClass().isArray()) {
+			// For each item.
+			java.util.List ${parameter.originalName}s = java.util.Arrays.asList(${parameter.originalName});
+			for (Integer parameterItemIndex = 0; parameterItemIndex < ${parameter.originalName}s.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.get(parameterItemIndex));
+				path.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (${parameter.originalName} != null && java.lang.Iterable.class.isAssignableFrom(${parameter.originalName}.getClass())) {
+			// For each item.
+			java.util.Iterator ${parameter.originalName}s = ((java.lang.Iterable)(java.lang.Object) ${parameter.originalName}).iterator();
+			for (Integer parameterItemIndex = 0; ${parameter.originalName}s.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.next());
+				path.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else {
+			// Adds the URI parameter to the map.
+			uriParameters.put("${parameter.originalName}", ${parameter.originalName});
+			path.append("${parameter.name}={${parameter.originalName}}&");
+		}
 #{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		// Adds the header to the map.
 		GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(

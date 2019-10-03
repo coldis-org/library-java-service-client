@@ -1,6 +1,7 @@
 package org.coldis.library.test.service.client;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.coldis.library.service.client.generator.ServiceClient;
@@ -49,8 +50,7 @@ public class TestService2 {
 	 * @param  test4 Test parameter.
 	 * @param  test5 Test parameter.
 	 * @param  test6 Test parameter.
-	 *
-	 * @param  test  Test argument.
+	 * @param  test7 Test parameter.
 	 * @return       Test object.
 	 */
 	@ServiceClientOperation(method = "PUT")
@@ -67,12 +67,14 @@ public class TestService2 {
 			@RequestParam @ServiceClientOperationParameter(
 					kind = ServiceOperationParameterKind.REQUEST_PARAMETER) final int[] test5,
 			@RequestHeader(name = "Test-Test2", required = false) @ServiceClientOperationParameter(
-					kind = ServiceOperationParameterKind.IGNORED) final Integer test6) {
+					kind = ServiceOperationParameterKind.IGNORED) final Integer test6, @RequestParam  @ServiceClientOperationParameter(
+							kind = ServiceOperationParameterKind.REQUEST_PARAMETER)final List<Integer> test7) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
 		test1.setTest7(test4);
 		test1.setTest8(test5);
 		test1.setTest9(test6);
+		test1.setTest10(test7);
 		return test1;
 	}
 

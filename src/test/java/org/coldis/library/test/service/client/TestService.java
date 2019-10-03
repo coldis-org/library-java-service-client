@@ -3,6 +3,7 @@ package org.coldis.library.test.service.client;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.coldis.library.service.client.generator.ServiceClient;
@@ -51,17 +52,18 @@ public class TestService {
 	 * @param  test3 Test parameter.
 	 * @param  test4 Test parameter.
 	 * @param  test5 Test parameter.
-	 *
-	 * @param  test  Test argument.
+	 * @param  test6 Test parameter.
 	 * @return       Test object.
 	 */
 	@RequestMapping(method = RequestMethod.PUT)
 	public DtoTestObject test2(@RequestBody final DtoTestObject test1, @RequestHeader final String test2,
-			@RequestParam final String test3, @RequestHeader final Integer test4, @RequestParam final int[] test5) {
+			@RequestParam final String test3, @RequestHeader final Integer test4, @RequestParam final int[] test5,
+			@RequestParam final List<Integer> test6) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
 		test1.setTest7(test4);
 		test1.setTest8(test5);
+		test1.setTest10(test6);
 		return test1;
 	}
 

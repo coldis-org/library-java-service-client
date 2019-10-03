@@ -70,6 +70,11 @@ public class DtoTestObjectDto implements Serializable {
 	 */
 	private java.lang.Integer test9;
 
+	/**
+	 * test10.
+	 */
+	private java.util.List<java.lang.Integer> test10;
+
 
 	/**
 	 * No arguments constructor.
@@ -408,6 +413,39 @@ public class DtoTestObjectDto implements Serializable {
 		this.setTest9(test9);
 		return this;
 	}
+	/**
+	 * Gets the test10.
+	 * @return The test10.
+	 */
+	@ApiModelProperty(
+			required = false,
+			value = "test10",
+			accessMode = AccessMode.READ_WRITE)
+	public java.util.List<java.lang.Integer> getTest10() {
+		return test10;
+	}
+	
+	/**
+	 * Sets the test10.
+	 *
+	 * @param test10
+	 *            The test10.
+	 */
+	public void setTest10(final java.util.List<java.lang.Integer> test10) {
+		this.test10 = test10;
+	}
+	
+	/**
+	 * Sets the test10 and returns the updated object.
+	 *
+	 * @param test10
+	 *            The test10.
+	 * @return The updated object.
+	 */
+	public DtoTestObjectDto withTest10(final java.util.List<java.lang.Integer> test10) {
+		this.setTest10(test10);
+		return this;
+	}
 
 	/**
 	 * @see java.lang.Object#hashCode()
@@ -423,7 +461,8 @@ public class DtoTestObjectDto implements Serializable {
 				test3,
 				test4,
 				test5,
-				test7
+				test7,
+				test10
 			);
 		result = prime * result + Arrays.hashCode(test6);
 		result = prime * result + Arrays.hashCode(test88);
@@ -470,6 +509,9 @@ public class DtoTestObjectDto implements Serializable {
 			return false;
 		}
 		if (! Arrays.equals(test88, other.test88)) {
+			return false;
+		}
+		if (! Objects.equals(test10, other.test10)) {
 			return false;
 		}
 		return true;

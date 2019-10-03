@@ -70,6 +70,11 @@ public class DtoTestObject implements IdentifiedObject {
 	private Integer test9;
 
 	/**
+	 * Test attribute.
+	 */
+	private List<Integer> test10;
+
+	/**
 	 * @see org.coldis.library.model.IdentifiedObject#getId()
 	 */
 	@Override
@@ -249,6 +254,24 @@ public class DtoTestObject implements IdentifiedObject {
 	 */
 	public void setTest9(final Integer test9) {
 		this.test9 = test9;
+	}
+
+	/**
+	 * Gets the test10.
+	 *
+	 * @return The test10.
+	 */
+	public List<Integer> getTest10() {
+		return this.test10;
+	}
+
+	/**
+	 * Sets the test10.
+	 *
+	 * @param test10 New test10.
+	 */
+	public void setTest10(final List<Integer> test10) {
+		this.test10 = test10;
 	}
 
 }
