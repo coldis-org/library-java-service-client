@@ -10,7 +10,7 @@
 
 	<groupId>org.coldis.library</groupId>
 	<artifactId>service-client</artifactId>
-	<version>0.0.13-SNAPSHOT</version>
+	<version>0.0.12</version>
 	<packaging>jar</packaging>
 
 	<name>Service client utilities</name>

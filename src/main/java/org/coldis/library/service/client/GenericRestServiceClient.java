@@ -261,7 +261,9 @@ public class GenericRestServiceClient {
 				actualException = newException;
 			}
 			// Logs the exception.
-			GenericRestServiceClient.LOGGER.error("REST operation execution failed.", actualException);
+			GenericRestServiceClient.LOGGER
+			.error("REST operation execution failed: " + actualException.getLocalizedMessage());
+			GenericRestServiceClient.LOGGER.debug("REST operation execution failed.", actualException);
 			// Exception response.
 			String exceptionResponse = null;
 			// If the exception is a HTTP exception.
