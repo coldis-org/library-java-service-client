@@ -43,7 +43,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	 * JMS template.
 	 */
 	@Autowired(required = false)
-	private JmsTemplate jmsTemplate;
+		private JmsTemplate jmsTemplate;
 	
 	/**
 	 * Service client.
@@ -89,6 +89,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType);
+				
 	}
 	
 	/**
@@ -218,6 +219,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
+				
 	}
 	
 	/**
@@ -250,6 +252,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
+				
 	}
 	
 	/**
@@ -303,69 +306,21 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
+				
 	}
 	
 	/**
 	 * Test service.
 
- @param  test Test argument.
- @return      Test object.
+ @param test Test argument.
   */
-	public java.lang.Integer test5(
-			java.lang.Long test) throws BusinessException {
-		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test/async/{test}?"));
-		final HttpMethod method = HttpMethod.GET;
-		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-		Object body = null;
-		final Map<String, Object> uriParameters = new HashMap<>();
-		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
-		final ParameterizedTypeReference<java.lang.Integer> returnType =
-				new ParameterizedTypeReference<java.lang.Integer>() {};
-		// Adds the content type headers.
-		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_UTF8_VALUE);
-		// Adds the path parameter to the map.
-		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
-		// Executes the operation and returns the response.
-		return this.serviceClient.executeOperation(path.toString(), method, headers,
-				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
-	}
-	
-	/**
-	 * test5 queue.
-	 */
-	public static final String test5Queue = "test5Queue.queue";
-	
-	/**
-	 * Test service.
-
- @param  test Test argument.
- @return      Test object.
-  */
-	@Transactional
-	@JmsListener(destination = "test5Queue.queue")
-	public void test5(Map<String, ?> parameters) throws BusinessException {
-		test5(
-				(java.lang.Long) parameters.get("test")			);
-	}
-
-	
-	/**
-	 * Test service.
-
- @param  test Test argument.
- @return      Test object.
-  */
-	@Transactional
 	public void test5Async(
 			java.lang.Long test) throws BusinessException {
-		jmsTemplate.convertAndSend(test5Queue, 
-				Map.of(
-"test", test					));
+		jmsTemplate.convertAndSend("test5Async", 
+				test
+			);
 	}
+	
 	/**
 	 * Test service.
 
@@ -393,6 +348,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
+				
 	}
 	
 	/**
@@ -426,6 +382,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 		return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
+				
 	}
 	
 

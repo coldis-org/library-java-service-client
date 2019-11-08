@@ -45,31 +45,31 @@ public class ServiceClientOperationMetadata implements Serializable {
 	private String returnType;
 
 	/**
+	 * Asynchronous destination that should be used to call the service.
+	 */
+	private String asynchronousDestination;
+
+	/**
 	 * Operation parameters.
 	 */
 	private List<ServiceClientOperationParameterMetadata> parameters;
 
 	/**
-	 * If an asynchronous operation call should also be generated.
-	 */
-	private Boolean asynchronous;
-
-	/**
 	 * Default constructor.
 	 *
-	 * @param name         Operation name.
-	 * @param docComment   Operation documentation comment.
-	 * @param path         Operation path.
-	 * @param method       Operation method.
-	 * @param mediaType    Operation media type.
-	 * @param returnType   Operation return type.
-	 * @param parameters   Operation parameters.
-	 * @param asynchronous If an asynchronous operation call should also be
-	 *                         generated.
+	 * @param name                    Operation name.
+	 * @param docComment              Operation documentation comment.
+	 * @param path                    Operation path.
+	 * @param method                  Operation method.
+	 * @param mediaType               Operation media type.
+	 * @param returnType              Operation return type.
+	 * @param asynchronousDestination Asynchronous destination that should be used
+	 *                                    to call the service.
+	 * @param parameters              Operation parameters.
 	 */
 	public ServiceClientOperationMetadata(final String name, final String docComment, final String path,
-			final String method, final String mediaType, final String returnType,
-			final List<ServiceClientOperationParameterMetadata> parameters, final Boolean asynchronous) {
+			final String method, final String mediaType, final String returnType, final String asynchronousDestination,
+			final List<ServiceClientOperationParameterMetadata> parameters) {
 		super();
 		this.name = name;
 		this.docComment = docComment;
@@ -77,8 +77,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 		this.method = method;
 		this.mediaType = mediaType;
 		this.returnType = returnType;
+		this.asynchronousDestination = asynchronousDestination;
 		this.parameters = parameters;
-		this.asynchronous = asynchronous;
 	}
 
 	/**
@@ -214,21 +214,21 @@ public class ServiceClientOperationMetadata implements Serializable {
 	}
 
 	/**
-	 * Gets the asynchronous.
+	 * Gets the asynchronousDestination.
 	 *
-	 * @return The asynchronous.
+	 * @return The asynchronousDestination.
 	 */
-	public Boolean getAsynchronous() {
-		return this.asynchronous;
+	public String getAsynchronousDestination() {
+		return this.asynchronousDestination;
 	}
 
 	/**
-	 * Sets the asynchronous.
+	 * Sets the asynchronousDestination.
 	 *
-	 * @param asynchronous New asynchronous.
+	 * @param asynchronousDestination New asynchronousDestination.
 	 */
-	public void setAsynchronous(final Boolean asynchronous) {
-		this.asynchronous = asynchronous;
+	public void setAsynchronousDestination(final String asynchronousDestination) {
+		this.asynchronousDestination = asynchronousDestination;
 	}
 
 }

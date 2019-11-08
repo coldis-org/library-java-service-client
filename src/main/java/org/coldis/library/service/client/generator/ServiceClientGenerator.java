@@ -214,7 +214,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			// Gets the default operation metadata.
 			serviceClientOperationMetadata = new ServiceClientOperationMetadata(defaultOperName,
 					this.processingEnv.getElementUtils().getDocComment(operation), "", "", "",
-					operationOriginalReturnType.toString(), operationParams, false);
+					operationOriginalReturnType.toString(), "", operationParams);
 			// Gets the DTOs in operation hierarchy.
 			Map<String, String> dtoTypesInOperHier = DtoGenerator.getDtoTypesInHierarchy(operationOriginalReturnType,
 					context, new HashMap<>());
@@ -284,7 +284,8 @@ public class ServiceClientGenerator extends AbstractProcessor {
 								? serviceClientOperationMetadata.getReturnType()
 										: serviceClientOperationAnno.returnTypeName())
 								: serviceClientOperationReturnTypeValue.toString());
-				serviceClientOperationMetadata.setAsynchronous(serviceClientOperationAnno.asynchronous());
+				serviceClientOperationMetadata
+				.setAsynchronousDestination(serviceClientOperationAnno.asynchronousDestination());
 			}
 		}
 		// Returns the operation metadata.
@@ -310,7 +311,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 				(serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client"
 						: serviceClientTypeAnno.name()),
 				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(),
-				serviceClientTypeAnno.serviceClientQualifier(), null);
+				serviceClientTypeAnno.serviceClientQualifier(), serviceClientTypeAnno.jmsListenerQualifier(), null);
 		// TODO Get request mapping information.
 		// If operations metadata should also be retrieved.
 		if (alsoGetOperationsMetadata) {

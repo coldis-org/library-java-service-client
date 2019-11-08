@@ -57,8 +57,8 @@ public @interface ServiceClientOperation {
 	public String returnTypeName() default "";
 
 	/**
-	 * If an asynchronous operation call should also be generated.
+	 * Asynchronous destination that should be used to call the service.
 	 */
-	public boolean asynchronous() default false;
+	public String asynchronousDestination() default "";
 
 }

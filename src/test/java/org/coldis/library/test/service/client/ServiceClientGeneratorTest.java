@@ -4,9 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
-import org.coldis.library.exception.BusinessException;
-import org.coldis.library.exception.IntegrationException;
-import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.TestHelper;
@@ -53,6 +50,18 @@ public class ServiceClientGeneratorTest extends TestHelper {
 	 */
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	/**
+	 * Test service.
+	 */
+	@Autowired
+	private TestService service;
+
+	/**
+	 * Test service.
+	 */
+	@Autowired
+	private TestService2 service2;
 
 	/**
 	 * Test service client.
@@ -113,17 +122,12 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(null, this.serviceClient.test3(null));
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test4(1L));
-			Assertions.assertEquals(Integer.valueOf(5), this.serviceClient.test5(5L));
-			this.serviceClient.test5Async(10L);
-			Assertions.assertEquals(Integer.valueOf(11), this.serviceClient.test6(11L).get("test6"));
+			this.serviceClient.test5Async(5L);
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
-				try {
-					return this.serviceClient.test6(12L);
-				}
-				catch (final BusinessException exception) {
-					throw new IntegrationException(new SimpleMessage(), exception);
-				}
-			}, state -> state.get("test6").equals(12), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
+				return this.service.getState();
+			}, state -> (state.get("test5") != null) && ((long) state.get("test5") == 5L), TestHelper.VERY_LONG_WAIT,
+					TestHelper.SHORT_WAIT));
+			Assertions.assertEquals(Integer.valueOf(11), this.serviceClient.test6(11L).get("test6"));
 		}
 		// Asserts that multipart request succeed.
 		Assertions.assertEquals("Test", this.serviceClient.test7(List.of(this.testFile)));
@@ -175,17 +179,12 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(originalDto, deserializedDto);
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.service2Client.test4(1L));
-			Assertions.assertEquals(Integer.valueOf(5), this.service2Client.test5(5L));
-			this.service2Client.test5Async(10L);
-			Assertions.assertEquals(Integer.valueOf(11), this.service2Client.test6(11L).get("test6"));
+			this.service2Client.test5Async(5L);
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
-				try {
-					return this.service2Client.test6(12L);
-				}
-				catch (final BusinessException exception) {
-					throw new IntegrationException(new SimpleMessage(), exception);
-				}
-			}, state -> state.get("test6").equals(12), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
+				return this.service2.getState();
+			}, state -> (state.get("test5") != null) && ((long) state.get("test5") == 5L), TestHelper.VERY_LONG_WAIT,
+					TestHelper.SHORT_WAIT));
+			Assertions.assertEquals(Integer.valueOf(11), this.service2Client.test6(11L).get("test6"));
 		}
 	}
 

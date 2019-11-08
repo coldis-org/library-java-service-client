@@ -11,6 +11,8 @@ import org.coldis.library.service.client.generator.ServiceClientOperation;
 import org.coldis.library.service.client.generator.ServiceClientOperationParameter;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,6 +37,16 @@ public class TestService {
 	 * Internal state.
 	 */
 	private final Map<String, Object> state = new HashMap<>();
+
+	/**
+	 * Gets the current state.
+	 *
+	 * @return State.
+	 */
+	@ServiceClientOperation(ignore = true)
+	public Map<String, Object> getState() {
+		return this.state;
+	}
 
 	/**
 	 * Test service.
@@ -94,14 +106,13 @@ public class TestService {
 	/**
 	 * Test service.
 	 *
-	 * @param  test Test argument.
-	 * @return      Test object.
+	 * @param test Test argument.
 	 */
-	@RequestMapping(path = "async/{test}", method = RequestMethod.GET)
-	@ServiceClientOperation(returnTypeName = "java.lang.Integer", asynchronous = true)
-	public Long test5(@PathVariable final Long test) {
+	@Transactional
+	@JmsListener(destination = "test5Async")
+	@ServiceClientOperation(asynchronousDestination = "test5Async")
+	public void test5Async(final Long test) {
 		this.state.put("test5", test);
-		return test;
 	}
 
 	/**

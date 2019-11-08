@@ -42,6 +42,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * JMS template.
 	 */
 	@Autowired(required = false)
+	#{if}(!${serviceClient.jmsListenerQualifier.isEmpty()})@Qualifier(value = "${serviceClient.jmsListenerQualifier}")#{end}
 	private JmsTemplate jmsTemplate;
 	
 	/**
@@ -73,6 +74,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public ${operation.returnType} ${operation.name}(
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}) throws BusinessException {
+#{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("${serviceClient.endpoint}/${operation.path}?"));
@@ -143,42 +145,23 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
-	}
-	
-#{if}(${operation.asynchronous})
-	/**
-	 * ${operation.name} queue.
-	 */
-	public static final String ${operation.name}Queue = "${operation.name}Queue.queue";
-	
-	/**
-	 *${operation.docComment}  */
-	@Transactional
-	@JmsListener(destination = "${operation.name}Queue.queue")
-	public void ${operation.name}(Map<String, ?> parameters) throws BusinessException {
-		${operation.name}(
-#{foreach}( ${parameter} in ${operation.parameters} )#{set}($currentItemIdx = 0)
-				(${parameter.type}) parameters.get("${parameter.originalName}")#{if}(${currentItemIdx} > 0), #{end}#{set}($currentItemIdx = $currentItemIdx + 1)
+				
+#{else}
+		jmsTemplate.convertAndSend("${operation.asynchronousDestination}", 
+#{if}(${operation.parameters.size()} > 1)
+				Map.of(
+					#{foreach}( ${parameter} in ${operation.parameters} )
+											#{set}($currentItemIdx = 0)"${parameter.originalName}", ${parameter.originalName}#{if}(${currentItemIdx} > 0),
+											#{end}#{set}($currentItemIdx = $currentItemIdx + 1)
+					#{end}
+										)
+#{else}
+				${operation.parameters.get(0).originalName}
 #{end}
 			);
+#{end}
 	}
-
 	
-	/**
-	 *${operation.docComment}  */
-	@Transactional
-	public void ${operation.name}Async(
-			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
-			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}) throws BusinessException {
-		jmsTemplate.convertAndSend(${operation.name}Queue, 
-				Map.of(
-#{foreach}( ${parameter} in ${operation.parameters} )
-						#{set}($currentItemIdx = 0)"${parameter.originalName}", ${parameter.originalName}#{if}(${currentItemIdx} > 0),
-						#{end}#{set}($currentItemIdx = $currentItemIdx + 1)
-#{end}
-					));
-	}
-#{end}
 #{end}
 
 }

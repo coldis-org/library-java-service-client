@@ -61,4 +61,10 @@ public @interface ServiceClient {
 	 * Internal service client qualifier to be used.
 	 */
 	public String serviceClientQualifier() default "restServiceClient";
+
+	/**
+	 * JMS listener qualifier.
+	 */
+	public String jmsListenerQualifier() default "";
+
 }
