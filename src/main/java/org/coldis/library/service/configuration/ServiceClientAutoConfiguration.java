@@ -21,7 +21,7 @@ import org.springframework.web.client.RestTemplate;
 public class ServiceClientAutoConfiguration {
 
 	/**
-	 * Service client timeout.
+	 * Service client timeout.)
 	 */
 	@Value(value = "${org.coldis.library.service-client.timeout}")
 	private Long serviceClientTimeout;
