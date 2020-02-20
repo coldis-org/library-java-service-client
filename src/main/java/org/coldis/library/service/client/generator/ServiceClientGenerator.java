@@ -49,7 +49,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 /**
  * Service client generator.
  */
-@SupportedSourceVersion(value = SourceVersion.RELEASE_13)
+@SupportedSourceVersion(value = SourceVersion.RELEASE_12)
 @SupportedAnnotationTypes(value = { "org.coldis.library.service.client.generator.ServiceClient",
 "org.coldis.library.service.client.generator.ServiceClients" })
 public class ServiceClientGenerator extends AbstractProcessor {
