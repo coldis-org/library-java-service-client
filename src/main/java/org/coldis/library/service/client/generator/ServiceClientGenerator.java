@@ -17,16 +17,16 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.NoType;
 import javax.lang.model.type.TypeMirror;
+import javax.validation.ElementKind;
+import javax.validation.executable.ExecutableType;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -36,6 +36,7 @@ import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
+import org.coldis.library.dto.DtoAttribute.Boolean;
 import org.coldis.library.dto.DtoGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +50,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 /**
  * Service client generator.
  */
-@SupportedSourceVersion(value = SourceVersion.RELEASE_11)
+@SupportedSourceVersion(value = SourceVersion.RELEASE_13)
 @SupportedAnnotationTypes(value = { "org.coldis.library.service.client.generator.ServiceClient",
 "org.coldis.library.service.client.generator.ServiceClients" })
 public class ServiceClientGenerator extends AbstractProcessor {
