@@ -5,12 +5,12 @@
 	<parent>
 		<groupId>org.coldis</groupId>
 		<artifactId>configuration</artifactId>
-		<version>0.0.40</version>
+		<version>0.0.44</version>
 	</parent>
 
 	<groupId>org.coldis.library</groupId>
 	<artifactId>service-client</artifactId>
-	<version>0.0.15-SNAPSHOT</version>
+	<version>0.0.20-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>Service client utilities</name>
@@ -45,17 +45,17 @@
 		<dependency>
 			<groupId>org.coldis.library</groupId>
 			<artifactId>dto</artifactId>
-			<version>0.0.5</version>
-		</dependency>
-		<dependency>
-			<groupId>org.coldis.library</groupId>
-			<artifactId>serialization</artifactId>
 			<version>0.0.8</version>
 		</dependency>
 		<dependency>
 			<groupId>org.coldis.library</groupId>
+			<artifactId>serialization</artifactId>
+			<version>0.0.13</version>
+		</dependency>
+		<dependency>
+			<groupId>org.coldis.library</groupId>
 			<artifactId>test</artifactId>
-			<version>0.0.3</version>
+			<version>0.0.5</version>
 			<scope>test</scope>
 		</dependency>
 
