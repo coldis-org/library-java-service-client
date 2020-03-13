@@ -5,6 +5,7 @@ import java.util.Base64;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.collections4.EnumerationUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -19,6 +20,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -88,6 +90,17 @@ public class GenericRestServiceClient {
 	}
 
 	/**
+	 * If HTTP status code should be considered a business exception.
+	 *
+	 * @param  httpException HTTP exception.
+	 * @return               If HTTP status code should be considered a business
+	 *                       exception.
+	 */
+	private boolean isBusinessExceptionStatusCodes(final HttpStatusCodeException httpException) {
+		return Set.of(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST).contains(httpException.getStatusCode());
+	}
+
+	/**
 	 * Adds another headers entry to an existing one.
 	 *
 	 * @param  headers    Existent headers.
@@ -96,8 +109,8 @@ public class GenericRestServiceClient {
 	 * @param  values     The headers values.
 	 * @return            The updated headers.
 	 */
-	public static MultiValueMap<String, String> addHeaders(final MultiValueMap<String, String> headers,
-			final Boolean replaceKey, final String key, final String... values) {
+	public static MultiValueMap<String, String> addHeaders(final MultiValueMap<String, String> headers, final Boolean replaceKey, final String key,
+			final String... values) {
 		// Headers are created if none are given.
 		final MultiValueMap<String, String> actualHeaders = headers == null ? new LinkedMultiValueMap<>() : headers;
 		// If the key should be actually replaced.
@@ -124,10 +137,9 @@ public class GenericRestServiceClient {
 	 * @param  authValue Authentication value (token...).
 	 * @return           The updated headers.
 	 */
-	public static MultiValueMap<String, String> addPlainAuthorizationBasicHeaders(
-			final MultiValueMap<String, String> headers, final String authType, final String authValue) {
-		return GenericRestServiceClient.addHeaders(headers, true, HttpHeaders.AUTHORIZATION,
-				authType + " " + authValue);
+	public static MultiValueMap<String, String> addPlainAuthorizationBasicHeaders(final MultiValueMap<String, String> headers, final String authType,
+			final String authValue) {
+		return GenericRestServiceClient.addHeaders(headers, true, HttpHeaders.AUTHORIZATION, authType + " " + authValue);
 	}
 
 	/**
@@ -138,8 +150,8 @@ public class GenericRestServiceClient {
 	 * @param  password user password.
 	 * @return          The updated headers.
 	 */
-	public static MultiValueMap<String, String> addBasicAuthorizationHeaders(
-			final MultiValueMap<String, String> headers, final String username, final String password) {
+	public static MultiValueMap<String, String> addBasicAuthorizationHeaders(final MultiValueMap<String, String> headers, final String username,
+			final String password) {
 		return GenericRestServiceClient.addPlainAuthorizationBasicHeaders(headers, "Basic",
 				Base64.getEncoder().encodeToString(new String(username + ":" + password).getBytes()));
 	}
@@ -151,8 +163,7 @@ public class GenericRestServiceClient {
 	 * @param  contentTypes Headers content types to be added.
 	 * @return              The updated headers.
 	 */
-	public static MultiValueMap<String, String> addContentTypeHeaders(final MultiValueMap<String, String> headers,
-			final String... contentTypes) {
+	public static MultiValueMap<String, String> addContentTypeHeaders(final MultiValueMap<String, String> headers, final String... contentTypes) {
 		return GenericRestServiceClient.addHeaders(headers, false, HttpHeaders.CONTENT_TYPE, contentTypes);
 	}
 
@@ -164,18 +175,15 @@ public class GenericRestServiceClient {
 	 * @param  key     Headers entry keys to be added.
 	 * @return         The updated headers.
 	 */
-	public static MultiValueMap<String, String> addOriginalRequestHeaders(final MultiValueMap<String, String> headers,
-			final String key) {
+	public static MultiValueMap<String, String> addOriginalRequestHeaders(final MultiValueMap<String, String> headers, final String key) {
 		// Tries to get the original request attributes.
-		final ServletRequestAttributes requestAttrs = (ServletRequestAttributes) RequestContextHolder
-				.getRequestAttributes();
+		final ServletRequestAttributes requestAttrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
 		// If request attributes are available.
 		if ((requestAttrs != null) && (requestAttrs.getRequest() != null)) {
 			// Gets the headers from the original request.
 			final Enumeration<String> values = requestAttrs.getRequest().getHeaders(key);
 			// Copies the original headers to the existent ones.
-			GenericRestServiceClient.addHeaders(headers, false, key,
-					EnumerationUtils.toList(values).toArray(new String[0]));
+			GenericRestServiceClient.addHeaders(headers, false, key, EnumerationUtils.toList(values).toArray(new String[0]));
 		}
 		// Returns the updated (or not) headers.
 		return headers;
@@ -189,8 +197,7 @@ public class GenericRestServiceClient {
 	 * @return                   Returns the updated headers.
 	 * @throws BusinessException If the headers cannot be modified.
 	 */
-	protected MultiValueMap<String, String> autoModifyHeaders(final MultiValueMap<String, String> headers)
-			throws BusinessException {
+	protected MultiValueMap<String, String> autoModifyHeaders(final MultiValueMap<String, String> headers) throws BusinessException {
 		return headers;
 	}
 
@@ -210,10 +217,9 @@ public class GenericRestServiceClient {
 	 * @throws Exception          If the operation exception could not be handled.
 	 *
 	 */
-	protected <ResponseType> ResponseEntity<ResponseType> autoHandleExecutionExceptions(final String path,
-			final HttpMethod method, final MultiValueMap<String, String> headers, final Object body,
-			final Map<String, Object> uriParameters, final ParameterizedTypeReference<ResponseType> responseType,
-			final Exception operationException) throws Exception {
+	protected <ResponseType> ResponseEntity<ResponseType> autoHandleExecutionExceptions(final String path, final HttpMethod method,
+			final MultiValueMap<String, String> headers, final Object body, final Map<String, Object> uriParameters,
+			final ParameterizedTypeReference<ResponseType> responseType, final Exception operationException) throws Exception {
 		throw operationException;
 	}
 
@@ -232,10 +238,9 @@ public class GenericRestServiceClient {
 	 * @throws IntegrationException If an unexpected exception is raised.
 	 * @throws BusinessException    If a business exception is raised.
 	 */
-	public <ResponseType> ResponseEntity<ResponseType> executeOperation(final String path, final HttpMethod method,
-			final MultiValueMap<String, String> headers, final Object body, final Map<String, Object> uriParameters,
-			final ParameterizedTypeReference<ResponseType> responseType)
-					throws IntegrationException, BusinessException {
+	public <ResponseType> ResponseEntity<ResponseType> executeOperation(final String path, final HttpMethod method, final MultiValueMap<String, String> headers,
+			final Object body, final Map<String, Object> uriParameters, final ParameterizedTypeReference<ResponseType> responseType)
+			throws IntegrationException, BusinessException {
 		// Modifies the headers as for service client implementation.
 		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
 		// Makes sure parameters are not null.
@@ -243,8 +248,7 @@ public class GenericRestServiceClient {
 		// Tries to execute the REST operation.
 		try {
 			// Executes the REST operation and returns the response.
-			return this.getRestTemplate().exchange(path, method, new HttpEntity<>(body, actualHeaders), responseType,
-					actualUriParameters);
+			return this.getRestTemplate().exchange(path, method, new HttpEntity<>(body, actualHeaders), responseType, actualUriParameters);
 		}
 		// If the REST operation raises an exception.
 		catch (final Exception originalException) {
@@ -252,8 +256,7 @@ public class GenericRestServiceClient {
 			Exception actualException = originalException;
 			// Tries to handle the operation exception.
 			try {
-				return this.autoHandleExecutionExceptions(path, method, actualHeaders, body, actualUriParameters,
-						responseType, actualException);
+				return this.autoHandleExecutionExceptions(path, method, actualHeaders, body, actualUriParameters, responseType, actualException);
 			}
 			// If the REST operation exception cannot be handled.
 			catch (final Exception newException) {
@@ -261,8 +264,7 @@ public class GenericRestServiceClient {
 				actualException = newException;
 			}
 			// Logs the exception.
-			GenericRestServiceClient.LOGGER
-			.error("REST operation execution failed: " + actualException.getLocalizedMessage());
+			GenericRestServiceClient.LOGGER.error("REST operation execution failed: " + actualException.getLocalizedMessage());
 			GenericRestServiceClient.LOGGER.debug("REST operation execution failed.", actualException);
 			// Exception response.
 			String exceptionResponse = null;
@@ -276,34 +278,29 @@ public class GenericRestServiceClient {
 				// If there is an exception response.
 				if (!StringUtils.isEmpty(exceptionResponse)) {
 					// Tries to get the exception messages.
-					exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse,
-							SimpleMessage[].class, true);
+					exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse, SimpleMessage[].class, true);
 				}
 				// If no messages are available.
 				if ((exceptionMessages == null) || (exceptionMessages.length == 0)) {
 					// Creates a default message.
-					exceptionMessages = new SimpleMessage[] {
-									new SimpleMessage("rest.operation.execution.error", exceptionResponse) };
+					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error", exceptionResponse) };
 				}
 				// If the exception status code is for a client error.
-				if (httpException.getStatusCode().is4xxClientError()) {
+				if (this.isBusinessExceptionStatusCodes(httpException)) {
 					// Throws a business exception with the exception messages.
-					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(),
-							httpException);
+					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(), httpException);
 				}
 				// If the exception status code is not for bad request.
 				else {
 					// Throws an integration exception with the exception messages.
-					throw new IntegrationException(
-							new SimpleMessage(exceptionMessages[0].getCode(), exceptionMessages[0].getContent()),
+					throw new IntegrationException(new SimpleMessage(exceptionMessages[0].getCode(), exceptionMessages[0].getContent()),
 							httpException.getStatusCode().value(), httpException);
 				}
 			}
 			// For every other exception.
 			else {
 				// Throws an integration exception with a generic exception message.
-				throw new IntegrationException(new SimpleMessage("rest.operation.execution.error", exceptionResponse),
-						actualException);
+				throw new IntegrationException(new SimpleMessage("rest.operation.execution.error", exceptionResponse), actualException);
 			}
 		}
 	}
