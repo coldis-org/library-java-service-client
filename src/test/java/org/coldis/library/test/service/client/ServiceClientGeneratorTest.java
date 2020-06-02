@@ -19,6 +19,7 @@ import org.springframework.core.io.Resource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rits.cloning.Cloner;
 
 /**
  * Service client generator test.
@@ -87,9 +88,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Tests the first service.
 			this.serviceClient.test1();
 			// Clones the test object.
-			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto,
-					new TypeReference<DtoTestObjectDto>() {
-			});
+			final DtoTestObjectDto clonedDto = new Cloner().deepClone(originalDto);
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
@@ -146,9 +145,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Tests the first service.
 			this.service2Client.test1();
 			// Clones the test object.
-			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto,
-					new TypeReference<DtoTestObjectDto>() {
-			});
+			final DtoTestObjectDto clonedDto = new Cloner().deepClone(originalDto);
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
