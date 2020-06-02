@@ -96,7 +96,7 @@ public class GenericRestServiceClient {
 	 * @return               If HTTP status code should be considered a business
 	 *                       exception.
 	 */
-	private boolean isBusinessExceptionStatusCodes(final HttpStatusCodeException httpException) {
+	protected boolean isBusinessExceptionStatusCodes(final HttpStatusCodeException httpException) {
 		return Set.of(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST).contains(httpException.getStatusCode());
 	}
 
