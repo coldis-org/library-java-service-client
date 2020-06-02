@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.coldis.library.dto.DtoAttribute;
 import org.coldis.library.dto.DtoType;
-import org.coldis.library.model.IdentifiedObject;
+import org.coldis.library.model.Identifiable;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
 
@@ -12,7 +12,7 @@ import com.fasterxml.jackson.annotation.JsonGetter;
  * DTO test object.
  */
 @DtoType(targetPath = "src/test/java", namespace = "org.coldis.library.test.service.client.dto")
-public class DtoTestObject implements IdentifiedObject {
+public class DtoTestObject implements Identifiable {
 
 	/**
 	 * Serial.
@@ -75,7 +75,7 @@ public class DtoTestObject implements IdentifiedObject {
 	private List<Integer> test10;
 
 	/**
-	 * @see org.coldis.library.model.IdentifiedObject#getId()
+	 * @see org.coldis.library.model.Identifiable#getId()
 	 */
 	@Override
 	public Long getId() {
