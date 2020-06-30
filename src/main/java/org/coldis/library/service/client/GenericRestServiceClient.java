@@ -5,7 +5,6 @@ import java.util.Base64;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.commons.collections4.EnumerationUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -20,7 +19,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -97,7 +95,7 @@ public class GenericRestServiceClient {
 	 *                       exception.
 	 */
 	protected boolean isBusinessExceptionStatusCodes(final HttpStatusCodeException httpException) {
-		return Set.of(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST).contains(httpException.getStatusCode());
+		return httpException.getStatusCode().is4xxClientError();
 	}
 
 	/**
