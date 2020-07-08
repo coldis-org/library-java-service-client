@@ -87,7 +87,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				new ParameterizedTypeReference<#{if}(${operation.returnType.equals("void")})Void#{else}${operation.returnType}#{end}>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				#{if}(${operation.mediaType.isEmpty()})MediaType.APPLICATION_JSON_UTF8_VALUE#{else}"${operation.mediaType.toUpperCase()}"#{end});
+				#{if}(${operation.mediaType.isEmpty()})MediaType.APPLICATION_JSON_VALUE#{else}"${operation.mediaType.toUpperCase()}"#{end});
 #{foreach}( ${parameter} in ${operation.parameters} )
 #{if}(${parameter.kind.name().equals("REQUEST_BODY")})
 		// Sets the operation body.
