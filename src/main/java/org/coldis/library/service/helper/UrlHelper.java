@@ -4,6 +4,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -149,4 +152,9 @@ public class UrlHelper {
 				(StringUtils.isEmpty(referrer) ? null : UriComponentsBuilder.fromUriString(referrer).build()), ownDomains, searchEngines);
 	}
 
+	public static String convertToQueryParameters(Set<Entry<String, Object>> entries) {
+		Stream<String> mappedQueryParams = entries.stream().map(
+				(keyValue) -> keyValue.getKey().split("-")[0] + "=" + "{" + keyValue.getKey() + "}");
+		return mappedQueryParams.collect(Collectors.joining("&"));
+	}
 }

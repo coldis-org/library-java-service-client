@@ -87,6 +87,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the id.
 	 * @return The id.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "id",
@@ -120,6 +121,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test1.
 	 * @return The test1.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test1",
@@ -153,6 +155,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test2.
 	 * @return The test2.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test2",
@@ -186,6 +189,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test3.
 	 * @return The test3.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test3",
@@ -219,6 +223,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test4.
 	 * @return The test4.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test4",
@@ -252,6 +257,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test5.
 	 * @return The test5.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test5",
@@ -285,6 +291,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test6.
 	 * @return The test6.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test6",
@@ -318,6 +325,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test7.
 	 * @return The test7.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test7",
@@ -351,6 +359,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test8.
 	 * @return The test8.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test8",
@@ -384,6 +393,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test9.
 	 * @return The test9.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test9",
@@ -417,6 +427,7 @@ public class DtoTestObjectDto implements Serializable {
 	 * Gets the test10.
 	 * @return The test10.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test10",
