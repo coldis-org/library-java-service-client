@@ -42,6 +42,7 @@ public class DtoTestObject2Dto implements Serializable {
 	 * Gets the id.
 	 * @return The id.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "id",
@@ -75,6 +76,7 @@ public class DtoTestObject2Dto implements Serializable {
 	 * Gets the test.
 	 * @return The test.
 	 */
+	
 	@ApiModelProperty(
 			required = false,
 			value = "test",

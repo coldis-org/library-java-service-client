@@ -1,10 +1,6 @@
 package org.coldis.library.service.client;
 
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import org.apache.commons.collections4.EnumerationUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -16,10 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -87,6 +80,22 @@ public class GenericRestServiceClient {
 		this.objectMapper = newObjectMapper;
 	}
 
+	public static <T> void appendUriParameters(Map<String, Object> uriParameters, String variableName, T parameter) {
+		if (parameter != null && parameter.getClass().isArray()) {
+			List<T> tests = List.of(parameter);
+			for (int parameterItemIndex = 0; parameterItemIndex < tests.size(); parameterItemIndex++) {
+				uriParameters.put(variableName + "-" + parameterItemIndex, tests.get(parameterItemIndex));
+			}
+		} else if (parameter != null && Iterable.class.isAssignableFrom(parameter.getClass())) {
+			Iterator tests = ((Iterable)parameter).iterator();
+			for (int parameterItemIndex = 0; tests.hasNext(); parameterItemIndex++) {
+				uriParameters.put(variableName + "-" + parameterItemIndex, tests.next());
+			}
+		} else {
+			uriParameters.put(variableName, parameter);
+		}
+	}
+
 	/**
 	 * If HTTP status code should be considered a business exception.
 	 *
@@ -96,6 +105,10 @@ public class GenericRestServiceClient {
 	 */
 	protected boolean isBusinessExceptionStatusCodes(final HttpStatusCodeException httpException) {
 		return httpException.getStatusCode().is4xxClientError();
+	}
+
+	public static MultiValueMap<String, String> createDefaultHeader(final String... headerValues) {
+		return addContentTypeHeaders(null, headerValues);
 	}
 
 	/**
