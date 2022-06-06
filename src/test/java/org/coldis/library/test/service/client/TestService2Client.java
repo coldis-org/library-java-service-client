@@ -84,7 +84,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<Void>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_UTF8_VALUE);
+				MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation and returns the response.
 		this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
@@ -123,7 +123,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<org.coldis.library.test.service.client.dto.DtoTestObjectDto>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_UTF8_VALUE);
+				MediaType.APPLICATION_JSON_VALUE);
 		// Sets the operation body.
 		body = test1;
 		// Adds the header to the map.
@@ -276,7 +276,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<java.lang.Integer>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_UTF8_VALUE);
+				MediaType.APPLICATION_JSON_VALUE);
 		// If the parameter is an array.
 		if (test != null && test.getClass().isArray()) {
 			// For each item.
@@ -342,7 +342,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<java.util.Map<java.lang.String,java.lang.Object>>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_UTF8_VALUE);
+				MediaType.APPLICATION_JSON_VALUE);
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
 		// Executes the operation and returns the response.
