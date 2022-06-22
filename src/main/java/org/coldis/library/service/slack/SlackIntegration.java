@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * Slack integration service.
  */
 @Component
-public class SlackLogIntegration {
+public class SlackIntegration {
 
 	/**
 	 * Slack URL.
