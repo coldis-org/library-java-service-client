@@ -10,6 +10,8 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.coldis.library.service.jms.JmsTemplateHelper;
+import org.coldis.library.service.jms.JmsMessage;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -31,6 +33,7 @@ import org.springframework.util.StringValueResolver;
 /**
   *${serviceClient.docComment}  */
 @Service
+@SuppressWarnings({ "rawtypes", "unchecked" })
 public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} implements EmbeddedValueResolverAware {
 	
 	/**
@@ -44,6 +47,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	@Autowired(required = false)
 	#{if}(!${serviceClient.jmsListenerQualifier.isEmpty()})@Qualifier(value = "${serviceClient.jmsListenerQualifier}")#{end}
 	private JmsTemplate jmsTemplate;
+	
+	/**
+	 * JMS template helper.
+	 */
+	@Autowired(required = false)
+	private JmsTemplateHelper jmsTemplateHelper;
 	
 	/**
 	 * Service client.
@@ -70,10 +79,17 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 
 #{foreach}( ${operation} in ${serviceClient.operations} )
 	/**
-	 *${operation.docComment}  */
+	 *${operation.docComment} 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public ${operation.returnType} ${operation.name}(
+		#{if}(${operation.asynchronousDestination.isEmpty()})
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
-			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}) throws BusinessException {
+			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}
+		#{else}
+			JmsMessage message
+		#{end}
+			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
@@ -147,18 +163,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
 #{else}
-		jmsTemplate.convertAndSend("${operation.asynchronousDestination}", 
-#{if}(${operation.parameters.size()} > 1)
-				Map.of(
-					#{foreach}( ${parameter} in ${operation.parameters} )
-											#{set}($currentItemIdx = 0)"${parameter.originalName}", ${parameter.originalName}#{if}(${currentItemIdx} > 0),
-											#{end}#{set}($currentItemIdx = $currentItemIdx + 1)
-					#{end}
-										)
-#{else}
-				${operation.parameters.get(0).originalName}
-#{end}
-			);
+		if (jmsTemplateHelper == null) {
+			jmsTemplate.convertAndSend("${operation.asynchronousDestination}", message.getMessage());
+		}
+		else {
+			jmsTemplateHelper.send(jmsTemplate, message.withDestination("${operation.asynchronousDestination}"));
+		}
 #{end}
 	}
 	

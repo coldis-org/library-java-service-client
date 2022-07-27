@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.apache.commons.io.IOUtils;
 import org.coldis.library.serialization.ObjectMapperHelper;
+import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.service.client.dto.DtoTestObject2Dto;
@@ -113,7 +114,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(null, this.serviceClient.test3(null));
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.serviceClient.test4(1L));
-			this.serviceClient.test5Async(5L);
+			this.serviceClient.test5Async(new JmsMessage().withMessage(5L));
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
 				return this.service.getState();
 			}, state -> (state.get("test5") != null) && ((long) state.get("test5") == 5L), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
@@ -136,7 +137,8 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Tests the first service.
 			this.service2Client.test1();
 			// Clones the test object.
-			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(objectMapper, originalDto, null, new TypeReference<DtoTestObjectDto>() {}, false);
+			final DtoTestObjectDto clonedDto = ObjectMapperHelper.deepClone(this.objectMapper, originalDto, null, new TypeReference<DtoTestObjectDto>() {},
+					false);
 			// Re-sets the attributes to be changed in the service call.
 			clonedDto.setTest3("1");
 			clonedDto.setTest5("2");
@@ -163,7 +165,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			Assertions.assertEquals(originalDto, deserializedDto);
 			// Asserts that the response is the same as the request (converted to integer).
 			Assertions.assertEquals(Integer.valueOf(1), this.service2Client.test4(1L));
-			this.service2Client.test5Async(5L);
+			this.service2Client.test5Async(new JmsMessage().withMessage(5L));
 			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
 				return this.service2.getState();
 			}, state -> (state.get("test5") != null) && ((long) state.get("test5") == 5L), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));

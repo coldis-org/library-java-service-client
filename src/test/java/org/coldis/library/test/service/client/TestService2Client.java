@@ -10,6 +10,8 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.coldis.library.service.jms.JmsTemplateHelper;
+import org.coldis.library.service.jms.JmsMessage;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -32,6 +34,7 @@ import org.springframework.util.StringValueResolver;
   * Test service.
   */
 @Service
+@SuppressWarnings({ "rawtypes", "unchecked" })
 public class TestService2Client implements EmbeddedValueResolverAware {
 	
 	/**
@@ -44,6 +47,12 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	@Autowired(required = false)
 		private JmsTemplate jmsTemplate;
+	
+	/**
+	 * JMS template helper.
+	 */
+	@Autowired(required = false)
+	private JmsTemplateHelper jmsTemplateHelper;
 	
 	/**
 	 * Service client.
@@ -69,9 +78,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 
 	/**
 	 * Test service.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public void test1(
-			) throws BusinessException {
+							) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2/?"));
@@ -103,14 +114,16 @@ public class TestService2Client implements EmbeddedValueResolverAware {
  @param  test6 Test parameter.
  @param  test7 Test parameter.
  @return       Test object.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public org.coldis.library.test.service.client.dto.DtoTestObjectDto test2(
-			org.coldis.library.test.service.client.dto.DtoTestObjectDto test1,
+		org.coldis.library.test.service.client.dto.DtoTestObjectDto test1,
 			java.lang.String test2,
 			java.lang.String test3,
 			java.lang.Integer test4,
 			int[] test5,
-			java.util.List<java.lang.Integer> test7) throws BusinessException {
+			java.util.List<java.lang.Integer> test7					) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2/?"));
@@ -228,9 +241,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 
  @param  test Test argument.
  @return      Test object.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public org.springframework.core.io.Resource test3(
-			org.coldis.library.service.model.FileResource test) throws BusinessException {
+		org.coldis.library.service.model.FileResource test					) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2//test?"));
@@ -261,9 +276,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 
  @param  test Test argument.
  @return      Test object.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public java.lang.Integer test4(
-			java.lang.Long test) throws BusinessException {
+		java.lang.Long test					) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2//test?"));
@@ -314,12 +331,18 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * Test service.
 
  @param test Test argument.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public void test5Async(
-			java.lang.Long test) throws BusinessException {
-		jmsTemplate.convertAndSend("2test5Async", 
-				test
-			);
+					JmsMessage message
+					) throws BusinessException {
+		if (jmsTemplateHelper == null) {
+			jmsTemplate.convertAndSend("2test5Async", message.getMessage());
+		}
+		else {
+			jmsTemplateHelper.send(jmsTemplate, message.withDestination("2test5Async"));
+		}
 	}
 	
 	/**
@@ -327,9 +350,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 
  @param  test Test argument.
  @return      Test object.
-  */
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
 	public java.util.Map<java.lang.String,java.lang.Object> test6(
-			java.lang.Long test) throws BusinessException {
+		java.lang.Long test					) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test2/a/{test}?"));
