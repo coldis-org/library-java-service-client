@@ -45,6 +45,9 @@ public class JmsTemplateServiceTest {
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message2"));
 		Assertions.assertTrue(!JmsTemplateTestService.ACKED_MESSAGES.contains("message3"));
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message4"));
+		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE, "message5", "teste2", 0, 0);
+		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE, 1000L);
+		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message5"));
 	}
 
 }
