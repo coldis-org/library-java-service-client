@@ -87,7 +87,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}
 		#{else}
-			JmsMessage message
+			JmsMessage<${operation.parameters[0].type}> message
 		#{end}
 			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})

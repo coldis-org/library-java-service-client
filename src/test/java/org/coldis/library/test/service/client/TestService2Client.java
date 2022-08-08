@@ -335,7 +335,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * @throws BusinessException Any expected errors.
 	 */
 	public void test5Async(
-					JmsMessage message
+					JmsMessage<java.lang.Long> message
 					) throws BusinessException {
 		if (jmsTemplateHelper == null) {
 			jmsTemplate.convertAndSend("2test5Async", message.getMessage());

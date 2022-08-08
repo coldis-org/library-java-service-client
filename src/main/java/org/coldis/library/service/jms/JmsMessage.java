@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * JMS message.
  */
-public class JmsMessage {
+public class JmsMessage<MessageType> {
 
 	/**
 	 * Message destination.
@@ -15,7 +15,7 @@ public class JmsMessage {
 	/**
 	 * Message.
 	 */
-	private Object message;
+	private MessageType message;
 
 	/**
 	 * Priority.
@@ -67,7 +67,7 @@ public class JmsMessage {
 	 * @param  destination New destination.
 	 * @return             Message.
 	 */
-	public JmsMessage withDestination(
+	public JmsMessage<MessageType> withDestination(
 			final String destination) {
 		this.setDestination(destination);
 		return this;
@@ -78,7 +78,7 @@ public class JmsMessage {
 	 *
 	 * @return The message.
 	 */
-	public Object getMessage() {
+	public MessageType getMessage() {
 		return this.message;
 	}
 
@@ -88,7 +88,7 @@ public class JmsMessage {
 	 * @param message New message.
 	 */
 	public void setMessage(
-			final Object message) {
+			final MessageType message) {
 		this.message = message;
 	}
 
@@ -98,8 +98,8 @@ public class JmsMessage {
 	 * @param  message New message.
 	 * @return         Message.
 	 */
-	public JmsMessage withMessage(
-			final Object message) {
+	public JmsMessage<MessageType> withMessage(
+			final MessageType message) {
 		this.setMessage(message);
 		return this;
 	}
@@ -129,7 +129,7 @@ public class JmsMessage {
 	 * @param  priority New priority.
 	 * @return          Message.
 	 */
-	public JmsMessage withPriority(
+	public JmsMessage<MessageType> withPriority(
 			final Integer priority) {
 		this.setPriority(priority);
 		return this;
@@ -160,7 +160,7 @@ public class JmsMessage {
 	 * @param  correlationId New correlationId.
 	 * @return               Message.
 	 */
-	public JmsMessage withCorrelationId(
+	public JmsMessage<MessageType> withCorrelationId(
 			final String correlationId) {
 		this.setCorrelationId(correlationId);
 		return this;
@@ -191,7 +191,7 @@ public class JmsMessage {
 	 * @param  lastValueKey New lastValueKey.
 	 * @return              Message.
 	 */
-	public JmsMessage withLastValueKey(
+	public JmsMessage<MessageType> withLastValueKey(
 			final String lastValueKey) {
 		this.setLastValueKey(lastValueKey);
 		return this;
@@ -223,7 +223,7 @@ public class JmsMessage {
 	 * @param  fixedDelay New fixedDelay.
 	 * @return            Message.
 	 */
-	public JmsMessage withFixedDelay(
+	public JmsMessage<MessageType> withFixedDelay(
 			final Integer fixedDelay) {
 		this.setFixedDelay(fixedDelay);
 		return this;
@@ -255,7 +255,7 @@ public class JmsMessage {
 	 * @param  randomDelay New randomDelay.
 	 * @return             Message.
 	 */
-	public JmsMessage withRandomDelay(
+	public JmsMessage<MessageType> withRandomDelay(
 			final Integer randomDelay) {
 		this.setRandomDelay(randomDelay);
 		return this;
@@ -278,7 +278,7 @@ public class JmsMessage {
 		if (this == obj) {
 			return true;
 		}
-		if (!(obj instanceof JmsMessage)) {
+		if ((obj == null) || (this.getClass() != obj.getClass())) {
 			return false;
 		}
 		final JmsMessage other = (JmsMessage) obj;
