@@ -27,7 +27,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	@Override
 	public void send(
 			final JmsTemplate template,
-			final JmsMessage message) {
+			final JmsMessage<?> message) {
 		// Tries sending the message.
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
@@ -38,7 +38,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
-				jmsMessage.setJMSPriority(message.getPriority());
+				jmsMessage.setJMSPriority(Math.min(message.getPriority().intValue(), 9));
 			}
 			// Sets the correlation id.
 			if (message.getCorrelationId() != null) {

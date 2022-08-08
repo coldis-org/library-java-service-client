@@ -11,10 +11,10 @@ public interface JmsTemplateHelper {
 	 * Sends a JMS message.
 	 *
 	 * @param template JMS template.
-	 * @param message     Message.
+	 * @param message  Message.
 	 */
 	void send(
 			JmsTemplate template,
-			JmsMessage message);
+			JmsMessage<?> message);
 
 }
