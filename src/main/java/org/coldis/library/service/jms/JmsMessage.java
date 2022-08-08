@@ -281,6 +281,7 @@ public class JmsMessage<MessageType> {
 		if ((obj == null) || (this.getClass() != obj.getClass())) {
 			return false;
 		}
+		@SuppressWarnings("rawtypes")
 		final JmsMessage other = (JmsMessage) obj;
 		return Objects.equals(this.correlationId, other.correlationId) && Objects.equals(this.destination, other.destination)
 				&& Objects.equals(this.fixedDelay, other.fixedDelay) && Objects.equals(this.lastValueKey, other.lastValueKey)
