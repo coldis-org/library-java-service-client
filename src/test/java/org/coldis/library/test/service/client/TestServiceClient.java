@@ -368,6 +368,37 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	/**
 	 * Test service.
 
+ @param test Test argument.
+ 
+	 * @throws BusinessException Any expected errors.
+	 */
+	public void test5(
+		java.lang.Long test					) throws BusinessException {
+		// Operation parameters.
+		StringBuilder path = new StringBuilder(this.valueResolver
+				.resolveStringValue("http://localhost:8080/test/test5?"));
+		final HttpMethod method = HttpMethod.PUT;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<?> returnType =
+				new ParameterizedTypeReference<Void>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+				MediaType.APPLICATION_JSON_VALUE);
+		// Sets the operation body.
+		body = test;
+		// Executes the operation and returns the response.
+		this.serviceClient.executeOperation(path.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType);
+				
+	}
+	
+	/**
+	 * Test service.
+
  @param  test Test argument.
  @return      Test object.
  

@@ -29,8 +29,11 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @RestController
 @RequestMapping(path = "test")
-@ServiceClient(targetPath = "src/test/java", namespace = "org.coldis.library.test.service.client",
-endpoint = "http://localhost:8080/test")
+@ServiceClient(
+		targetPath = "src/test/java",
+		namespace = "org.coldis.library.test.service.client",
+		endpoint = "http://localhost:8080/test"
+)
 public class TestService {
 
 	/**
@@ -68,9 +71,19 @@ public class TestService {
 	 * @return       Test object.
 	 */
 	@RequestMapping(method = RequestMethod.PUT)
-	public DtoTestObject test2(@RequestBody final DtoTestObject test1, @RequestHeader final String test2,
-			@RequestParam final String test3, @RequestHeader final Integer test4, @RequestParam final int[] test5,
-			@RequestParam final List<Integer> test6) {
+	public DtoTestObject test2(
+			@RequestBody
+			final DtoTestObject test1,
+			@RequestHeader
+			final String test2,
+			@RequestParam
+			final String test3,
+			@RequestHeader
+			final Integer test4,
+			@RequestParam
+			final int[] test5,
+			@RequestParam
+			final List<Integer> test6) {
 		test1.setTest3(test2);
 		test1.setTest5(test3);
 		test1.setTest7(test4);
@@ -85,9 +98,18 @@ public class TestService {
 	 * @param  test Test argument.
 	 * @return      Test object.
 	 */
-	@RequestMapping(path = "test", method = RequestMethod.PUT, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public Resource test3(@RequestPart(name = "teste", required = false) @ServiceClientOperationParameter(
-			type = "org.coldis.library.service.model.FileResource") final Resource test) {
+	@RequestMapping(
+			path = "test",
+			method = RequestMethod.PUT,
+			consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+	)
+	public Resource test3(
+			@RequestPart(
+					name = "teste",
+					required = false
+			)
+			@ServiceClientOperationParameter(type = "org.coldis.library.service.model.FileResource")
+			final Resource test) {
 		return test;
 	}
 
@@ -97,9 +119,14 @@ public class TestService {
 	 * @param  test Test argument.
 	 * @return      Test object.
 	 */
-	@RequestMapping(path = "test", method = RequestMethod.GET)
+	@RequestMapping(
+			path = "test",
+			method = RequestMethod.GET
+	)
 	@ServiceClientOperation(returnType = Integer.class)
-	public Long test4(@RequestParam final Long test) {
+	public Long test4(
+			@RequestParam
+			final Long test) {
 		return test;
 	}
 
@@ -111,7 +138,24 @@ public class TestService {
 	@Transactional
 	@JmsListener(destination = "test5Async")
 	@ServiceClientOperation(asynchronousDestination = "test5Async")
-	public void test5Async(final Long test) {
+	public void test5Async(
+			final Long test) {
+		this.state.put("test5", test);
+	}
+
+	/**
+	 * Test service.
+	 *
+	 * @param test Test argument.
+	 */
+	@Transactional
+	@RequestMapping(
+			path = "test5",
+			method = RequestMethod.PUT
+	)
+	public void test5(
+			@RequestBody
+			final Long test) {
 		this.state.put("test5", test);
 	}
 
@@ -121,8 +165,13 @@ public class TestService {
 	 * @param  test Test argument.
 	 * @return      Test object.
 	 */
-	@RequestMapping(path = "a/{test}", method = RequestMethod.GET)
-	public Map<String, Object> test6(@PathVariable final Long test) {
+	@RequestMapping(
+			path = "a/{test}",
+			method = RequestMethod.GET
+	)
+	public Map<String, Object> test6(
+			@PathVariable
+			final Long test) {
 		this.state.put("test6", test);
 		return this.state;
 	}
@@ -134,11 +183,15 @@ public class TestService {
 	 * @return             Test object.
 	 * @throws IOException Exception.
 	 */
-	@RequestMapping(path = "parts", method = RequestMethod.POST, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	@RequestMapping(
+			path = "parts",
+			method = RequestMethod.POST,
+			consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+	)
 	public String test7(
-			@RequestPart @ServiceClientOperationParameter(
-					type = "java.util.List<org.springframework.core.io.Resource>") final MultipartFile[] test)
-							throws IOException {
+			@RequestPart
+			@ServiceClientOperationParameter(type = "java.util.List<org.springframework.core.io.Resource>")
+			final MultipartFile[] test) throws IOException {
 		return StreamUtils.copyToString(test[0].getInputStream(), Charset.forName("UTF-8"));
 	}
 
