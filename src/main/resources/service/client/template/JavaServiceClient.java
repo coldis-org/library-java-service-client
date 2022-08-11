@@ -1,5 +1,7 @@
 package ${serviceClient.namespace};
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -7,14 +9,17 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.jms.JmsTemplateHelper;
 import org.coldis.library.service.jms.JmsMessage;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -40,6 +45,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Value resolver.
 	 */
 	private StringValueResolver valueResolver;
+	
+	/**
+	 * Always-sync.
+	 */
+	@Value("${org.coldis.library.service-client.always-sync}")
+	private Boolean alwaysSync;
 
 	/**
 	 * JMS template.
@@ -76,7 +87,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
 		valueResolver = resolver;
 	}
-
+	
 #{foreach}( ${operation} in ${serviceClient.operations} )
 	/**
 	 *${operation.docComment} 
@@ -163,7 +174,17 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
 #{else}
-		if (jmsTemplateHelper == null) {
+		String syncMethodName = "${operation.name}".replaceAll("Async", "");
+		Method syncMethod = MethodUtils.getMatchingMethod(this.getClass(), syncMethodName, message.getMessage().getClass());
+		if (this.alwaysSync && syncMethod != null && message.getMessage() != null) {
+			try {
+				MethodUtils.invokeMethod(this, syncMethodName, message.getMessage());
+			}
+			catch (Exception exception) {
+				throw new BusinessException(new SimpleMessage("client.error"), exception);
+			}
+		}
+		else if (jmsTemplateHelper == null) {
 			jmsTemplate.convertAndSend("${operation.asynchronousDestination}", message.getMessage());
 		}
 		else {
