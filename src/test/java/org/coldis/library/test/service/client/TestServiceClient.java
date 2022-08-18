@@ -50,7 +50,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	/**
 	 * Always-sync.
 	 */
-	@Value("${org.coldis.library.service-client.always-sync}")
+	@Value("${org.coldis.library.service-client.always-sync:false}")
 	private Boolean alwaysSync;
 
 	/**

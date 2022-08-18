@@ -49,7 +49,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	/**
 	 * Always-sync.
 	 */
-	@Value("${org.coldis.library.service-client.always-sync}")
+	@Value("${org.coldis.library.service-client.always-sync:false}")
 	private Boolean alwaysSync;
 
 	/**
