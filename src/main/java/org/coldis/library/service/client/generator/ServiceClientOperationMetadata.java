@@ -50,6 +50,11 @@ public class ServiceClientOperationMetadata implements Serializable {
 	private String asynchronousDestination;
 
 	/**
+	 * Annotations to be added.
+	 */
+	private final String annotations;
+
+	/**
 	 * Operation parameters.
 	 */
 	private List<ServiceClientOperationParameterMetadata> parameters;
@@ -67,8 +72,15 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *                                    to call the service.
 	 * @param parameters              Operation parameters.
 	 */
-	public ServiceClientOperationMetadata(final String name, final String docComment, final String path,
-			final String method, final String mediaType, final String returnType, final String asynchronousDestination,
+	public ServiceClientOperationMetadata(
+			final String name,
+			final String docComment,
+			final String path,
+			final String method,
+			final String mediaType,
+			final String returnType,
+			final String asynchronousDestination,
+			final String annotations,
 			final List<ServiceClientOperationParameterMetadata> parameters) {
 		super();
 		this.name = name;
@@ -78,6 +90,7 @@ public class ServiceClientOperationMetadata implements Serializable {
 		this.mediaType = mediaType;
 		this.returnType = returnType;
 		this.asynchronousDestination = asynchronousDestination;
+		this.annotations = annotations;
 		this.parameters = parameters;
 	}
 
@@ -95,7 +108,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param name New name.
 	 */
-	public void setName(final String name) {
+	public void setName(
+			final String name) {
 		this.name = name;
 	}
 
@@ -113,7 +127,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param docComment New docComment.
 	 */
-	public void setDocComment(final String docComment) {
+	public void setDocComment(
+			final String docComment) {
 		this.docComment = docComment;
 	}
 
@@ -131,7 +146,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param path New path.
 	 */
-	public void setPath(final String path) {
+	public void setPath(
+			final String path) {
 		this.path = path;
 	}
 
@@ -149,7 +165,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param method New method.
 	 */
-	public void setMethod(final String method) {
+	public void setMethod(
+			final String method) {
 		this.method = method;
 	}
 
@@ -167,7 +184,8 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param mediaType New mediaType.
 	 */
-	public void setMediaType(final String mediaType) {
+	public void setMediaType(
+			final String mediaType) {
 		this.mediaType = mediaType;
 	}
 
@@ -185,8 +203,37 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param returnType New returnType.
 	 */
-	public void setReturnType(final String returnType) {
+	public void setReturnType(
+			final String returnType) {
 		this.returnType = returnType;
+	}
+
+	/**
+	 * Gets the asynchronousDestination.
+	 *
+	 * @return The asynchronousDestination.
+	 */
+	public String getAsynchronousDestination() {
+		return this.asynchronousDestination;
+	}
+
+	/**
+	 * Sets the asynchronousDestination.
+	 *
+	 * @param asynchronousDestination New asynchronousDestination.
+	 */
+	public void setAsynchronousDestination(
+			final String asynchronousDestination) {
+		this.asynchronousDestination = asynchronousDestination;
+	}
+
+	/**
+	 * Gets the annotations.
+	 *
+	 * @return The annotations.
+	 */
+	public String getAnnotations() {
+		return this.annotations;
 	}
 
 	/**
@@ -209,26 +256,9 @@ public class ServiceClientOperationMetadata implements Serializable {
 	 *
 	 * @param parameters New parameters.
 	 */
-	public void setParameters(final List<ServiceClientOperationParameterMetadata> parameters) {
+	public void setParameters(
+			final List<ServiceClientOperationParameterMetadata> parameters) {
 		this.parameters = parameters;
-	}
-
-	/**
-	 * Gets the asynchronousDestination.
-	 *
-	 * @return The asynchronousDestination.
-	 */
-	public String getAsynchronousDestination() {
-		return this.asynchronousDestination;
-	}
-
-	/**
-	 * Sets the asynchronousDestination.
-	 *
-	 * @param asynchronousDestination New asynchronousDestination.
-	 */
-	public void setAsynchronousDestination(final String asynchronousDestination) {
-		this.asynchronousDestination = asynchronousDestination;
 	}
 
 }

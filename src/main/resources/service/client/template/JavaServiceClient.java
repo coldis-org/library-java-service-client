@@ -93,6 +93,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 *${operation.docComment} 
 	 * @throws BusinessException Any expected errors.
 	 */
+	${operation.annotations}
 	public ${operation.returnType} ${operation.name}(
 		#{if}(${operation.asynchronousDestination.isEmpty()})
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),

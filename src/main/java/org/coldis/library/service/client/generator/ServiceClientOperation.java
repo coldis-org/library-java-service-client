@@ -7,6 +7,8 @@ import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
+import org.springframework.cache.annotation.Cacheable;
+
 /**
  * Service client operation metadata.
  */
@@ -60,5 +62,10 @@ public @interface ServiceClientOperation {
 	 * Asynchronous destination that should be used to call the service.
 	 */
 	public String asynchronousDestination() default "";
+
+	/**
+	 * Annotations to be copied.
+	 */
+	public Class<?>[] copiedAnnotations() default { Cacheable.class };
 
 }

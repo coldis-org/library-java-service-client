@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.annotation.JsonView;
+
 /**
  * Test service.
  */
@@ -54,6 +56,8 @@ public class TestService {
 	/**
 	 * Test service.
 	 */
+	@JsonView
+	@ServiceClientOperation(copiedAnnotations = { JsonView.class })
 	@RequestMapping(method = RequestMethod.GET)
 	public void test1() {
 

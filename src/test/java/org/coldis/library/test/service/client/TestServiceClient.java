@@ -92,6 +92,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	@com.fasterxml.jackson.annotation.JsonView
 	public void test1(
 							) throws BusinessException {
 		// Operation parameters.
@@ -127,6 +128,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public org.coldis.library.test.service.client.dto.DtoTestObjectDto test2(
 		org.coldis.library.test.service.client.dto.DtoTestObjectDto test1,
 			java.lang.String test2,
@@ -254,6 +256,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public org.springframework.core.io.Resource test3(
 		org.coldis.library.service.model.FileResource test					) throws BusinessException {
 		// Operation parameters.
@@ -289,6 +292,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public java.lang.Integer test4(
 		java.lang.Long test					) throws BusinessException {
 		// Operation parameters.
@@ -344,6 +348,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public void test5Async(
 					JmsMessage<java.lang.Long> message
 					) throws BusinessException {
@@ -372,6 +377,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public void test5(
 		java.lang.Long test					) throws BusinessException {
 		// Operation parameters.
@@ -404,6 +410,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public java.util.Map<java.lang.String,java.lang.Object> test6(
 		java.lang.Long test					) throws BusinessException {
 		// Operation parameters.
@@ -437,6 +444,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
  
 	 * @throws BusinessException Any expected errors.
 	 */
+	
 	public java.lang.String test7(
 		java.util.List<org.springframework.core.io.Resource> test					) throws BusinessException {
 		// Operation parameters.
