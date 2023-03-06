@@ -21,9 +21,15 @@ public class UrlHelperTest {
 					"http://www.dev.coldis.org/path/domain1/"
 							+ "?utm_source=domain1.com.br&utm_medium=partner&utm_campaign=std_campaign&utm_content=std_content"),
 			Map.of("source", "domain1.com.br", "medium", "partner", "campaign", "std_campaign", "content", "std_content"),
+
 			Map.of("referrer", "https://domain2.net.br", "source", "http://domain2..api.coldis.org/domain2/test/*/1"),
-			Map.of("source", "domain2.net.br", "medium", "referral"), Map.of("referrer", "https://coldis.org", "source", "http://coldis.org"),
-			Map.of("source", "direct", "medium", "link"));
+			Map.of("source", "domain2.net.br", "medium", "referral"),
+
+			Map.of("referrer", "https://coldis.org", "source", "http://coldis.org"), Map.of("source", "direct", "medium", "link"),
+
+			Map.of("referrer", "coldis-org.cdn.ampproject.org", "source", "coldis.org?amp"), Map.of("source", "www.google.com", "medium", "organic")
+
+	);
 
 	/**
 	 * Tests UTM variables.

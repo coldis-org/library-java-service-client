@@ -21,6 +21,39 @@ public class UrlHelper {
 	public static final List<String> SEARCH_ENGINES = List.of("www.google.", "www.yahoo.", "www.bing.");
 
 	/**
+	 * Google AMP project domain.
+	 */
+	public static final String GOOGLE_AMP_DOMAIN = ".cdn.ampproject.org";
+
+	/**
+	 * If the domain is from Google AMP.
+	 *
+	 * @param  referrer   Referrer.
+	 * @param  ownDomains Own domains.
+	 * @return            If the domain is from Google AMP.
+	 */
+	private static boolean isGoogleAmp(
+			final UriComponents referrer,
+			final List<String> ownDomains) {
+		return referrer.getHost().toLowerCase().endsWith(UrlHelper.GOOGLE_AMP_DOMAIN) && ownDomains.stream().anyMatch(
+				ownDomain -> (ownDomain != null) && referrer.getHost().substring(0, referrer.getHost().length() - UrlHelper.GOOGLE_AMP_DOMAIN.length())
+						.replace("-", ".").toLowerCase().startsWith(ownDomain.toLowerCase()));
+	}
+
+	/**
+	 * If the domain is from the given list.
+	 *
+	 * @param  referrer Referrer.
+	 * @param  domains  Domains list.
+	 * @return          If the domain is from the given list.
+	 */
+	private static boolean isFromDomain(
+			final UriComponents referrer,
+			final List<String> domains) {
+		return domains.stream().anyMatch(searchEngine -> (searchEngine != null) && referrer.getHost().toLowerCase().startsWith(searchEngine.toLowerCase()));
+	}
+
+	/**
 	 * Gets the UTM source for the request.
 	 *
 	 * @param  source     Source URL.
@@ -28,7 +61,10 @@ public class UrlHelper {
 	 * @param  ownDomains Own domains.
 	 * @return            The UTM source for the request.
 	 */
-	private static String getUtmSource(final UriComponents source, final UriComponents referrer, final List<String> ownDomains) {
+	private static String getUtmSource(
+			final UriComponents source,
+			final UriComponents referrer,
+			final List<String> ownDomains) {
 		// UTM source.
 		String utmSource = null;
 		// If there is a source.
@@ -36,13 +72,20 @@ public class UrlHelper {
 			// Tries to get the UTM source.
 			utmSource = source.getQueryParams().getFirst("utm_source");
 		}
-		// If there is a referrer.
-		if (StringUtils.isEmpty(utmSource) && (referrer != null) && (referrer.getHost() != null)
-				&& ownDomains.stream().noneMatch(ownDomain -> (ownDomain != null) && referrer.getHost().toLowerCase().startsWith(ownDomain.toLowerCase()))) {
-			// If the UTM source is not defined.
-			if (StringUtils.isEmpty(utmSource)) {
-				// The source is the domain.
-				utmSource = referrer.getHost();
+		// If there is a referrer (an no source).
+		if (StringUtils.isEmpty(utmSource) && (referrer != null) && (referrer.getHost() != null)) {
+			// If the domain is for Google AMP.
+			if (UrlHelper.isGoogleAmp(referrer, ownDomains)) {
+				// The UTM medium is "Organic".
+				utmSource = "www.google.com";
+			}
+			// If there is a referrer.
+			else if (!UrlHelper.isFromDomain(referrer, ownDomains)) {
+				// If the UTM source is not defined.
+				if (StringUtils.isEmpty(utmSource)) {
+					// The source is the domain.
+					utmSource = referrer.getHost();
+				}
 			}
 		}
 		// If the UTM source is "Direct" if empty.
@@ -60,7 +103,10 @@ public class UrlHelper {
 	 * @param  searchEngines Search engines.
 	 * @return               The UTM medium for the request.
 	 */
-	private static String getUtmMedium(final UriComponents source, final UriComponents referrer, final List<String> ownDomains,
+	private static String getUtmMedium(
+			final UriComponents source,
+			final UriComponents referrer,
+			final List<String> ownDomains,
 			final List<String> searchEngines) {
 		// UTM medium.
 		String utmMedium = null;
@@ -71,9 +117,13 @@ public class UrlHelper {
 		}
 		// If there is a referrer.
 		if (StringUtils.isEmpty(utmMedium) && (referrer != null) && (referrer.getHost() != null)) {
+			// If the domain is for Google AMP.
+			if (UrlHelper.isGoogleAmp(referrer, ownDomains)) {
+				// The UTM medium is "Organic".
+				utmMedium = "Organic";
+			}
 			// If the referrer is a search engine.
-			if (searchEngines.stream()
-					.anyMatch(searchEngine -> (searchEngine != null) && referrer.getHost().toLowerCase().startsWith(searchEngine.toLowerCase()))) {
+			else if (UrlHelper.isFromDomain(referrer, searchEngines)) {
 				// If the source is from AdWords.
 				if ((source != null) && (source.getQueryParams().get("gclid") != null)) {
 					// The UTM medium is "CPC".
@@ -86,7 +136,7 @@ public class UrlHelper {
 				}
 			}
 			// If it is our own domain.
-			else if (ownDomains.stream().anyMatch(ownDomain -> (ownDomain != null) && referrer.getHost().toLowerCase().startsWith(ownDomain.toLowerCase()))) {
+			else if (UrlHelper.isFromDomain(referrer, ownDomains)) {
 				// The UTM medium is "Link".
 				utmMedium = "Link";
 			}
@@ -111,7 +161,10 @@ public class UrlHelper {
 	 * @param  searchEngines Search engines.
 	 * @return               The UTM from the origin URL.
 	 */
-	public static Map<String, String> getUtm(final UriComponents source, final UriComponents referrer, final List<String> ownDomains,
+	public static Map<String, String> getUtm(
+			final UriComponents source,
+			final UriComponents referrer,
+			final List<String> ownDomains,
 			final List<String> searchEngines) {
 		// UTM map.
 		final Map<String, String> utm = new HashMap<>();
@@ -144,9 +197,21 @@ public class UrlHelper {
 	 * @param  searchEngines Search engines.
 	 * @return               The UTM from the origin URL.
 	 */
-	public static Map<String, String> getUtm(final String source, final String referrer, final List<String> ownDomains, final List<String> searchEngines) {
-		return UrlHelper.getUtm((StringUtils.isEmpty(source) ? null : UriComponentsBuilder.fromUriString(source).build()),
-				(StringUtils.isEmpty(referrer) ? null : UriComponentsBuilder.fromUriString(referrer).build()), ownDomains, searchEngines);
+	public static Map<String, String> getUtm(
+			final String source,
+			final String referrer,
+			final List<String> ownDomains,
+			final List<String> searchEngines) {
+		// Gets the actual source (filling the protocol if not filled).
+		UriComponents actualSource = (StringUtils.isNotBlank(source) ? UriComponentsBuilder.fromUriString(source).build() : null);
+		actualSource = ((actualSource != null) && (actualSource.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + source).build()
+				: actualSource);
+		// Gets the actual referrer (filling the protocol if not filled).
+		UriComponents actualReferrer = (StringUtils.isNotBlank(referrer) ? UriComponentsBuilder.fromUriString(referrer).build() : null);
+		actualReferrer = ((actualReferrer != null) && (actualReferrer.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + referrer).build()
+				: actualReferrer);
+		// Gets the UTM variables.
+		return UrlHelper.getUtm(actualSource, actualReferrer, ownDomains, searchEngines);
 	}
 
 }
