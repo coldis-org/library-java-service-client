@@ -27,7 +27,11 @@ public class UrlHelperTest {
 
 			Map.of("referrer", "https://coldis.org", "source", "http://coldis.org"), Map.of("source", "direct", "medium", "link"),
 
-			Map.of("referrer", "coldis-org.cdn.ampproject.org", "source", "coldis.org?amp"), Map.of("source", "www.google.com", "medium", "organic")
+			Map.of("referrer", "coldis-org.cdn.ampproject.org", "source", "coldis.org?amp"), Map.of("source", "www.google.com", "medium", "organic"),
+
+			Map.of("referrer", "coldis.org", "source", "coldis.org?amp"), Map.of("source", "www.google.com", "medium", "organic"),
+
+			Map.of("referrer", "coldis.org?amp", "source", "http://coldis.org"), Map.of("source", "www.google.com", "medium", "organic")
 
 	);
 

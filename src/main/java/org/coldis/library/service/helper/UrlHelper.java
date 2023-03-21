@@ -26,6 +26,20 @@ public class UrlHelper {
 	public static final String GOOGLE_AMP_DOMAIN = ".cdn.ampproject.org";
 
 	/**
+	 * If the domain is from the given list.
+	 *
+	 * @param  url     URL.
+	 * @param  domains Domains list.
+	 * @return         If the domain is from the given list.
+	 */
+	private static boolean isFromDomain(
+			final UriComponents url,
+			final List<String> domains) {
+		return ((url != null)
+				&& domains.stream().anyMatch(searchEngine -> (searchEngine != null) && url.getHost().toLowerCase().startsWith(searchEngine.toLowerCase())));
+	}
+
+	/**
 	 * If the domain is from Google AMP.
 	 *
 	 * @param  referrer   Referrer.
@@ -34,23 +48,15 @@ public class UrlHelper {
 	 */
 	private static boolean isGoogleAmp(
 			final UriComponents referrer,
+			final UriComponents source,
 			final List<String> ownDomains) {
-		return referrer.getHost().toLowerCase().endsWith(UrlHelper.GOOGLE_AMP_DOMAIN) && ownDomains.stream().anyMatch(
-				ownDomain -> (ownDomain != null) && referrer.getHost().substring(0, referrer.getHost().length() - UrlHelper.GOOGLE_AMP_DOMAIN.length())
-						.replace("-", ".").toLowerCase().startsWith(ownDomain.toLowerCase()));
-	}
-
-	/**
-	 * If the domain is from the given list.
-	 *
-	 * @param  referrer Referrer.
-	 * @param  domains  Domains list.
-	 * @return          If the domain is from the given list.
-	 */
-	private static boolean isFromDomain(
-			final UriComponents referrer,
-			final List<String> domains) {
-		return domains.stream().anyMatch(searchEngine -> (searchEngine != null) && referrer.getHost().toLowerCase().startsWith(searchEngine.toLowerCase()));
+		final boolean isFromAmpDomain = ((referrer != null) && referrer.getHost().toLowerCase().endsWith(UrlHelper.GOOGLE_AMP_DOMAIN)
+				&& ownDomains.stream().anyMatch(
+						ownDomain -> (ownDomain != null) && referrer.getHost().substring(0, referrer.getHost().length() - UrlHelper.GOOGLE_AMP_DOMAIN.length())
+								.replace("-", ".").toLowerCase().startsWith(ownDomain.toLowerCase())));
+		final boolean hasAmpParameter = (((UrlHelper.isFromDomain(referrer, ownDomains) && referrer.getQueryParams().containsKey("amp"))
+				|| (UrlHelper.isFromDomain(source, ownDomains) && source.getQueryParams().containsKey("amp"))));
+		return (isFromAmpDomain || hasAmpParameter);
 	}
 
 	/**
@@ -67,31 +73,42 @@ public class UrlHelper {
 			final List<String> ownDomains) {
 		// UTM source.
 		String utmSource = null;
-		// If there is a source.
+		// Tries to get the source from source UTM tag.
 		if (source != null) {
-			// Tries to get the UTM source.
 			utmSource = source.getQueryParams().getFirst("utm_source");
 		}
-		// If there is a referrer (an no source).
-		if (StringUtils.isEmpty(utmSource) && (referrer != null) && (referrer.getHost() != null)) {
-			// If the domain is for Google AMP.
-			if (UrlHelper.isGoogleAmp(referrer, ownDomains)) {
-				// The UTM medium is "Organic".
+
+		// If there is a referrer.
+		if ((referrer != null) && (referrer.getHost() != null)) {
+
+			// If the source is still not available, tries to get the source from referrer
+			// UTM tag.
+			if (StringUtils.isBlank(utmSource) && UrlHelper.isFromDomain(referrer, ownDomains)) {
+				utmSource = referrer.getQueryParams().getFirst("utm_source");
+			}
+
+			// If the source is still not available, checks if it is an AMP URL
+			// (Google/Organic source).
+			if (StringUtils.isBlank(utmSource) && UrlHelper.isGoogleAmp(referrer, source, ownDomains)) {
 				utmSource = "www.google.com";
 			}
-			// If there is a referrer.
-			else if (!UrlHelper.isFromDomain(referrer, ownDomains)) {
-				// If the UTM source is not defined.
-				if (StringUtils.isEmpty(utmSource)) {
-					// The source is the domain.
-					utmSource = referrer.getHost();
-				}
+
+			// If the source is still not available, and it is not an own domain, uses the
+			// domain from the referrer.
+			if (StringUtils.isBlank(utmSource) && !UrlHelper.isFromDomain(referrer, ownDomains)) {
+				utmSource = referrer.getHost();
 			}
+
 		}
+
 		// If the UTM source is "Direct" if empty.
-		utmSource = StringUtils.isEmpty(utmSource) ? "Direct" : utmSource;
+		if (StringUtils.isBlank(utmSource)) {
+			utmSource = "Direct";
+		}
+
 		// Returns the UTM source.
 		return utmSource.toLowerCase();
+
 	}
 
 	/**
@@ -116,9 +133,9 @@ public class UrlHelper {
 			utmMedium = source.getQueryParams().getFirst("utm_medium");
 		}
 		// If there is a referrer.
-		if (StringUtils.isEmpty(utmMedium) && (referrer != null) && (referrer.getHost() != null)) {
+		if (StringUtils.isBlank(utmMedium) && (referrer != null) && (referrer.getHost() != null)) {
 			// If the domain is for Google AMP.
-			if (UrlHelper.isGoogleAmp(referrer, ownDomains)) {
+			if (UrlHelper.isGoogleAmp(referrer, source, ownDomains)) {
 				// The UTM medium is "Organic".
 				utmMedium = "Organic";
 			}
@@ -147,7 +164,7 @@ public class UrlHelper {
 			}
 		}
 		// If the UTM medium is "Direct" if empty.
-		utmMedium = StringUtils.isEmpty(utmMedium) ? "Link" : utmMedium;
+		utmMedium = StringUtils.isBlank(utmMedium) ? "Link" : utmMedium;
 		// Returns the UTM medium.
 		return utmMedium.toLowerCase();
 	}
@@ -180,7 +197,7 @@ public class UrlHelper {
 						&& !urlParameter.getKey().equals("utm_source") && !urlParameter.getKey().equals("utm_medium")) {
 					// Adds the current UTM parameter.
 					final String value = (CollectionUtils.isEmpty(urlParameter.getValue()) ? null : urlParameter.getValue().get(0));
-					utm.put(urlParameter.getKey().substring("utm_".length()), (StringUtils.isEmpty(value) ? "" : value.toLowerCase()));
+					utm.put(urlParameter.getKey().substring("utm_".length()), (StringUtils.isBlank(value) ? "" : value.toLowerCase()));
 				}
 			}
 		}
