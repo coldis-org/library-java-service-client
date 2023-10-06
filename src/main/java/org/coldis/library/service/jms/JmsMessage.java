@@ -294,12 +294,12 @@ public class JmsMessage<MessageType> {
 	 * Sets the properties.
 	 *
 	 * @param  properties New properties.
-	 * @return            Returns the properties.
+	 * @return            The message.
 	 */
-	public Map<String, Object> withProperties(
+	public JmsMessage<MessageType> withProperties(
 			final Map<String, Object> properties) {
 		this.setProperties(properties);
-		return this.getProperties();
+		return this;
 	}
 
 	/**
