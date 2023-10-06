@@ -1,5 +1,6 @@
 package org.coldis.library.service.jms;
 
+import java.util.Map;
 import java.util.Random;
 
 import org.apache.activemq.artemis.api.core.Message;
@@ -48,6 +49,23 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			if (message.getLastValueKey() != null) {
 				jmsMessage.setStringProperty(Message.HDR_LAST_VALUE_NAME.toString(), message.getLastValueKey());
 			}
+			// Adds each extra properties.
+			for (Map.Entry<String, Object> property : message.getProperties().entrySet()) {
+				if (property.getValue() instanceof String) {
+					jmsMessage.setStringProperty(property.getKey(), (String) property.getValue());
+				}
+				else if (property.getValue() instanceof Long) {
+					jmsMessage.setLongProperty(property.getKey(), (Long) property.getValue());
+				}
+				else if (property.getValue() instanceof Integer) {
+					jmsMessage.setIntProperty(property.getKey(), (Integer) property.getValue());
+				}
+				else if (property.getValue() instanceof Integer) {
+					jmsMessage.setBooleanProperty(property.getKey(), (Boolean) property.getValue());
+				}
+				// TODO Other types.
+			}
+			// Returns the message.
 			return jmsMessage;
 		});
 	}

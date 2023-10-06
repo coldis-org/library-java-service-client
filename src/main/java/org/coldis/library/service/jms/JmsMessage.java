@@ -1,5 +1,7 @@
 package org.coldis.library.service.jms;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -41,6 +43,11 @@ public class JmsMessage<MessageType> {
 	 * Random delay.
 	 */
 	private Integer randomDelay;
+
+	/**
+	 * Properties.
+	 */
+	private Map<String, Object> properties;
 
 	/**
 	 * Gets the destination.
@@ -262,11 +269,46 @@ public class JmsMessage<MessageType> {
 	}
 
 	/**
+	 * Gets the properties.
+	 *
+	 * @return The properties.
+	 */
+	public Map<String, Object> getProperties() {
+		// Makes sure the map is initialized.
+		this.properties = (this.properties == null ? new HashMap<>() : this.properties);
+		// Returns the map.
+		return this.properties;
+	}
+
+	/**
+	 * Sets the properties.
+	 *
+	 * @param properties New properties.
+	 */
+	public void setProperties(
+			final Map<String, Object> properties) {
+		this.properties = properties;
+	}
+
+	/**
+	 * Sets the properties.
+	 *
+	 * @param  properties New properties.
+	 * @return            Returns the properties.
+	 */
+	public Map<String, Object> withProperties(
+			final Map<String, Object> properties) {
+		this.setProperties(properties);
+		return this.getProperties();
+	}
+
+	/**
 	 * @see java.lang.Object#hashCode()
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.message, this.priority, this.randomDelay);
+		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.message, this.priority, this.properties,
+				this.randomDelay);
 	}
 
 	/**
@@ -281,12 +323,11 @@ public class JmsMessage<MessageType> {
 		if ((obj == null) || (this.getClass() != obj.getClass())) {
 			return false;
 		}
-		@SuppressWarnings("rawtypes")
 		final JmsMessage other = (JmsMessage) obj;
 		return Objects.equals(this.correlationId, other.correlationId) && Objects.equals(this.destination, other.destination)
 				&& Objects.equals(this.fixedDelay, other.fixedDelay) && Objects.equals(this.lastValueKey, other.lastValueKey)
 				&& Objects.equals(this.message, other.message) && Objects.equals(this.priority, other.priority)
-				&& Objects.equals(this.randomDelay, other.randomDelay);
+				&& Objects.equals(this.properties, other.properties) && Objects.equals(this.randomDelay, other.randomDelay);
 	}
 
 }
