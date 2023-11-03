@@ -35,7 +35,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			final javax.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
 			if ((message.getFixedDelay() > 0) || (message.getRandomDelay() > 0)) {
 				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), System.currentTimeMillis() + (message.getFixedDelay() * 1000)
-						+ (message.getRandomDelay() <= 0 ? 0 : ArtemisJmsTemplateHelper.RANDOM.nextInt(Math.abs(message.getRandomDelay()) * 1000)));
+						+ (message.getRandomDelay() <= 0 ? 0 : Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextInt(message.getRandomDelay()) * 1000)));
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
@@ -50,7 +50,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 				jmsMessage.setStringProperty(Message.HDR_LAST_VALUE_NAME.toString(), message.getLastValueKey());
 			}
 			// Adds each extra properties.
-			for (Map.Entry<String, Object> property : message.getProperties().entrySet()) {
+			for (final Map.Entry<String, Object> property : message.getProperties().entrySet()) {
 				if (property.getValue() instanceof String) {
 					jmsMessage.setStringProperty(property.getKey(), (String) property.getValue());
 				}
