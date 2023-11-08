@@ -210,7 +210,7 @@ public class JmsMessage<MessageType> {
 	 * @return The fixedDelay.
 	 */
 	public Integer getFixedDelay() {
-		this.fixedDelay = (this.fixedDelay == null ? 0 : this.fixedDelay);
+		this.fixedDelay = ((this.fixedDelay == null) || (this.fixedDelay < 0) ? 0 : this.fixedDelay);
 		return this.fixedDelay;
 	}
 
@@ -242,7 +242,7 @@ public class JmsMessage<MessageType> {
 	 * @return The randomDelay.
 	 */
 	public Integer getRandomDelay() {
-		this.randomDelay = (this.randomDelay == null ? 0 : this.randomDelay);
+		this.randomDelay = ((this.randomDelay == null) || (this.randomDelay < 0) ? 0 : this.randomDelay);
 		return this.randomDelay;
 	}
 

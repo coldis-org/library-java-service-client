@@ -76,7 +76,7 @@ public class JmsTemplateTestService {
 			final String lastValueKey,
 			final Integer minimumDelaySeconds,
 			final Integer maximumDelaySeconds) {
-		this.jmsTemplateHelper.send(this.jmsTemplate, new JmsMessage().withDestination(destination).withMessage(message).withLastValueKey(lastValueKey)
+		this.jmsTemplateHelper.send(this.jmsTemplate, new JmsMessage<>().withDestination(destination).withMessage(message).withLastValueKey(lastValueKey)
 				.withFixedDelay(minimumDelaySeconds).withRandomDelay(maximumDelaySeconds));
 	}
 

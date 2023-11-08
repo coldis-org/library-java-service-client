@@ -1,9 +1,11 @@
 package org.coldis.library.service.jms;
 
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.Random;
 
 import org.apache.activemq.artemis.api.core.Message;
+import org.coldis.library.helper.DateTimeHelper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
 import org.springframework.jms.core.JmsTemplate;
@@ -34,12 +36,14 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			// Creates the message.
 			final javax.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
 			if ((message.getFixedDelay() > 0) || (message.getRandomDelay() > 0)) {
-				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), System.currentTimeMillis() + (message.getFixedDelay() * 1000)
-						+ (message.getRandomDelay() <= 0 ? 0 : Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextInt(message.getRandomDelay()) * 1000)));
+				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), DateTimeHelper.getCurrentLocalDateTime()
+						.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("UTC")).toInstant().toEpochMilli()
+						+ (message.getFixedDelay()
+								+ (message.getRandomDelay() <= 0 ? 0 : Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextInt(message.getRandomDelay())) * 1000)));
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
-				jmsMessage.setJMSPriority(Math.min(message.getPriority().intValue(), 9));
+				jmsMessage.setJMSPriority(Math.max(1, Math.min(message.getPriority().intValue(), 9)));
 			}
 			// Sets the correlation id.
 			if (message.getCorrelationId() != null) {
