@@ -466,14 +466,34 @@ public class DtoTestObjectDto implements Serializable {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + Objects.hash(
-				id,
-				test1,
-				test2,
-				test3,
-				test4,
-				test5,
-				test7,
-				test10
+id
+
+,
+test1
+
+,
+test2
+
+,
+test3
+
+,
+test4
+
+,
+test5
+
+
+,
+test7
+
+
+
+,
+test10
+
+
+
 			);
 		result = prime * result + Arrays.hashCode(test6);
 		result = prime * result + Arrays.hashCode(test88);

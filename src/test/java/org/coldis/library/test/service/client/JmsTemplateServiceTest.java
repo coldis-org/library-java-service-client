@@ -2,8 +2,6 @@ package org.coldis.library.test.service.client;
 
 import java.util.Random;
 
-import javax.jms.JMSException;
-
 import org.coldis.library.test.TestHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+
+import jakarta.jms.JMSException;
 
 /**
  * JMS message converter test.

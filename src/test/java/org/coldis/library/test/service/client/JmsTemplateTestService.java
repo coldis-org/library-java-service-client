@@ -3,15 +3,15 @@ package org.coldis.library.test.service.client;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-
 import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.service.jms.JmsTemplateHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 /**
  * Test service.

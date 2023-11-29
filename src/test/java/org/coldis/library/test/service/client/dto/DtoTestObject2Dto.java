@@ -115,8 +115,13 @@ public class DtoTestObject2Dto implements Serializable {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + Objects.hash(
-				id,
-				test
+id
+
+,
+test
+
+
+
 			);
 		return result;
 	}

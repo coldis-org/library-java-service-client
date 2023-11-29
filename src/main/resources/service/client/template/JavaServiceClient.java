@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
@@ -105,7 +106,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("${serviceClient.endpoint}/${operation.path}?"));
+				.resolveStringValue("${serviceClient.endpoint}" + (StringUtils.isBlank("${operation.path}") ? "" : "/${operation.path}") + "?"));
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

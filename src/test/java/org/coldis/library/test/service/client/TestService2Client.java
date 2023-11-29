@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
@@ -57,7 +58,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * JMS template.
 	 */
 	@Autowired(required = false)
-		private JmsTemplate jmsTemplate;
+	private JmsTemplate jmsTemplate;
 	
 	/**
 	 * JMS template helper.
@@ -69,7 +70,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * Service client.
 	 */
 	@Autowired
-	@Qualifier(value = "restServiceClient")	private GenericRestServiceClient serviceClient;
+@Qualifier(value = "restServiceClient")	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -94,10 +95,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public void test1(
-							) throws BusinessException {
+
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test2/?"));
+				.resolveStringValue("http://localhost:8080/test2" + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -107,9 +109,9 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<Void>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_VALUE);
+MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation and returns the response.
-		this.serviceClient.executeOperation(path.toString(), method, headers,
+this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType);
 				
@@ -131,15 +133,16 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public org.coldis.library.test.service.client.dto.DtoTestObjectDto test2(
-		org.coldis.library.test.service.client.dto.DtoTestObjectDto test1,
-			java.lang.String test2,
-			java.lang.String test3,
-			java.lang.Integer test4,
-			int[] test5,
-			java.util.List<java.lang.Integer> test7					) throws BusinessException {
+org.coldis.library.test.service.client.dto.DtoTestObjectDto test1,
+java.lang.String test2,
+java.lang.String test3,
+java.lang.Integer test4,
+int[] test5,
+java.util.List<java.lang.Integer> test7
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test2/?"));
+				.resolveStringValue("http://localhost:8080/test2" + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -149,7 +152,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<org.coldis.library.test.service.client.dto.DtoTestObjectDto>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_VALUE);
+MediaType.APPLICATION_JSON_VALUE);
 		// Sets the operation body.
 		body = test1;
 		// Adds the header to the map.
@@ -243,7 +246,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 			path.append("test7={test7}&");
 		}
 		// Executes the operation and returns the response.
-		return this.serviceClient.executeOperation(path.toString(), method, headers,
+return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 				
@@ -259,10 +262,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public org.springframework.core.io.Resource test3(
-		org.coldis.library.service.model.FileResource test					) throws BusinessException {
+org.coldis.library.service.model.FileResource test
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test2//test?"));
+				.resolveStringValue("http://localhost:8080/test2" + (StringUtils.isBlank("/test") ? "" : "//test") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -272,14 +276,14 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<org.springframework.core.io.Resource>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				"MULTIPART/FORM-DATA");
+"MULTIPART/FORM-DATA");
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
 						new ArrayList((java.util.Collection)(java.lang.Object)test) :
 						List.of(test)))));
 		// Executes the operation and returns the response.
-		return this.serviceClient.executeOperation(path.toString(), method, headers,
+return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 				
@@ -295,10 +299,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public java.lang.Integer test4(
-		java.lang.Long test					) throws BusinessException {
+java.lang.Long test
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test2//test?"));
+				.resolveStringValue("http://localhost:8080/test2" + (StringUtils.isBlank("/test") ? "" : "//test") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -308,7 +313,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<java.lang.Integer>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_VALUE);
+MediaType.APPLICATION_JSON_VALUE);
 		// If the parameter is an array.
 		if (test != null && test.getClass().isArray()) {
 			// For each item.
@@ -336,7 +341,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 			path.append("test={test}&");
 		}
 		// Executes the operation and returns the response.
-		return this.serviceClient.executeOperation(path.toString(), method, headers,
+return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 				
@@ -351,8 +356,8 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public void test5Async(
-					JmsMessage<java.lang.Long> message
-					) throws BusinessException {
+			JmsMessage<java.lang.Long> message
+			) throws BusinessException {
 		String syncMethodName = "test5Async".replaceAll("Async", "");
 		Method syncMethod = MethodUtils.getMatchingMethod(this.getClass(), syncMethodName, message.getMessage().getClass());
 		if (this.alwaysSync && syncMethod != null && message.getMessage() != null) {
@@ -381,10 +386,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 */
 	
 	public java.util.Map<java.lang.String,java.lang.Object> test6(
-		java.lang.Long test					) throws BusinessException {
+java.lang.Long test
+			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test2/a/{test}?"));
+				.resolveStringValue("http://localhost:8080/test2" + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -394,11 +400,11 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 				new ParameterizedTypeReference<java.util.Map<java.lang.String,java.lang.Object>>() {};
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
-				MediaType.APPLICATION_JSON_VALUE);
+MediaType.APPLICATION_JSON_VALUE);
 		// Adds the path parameter to the map.
 		path = new StringBuilder(path.toString().replace("{test}", Objects.toString(test)));
 		// Executes the operation and returns the response.
-		return this.serviceClient.executeOperation(path.toString(), method, headers,
+return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType).getBody();
 				
