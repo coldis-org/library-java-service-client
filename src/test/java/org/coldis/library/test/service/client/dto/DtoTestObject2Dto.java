@@ -3,16 +3,11 @@ package org.coldis.library.test.service.client.dto;
 import java.io.Serializable;
 import java.util.Objects;
 
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-import io.swagger.annotations.ApiModelProperty.AccessMode;
-
 import java.util.Arrays;
 
 /**
  * DtoTestObject2Dto.
  */
-@ApiModel(description = "DtoTestObject2Dto")
 public class DtoTestObject2Dto implements Serializable {
 
 	/**
@@ -43,10 +38,6 @@ public class DtoTestObject2Dto implements Serializable {
 	 * @return The id.
 	 */
 	
-	@ApiModelProperty(
-			required = false,
-			value = "id",
-			accessMode = AccessMode.READ_WRITE)
 	public java.lang.Long getId() {
 		return id;
 	}
@@ -77,10 +68,6 @@ public class DtoTestObject2Dto implements Serializable {
 	 * @return The test.
 	 */
 	
-	@ApiModelProperty(
-			required = false,
-			value = "test",
-			accessMode = AccessMode.READ_WRITE)
 	public java.lang.String getTest() {
 		return test;
 	}
