@@ -1,5 +1,6 @@
 package org.coldis.library.service.jms;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -225,6 +226,18 @@ public class JmsMessage<MessageType> {
 	}
 
 	/**
+	 * Sets the fixed delay.
+	 *
+	 * @param fixedDelay New fixedDelay.
+	 */
+	public void setFixedDelay(
+			final Duration fixedDelay) {
+		if (fixedDelay != null) {
+			this.setFixedDelay((int) fixedDelay.toMillis());
+		}
+	}
+
+	/**
 	 * Sets the fixedDelay.
 	 *
 	 * @param  fixedDelay New fixedDelay.
@@ -232,6 +245,18 @@ public class JmsMessage<MessageType> {
 	 */
 	public JmsMessage<MessageType> withFixedDelay(
 			final Integer fixedDelay) {
+		this.setFixedDelay(fixedDelay);
+		return this;
+	}
+
+	/**
+	 * Sets the fixedDelay.
+	 *
+	 * @param  fixedDelay New fixedDelay.
+	 * @return            Message.
+	 */
+	public JmsMessage<MessageType> withFixedDelay(
+			final Duration fixedDelay) {
 		this.setFixedDelay(fixedDelay);
 		return this;
 	}
@@ -257,6 +282,18 @@ public class JmsMessage<MessageType> {
 	}
 
 	/**
+	 * Sets the random delay.
+	 *
+	 * @param randomDelay New randomDelay.
+	 */
+	public void setRandomDelay(
+			final Duration randomDelay) {
+		if (randomDelay != null) {
+			this.setRandomDelay((int) randomDelay.toMillis());
+		}
+	}
+
+	/**
 	 * Sets the randomDelay.
 	 *
 	 * @param  randomDelay New randomDelay.
@@ -264,6 +301,18 @@ public class JmsMessage<MessageType> {
 	 */
 	public JmsMessage<MessageType> withRandomDelay(
 			final Integer randomDelay) {
+		this.setRandomDelay(randomDelay);
+		return this;
+	}
+
+	/**
+	 * Sets the randomDelay.
+	 *
+	 * @param  randomDelay New randomDelay.
+	 * @return             Message.
+	 */
+	public JmsMessage<MessageType> withRandomDelay(
+			final Duration randomDelay) {
 		this.setRandomDelay(randomDelay);
 		return this;
 	}
