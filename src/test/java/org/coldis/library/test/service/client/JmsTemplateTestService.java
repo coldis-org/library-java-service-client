@@ -1,5 +1,6 @@
 package org.coldis.library.test.service.client;
 
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -74,8 +75,8 @@ public class JmsTemplateTestService {
 			final String destination,
 			final Object message,
 			final String lastValueKey,
-			final Integer minimumDelaySeconds,
-			final Integer maximumDelaySeconds) {
+			final Duration minimumDelaySeconds,
+			final Duration maximumDelaySeconds) {
 		this.jmsTemplateHelper.send(this.jmsTemplate, new JmsMessage<>().withDestination(destination).withMessage(message).withLastValueKey(lastValueKey)
 				.withFixedDelay(minimumDelaySeconds).withRandomDelay(maximumDelaySeconds));
 	}

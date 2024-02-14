@@ -1,5 +1,6 @@
 package org.coldis.library.test.service.client;
 
+import java.time.Duration;
 import java.util.Random;
 
 import org.coldis.library.test.TestHelper;
@@ -54,10 +55,13 @@ public class JmsTemplateServiceTest {
 
 		// Sends messages in a row.
 		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message1-" + random /* message */,
-				null /* last value */, 0, 0);
-		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message2-" + random, null, 0, 0);
-		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message3-" + random, "teste2", 0, 0);
-		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message4-" + random, "teste2", 0, 0);
+				null /* last value */, Duration.ofMillis(0), Duration.ofMillis(0));
+		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message2-" + random, null, Duration.ofMillis(0),
+				Duration.ofMillis(0));
+		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message3-" + random, "teste2", Duration.ofMillis(0),
+				Duration.ofMillis(0));
+		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message4-" + random, "teste2", Duration.ofMillis(0),
+				Duration.ofMillis(0));
 
 		// Wait until all messages are sent and consumes them.
 		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 1000L);
@@ -72,7 +76,8 @@ public class JmsTemplateServiceTest {
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message4-" + random));
 
 		// A new last value message should be consumed.
-		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message5-" + random, "teste2", 0, 0);
+		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "message5-" + random, "teste2", Duration.ofMillis(0),
+				Duration.ofMillis(0));
 		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 1000L);
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message5-" + random));
 	}
@@ -90,7 +95,7 @@ public class JmsTemplateServiceTest {
 		// Sends messages in a row.
 		Assertions.assertFalse(JmsTemplateTestService.ACKED_MESSAGES.contains("testScheduled1-" + random));
 		this.jmsTemplateTestService.sendMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "testScheduled1-" + random /* message */,
-				null /* last value */, 30 * 1000 /* fixed wait */, 0 /* random wait */);
+				null /* last value */, Duration.ofMillis(30 * 1000) /* fixed wait */, Duration.ofMillis(0) /* random wait */);
 		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 10L);
 		Assertions.assertFalse(JmsTemplateTestService.ACKED_MESSAGES.contains("testScheduled1-" + random));
 
