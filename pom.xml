@@ -41,7 +41,7 @@
 			scm:git:https://github.com/coldis-org/library-java-service-client.git</connection>
 		<developerConnection>
 			scm:git:git@github.com:coldis-org/library-java-service-client.git</developerConnection>
-		<tag>service-client-2.0.5</tag>
+		<tag>HEAD</tag>
 	</scm>
 
 	<dependencies>
