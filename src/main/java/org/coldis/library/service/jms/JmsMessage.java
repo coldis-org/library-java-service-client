@@ -1,5 +1,6 @@
 package org.coldis.library.service.jms;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -37,12 +38,12 @@ public class JmsMessage<MessageType> {
 	/**
 	 * Fixed delay.
 	 */
-	private Integer fixedDelay;
+	private Duration fixedDelay;
 
 	/**
 	 * Random delay.
 	 */
-	private Integer randomDelay;
+	private Duration randomDelay;
 
 	/**
 	 * Properties.
@@ -209,8 +210,8 @@ public class JmsMessage<MessageType> {
 	 *
 	 * @return The fixedDelay.
 	 */
-	public Integer getFixedDelay() {
-		this.fixedDelay = ((this.fixedDelay == null) || (this.fixedDelay < 0) ? 0 : this.fixedDelay);
+	public Duration getFixedDelay() {
+		this.fixedDelay = ((this.fixedDelay == null) || (this.fixedDelay.isNegative()) ? Duration.ofMillis(0L) : this.fixedDelay);
 		return this.fixedDelay;
 	}
 
@@ -220,7 +221,7 @@ public class JmsMessage<MessageType> {
 	 * @param fixedDelay New fixedDelay.
 	 */
 	public void setFixedDelay(
-			final Integer fixedDelay) {
+			final Duration fixedDelay) {
 		this.fixedDelay = fixedDelay;
 	}
 
@@ -231,7 +232,7 @@ public class JmsMessage<MessageType> {
 	 * @return            Message.
 	 */
 	public JmsMessage<MessageType> withFixedDelay(
-			final Integer fixedDelay) {
+			final Duration fixedDelay) {
 		this.setFixedDelay(fixedDelay);
 		return this;
 	}
@@ -241,8 +242,8 @@ public class JmsMessage<MessageType> {
 	 *
 	 * @return The randomDelay.
 	 */
-	public Integer getRandomDelay() {
-		this.randomDelay = ((this.randomDelay == null) || (this.randomDelay < 0) ? 0 : this.randomDelay);
+	public Duration getRandomDelay() {
+		this.randomDelay = ((this.randomDelay == null) || (this.randomDelay.isNegative()) ? Duration.ofMillis(0L) : this.randomDelay);
 		return this.randomDelay;
 	}
 
@@ -252,7 +253,7 @@ public class JmsMessage<MessageType> {
 	 * @param randomDelay New randomDelay.
 	 */
 	public void setRandomDelay(
-			final Integer randomDelay) {
+			final Duration randomDelay) {
 		this.randomDelay = randomDelay;
 	}
 
@@ -263,7 +264,7 @@ public class JmsMessage<MessageType> {
 	 * @return             Message.
 	 */
 	public JmsMessage<MessageType> withRandomDelay(
-			final Integer randomDelay) {
+			final Duration randomDelay) {
 		this.setRandomDelay(randomDelay);
 		return this;
 	}

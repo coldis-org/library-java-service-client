@@ -33,9 +33,9 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
-			if ((message.getFixedDelay() > 0) || (message.getRandomDelay() > 0)) {
-				final long scheduledTimestamp = System.currentTimeMillis() + ((message.getFixedDelay()
-						+ (message.getRandomDelay() <= 0 ? 0 : Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextInt(message.getRandomDelay())))));
+			if ((message.getFixedDelay().isPositive()) || (message.getRandomDelay().isPositive())) {
+				final long scheduledTimestamp = System.currentTimeMillis()
+						+ ((message.getFixedDelay().toMillis() + (Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextLong(message.getRandomDelay().toMillis())))));
 				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
 			}
 			// Sets the priority.
