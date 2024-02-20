@@ -226,6 +226,30 @@ public class JmsMessage<MessageType> {
 	}
 
 	/**
+	 * Sets the fixed delay.
+	 *
+	 * @param fixedDelay New fixedDelay.
+	 */
+	public void setFixedDelay(
+			final Duration fixedDelay) {
+		if (fixedDelay != null) {
+			this.setFixedDelay((int) fixedDelay.toMillis());
+		}
+	}
+
+	/**
+	 * Sets the fixedDelay.
+	 *
+	 * @param  fixedDelay New fixedDelay.
+	 * @return            Message.
+	 */
+	public JmsMessage<MessageType> withFixedDelay(
+			final Duration fixedDelay) {
+		this.setFixedDelay(fixedDelay);
+		return this;
+	}
+
+	/**
 	 * Sets the fixedDelay.
 	 *
 	 * @param  fixedDelay New fixedDelay.
@@ -255,6 +279,30 @@ public class JmsMessage<MessageType> {
 	public void setRandomDelay(
 			final Duration randomDelay) {
 		this.randomDelay = randomDelay;
+	}
+
+	/**
+	 * Sets the random delay.
+	 *
+	 * @param randomDelay New randomDelay.
+	 */
+	public void setRandomDelay(
+			final Duration randomDelay) {
+		if (randomDelay != null) {
+			this.setRandomDelay((int) randomDelay.toMillis());
+		}
+	}
+
+	/**
+	 * Sets the randomDelay.
+	 *
+	 * @param  randomDelay New randomDelay.
+	 * @return             Message.
+	 */
+	public JmsMessage<MessageType> withRandomDelay(
+			final Duration randomDelay) {
+		this.setRandomDelay(randomDelay);
+		return this;
 	}
 
 	/**
