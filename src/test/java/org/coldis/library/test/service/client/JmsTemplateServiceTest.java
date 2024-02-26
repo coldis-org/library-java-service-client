@@ -3,21 +3,30 @@ package org.coldis.library.test.service.client;
 import java.time.Duration;
 import java.util.Random;
 
+import org.coldis.library.test.ContainerExtension;
 import org.coldis.library.test.TestHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.testcontainers.containers.GenericContainer;
 
 import jakarta.jms.JMSException;
 
 /**
  * JMS message converter test.
  */
+@ExtendWith(ContainerExtension.class)
 @SpringBootTest(webEnvironment = WebEnvironment.DEFINED_PORT)
 public class JmsTemplateServiceTest {
+
+	/**
+	 * Artemis container.
+	 */
+	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
 
 	/**
 	 * Random.
