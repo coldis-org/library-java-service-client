@@ -183,7 +183,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
 			path.append("test3={test3}&");
@@ -215,7 +215,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (test5 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test5", test5);
 			path.append("test5={test5}&");
@@ -241,7 +241,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (test7 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test7", test7);
 			path.append("test7={test7}&");
@@ -318,7 +318,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
 			path.append("test3={test3}&");
@@ -430,7 +430,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (test != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test", test);
 			path.append("test={test}&");

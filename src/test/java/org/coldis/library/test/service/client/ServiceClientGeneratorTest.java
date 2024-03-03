@@ -116,7 +116,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			clonedDto.setTest5("6");
 			clonedDto.setTest7(7);
 			clonedDto.setTest88(new int[] { 5, 6 });
-			clonedDto.setTest10(List.of());
+			clonedDto.setTest10(null);
 			// Makes sure the object is transformed as expected on service call.
 			Assertions.assertEquals(clonedDto, this.serviceClient.test22(originalDto, null, "6", 7, new int[] { 5, 6 }, null));
 			// Re-sets the attributes to be changed in the service call.

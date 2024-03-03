@@ -147,7 +147,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			}
 		}
 		// If the parameter is not a collection nor an array.
-		else {
+		else if (${parameter.originalName} != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("${parameter.originalName}", ${parameter.originalName});
 			path.append("${parameter.name}={${parameter.originalName}}&");
