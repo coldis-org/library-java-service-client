@@ -99,6 +99,39 @@ public class TestService {
 	/**
 	 * Test service.
 	 *
+	 * @param  test1 Test parameter.
+	 * @param  test2 Test parameter.
+	 * @param  test3 Test parameter.
+	 * @param  test4 Test parameter.
+	 * @param  test5 Test parameter.
+	 * @param  test6 Test parameter.
+	 * @return       Test object.
+	 */
+	@RequestMapping(path = "22",  method = RequestMethod.PUT)
+	public DtoTestObject test22(
+			@RequestBody
+			final DtoTestObject test1,
+			@RequestHeader(required = false)
+			final String test2,
+			@RequestParam(required = false)
+			final String test3,
+			@RequestHeader
+			final Integer test4,
+			@RequestParam
+			final int[] test5,
+			@RequestParam(required = false)
+			final List<Integer> test6) {
+		test1.setTest3(test2);
+		test1.setTest5(test3);
+		test1.setTest7(test4);
+		test1.setTest8(test5);
+		test1.setTest10(test6);
+		return test1;
+	}
+
+	/**
+	 * Test service.
+	 *
 	 * @param  test Test argument.
 	 * @return      Test object.
 	 */
@@ -116,7 +149,7 @@ public class TestService {
 			final Resource test) {
 		return test;
 	}
-
+	
 	/**
 	 * Test service.
 	 *

@@ -2,6 +2,7 @@ package ${serviceClient.namespace};
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -155,9 +156,9 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		if (${parameter.originalName} != null) {
 			// Adds the header to the map.
 			GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(
-					${parameter.type.endsWith("[]")})List.of(${parameter.originalName}).toArray(new String[] {})
+					${parameter.type.endsWith("[]")})Arrays.toString(${parameter.originalName}).split("[\\[\\]]")[1].split(", ")
 							#{else}((String[])(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
-							((java.util.Collection)(java.lang.Object)${parameter.originalName}).toArray(new String[] {}) :
+							((java.util.Collection)(java.lang.Object)${parameter.originalName}).stream().map(Objects::toString).toArray() :
 							List.of(${parameter.originalName}.toString()).toArray(new String[] {})))#{end});
 		}
 #{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
