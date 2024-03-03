@@ -1,5 +1,6 @@
 package org.coldis.library.service.jms;
 
+import java.security.SecureRandom;
 import java.util.Map;
 import java.util.Random;
 
@@ -8,6 +9,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
+
+import jakarta.jms.JMSException;
 
 /**
  * JMS template helper.
@@ -19,7 +22,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	/**
 	 * Random.
 	 */
-	private static final Random RANDOM = new Random();
+	private static final Random RANDOM = new SecureRandom();
 
 	/**
 	 * @see org.coldis.library.service.jms.JmsTemplateHelper#send(org.springframework.jms.core.JmsTemplate,
@@ -53,18 +56,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			}
 			// Adds each extra properties.
 			for (final Map.Entry<String, Object> property : message.getProperties().entrySet()) {
-				if (property.getValue() instanceof String) {
-					jmsMessage.setStringProperty(property.getKey(), (String) property.getValue());
-				}
-				else if (property.getValue() instanceof Long) {
-					jmsMessage.setLongProperty(property.getKey(), (Long) property.getValue());
-				}
-				else if (property.getValue() instanceof Integer) {
-					jmsMessage.setIntProperty(property.getKey(), (Integer) property.getValue());
-				}
-				else if (property.getValue() instanceof Integer) {
-					jmsMessage.setBooleanProperty(property.getKey(), (Boolean) property.getValue());
-				}
+				jmsMessage.setObjectProperty(property.getKey(), property.getValue());
 				// TODO Other types.
 			}
 			// Returns the message.

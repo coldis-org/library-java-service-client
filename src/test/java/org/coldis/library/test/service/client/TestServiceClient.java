@@ -154,12 +154,12 @@ java.util.List<java.lang.Integer> test6
 MediaType.APPLICATION_JSON_VALUE);
 		// Sets the operation body.
 		body = test1;
-		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test2", (test2 == null ? 
-						List.of(test2).toArray(new String[] {}) : 
-						(String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
-						((java.util.Collection)(java.lang.Object)test2).toArray(new String[] {}) :
-						List.of(test2.toString()).toArray(new String[] {}))));
+		if(test2 != null) {
+			// Adds the header to the map.
+			GenericRestServiceClient.addHeaders(headers, false, "test2", ((String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
+							((java.util.Collection)(java.lang.Object)test2).toArray(new String[] {}) :
+							List.of(test2.toString()).toArray(new String[] {}))));
+		}
 		// If the parameter is an array.
 		if (test3 != null && test3.getClass().isArray()) {
 			// For each item.
@@ -186,12 +186,12 @@ MediaType.APPLICATION_JSON_VALUE);
 			uriParameters.put("test3", test3);
 			path.append("test3={test3}&");
 		}
-		// Adds the header to the map.
-		GenericRestServiceClient.addHeaders(headers, false, "test4", (test4 == null ? 
-						List.of(test4).toArray(new String[] {}) : 
-						(String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
-						((java.util.Collection)(java.lang.Object)test4).toArray(new String[] {}) :
-						List.of(test4.toString()).toArray(new String[] {}))));
+		if(test4 != null) {
+			// Adds the header to the map.
+			GenericRestServiceClient.addHeaders(headers, false, "test4", ((String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
+							((java.util.Collection)(java.lang.Object)test4).toArray(new String[] {}) :
+							List.of(test4.toString()).toArray(new String[] {}))));
+		}
 		// If the parameter is an array.
 		if (test5 != null && test5.getClass().isArray()) {
 			// For each item.
