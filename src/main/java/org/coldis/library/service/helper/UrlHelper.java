@@ -7,6 +7,8 @@ import java.util.Map.Entry;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -14,6 +16,9 @@ import org.springframework.web.util.UriComponentsBuilder;
  * URL helper.
  */
 public class UrlHelper {
+
+	/** Logger. */
+	private static final Logger LOGGER = LoggerFactory.getLogger(UrlHelper.class);
 
 	/**
 	 * Search engines.
@@ -220,13 +225,27 @@ public class UrlHelper {
 			final List<String> ownDomains,
 			final List<String> searchEngines) {
 		// Gets the actual source (filling the protocol if not filled).
-		UriComponents actualSource = (StringUtils.isNotBlank(source) ? UriComponentsBuilder.fromUriString(source).build() : null);
-		actualSource = ((actualSource != null) && (actualSource.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + source).build()
-				: actualSource);
-		// Gets the actual referrer (filling the protocol if not filled).
-		UriComponents actualReferrer = (StringUtils.isNotBlank(referrer) ? UriComponentsBuilder.fromUriString(referrer).build() : null);
-		actualReferrer = ((actualReferrer != null) && (actualReferrer.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + referrer).build()
-				: actualReferrer);
+		UriComponents actualSource = null;
+		try {
+			actualSource = (StringUtils.isNotBlank(source) ? UriComponentsBuilder.fromUriString(source).build() : null);
+			actualSource = ((actualSource != null) && (actualSource.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + source).build()
+					: actualSource);
+		}
+		catch (final IllegalArgumentException exception) {
+			UrlHelper.LOGGER.error("Error parsing source URL" + exception.getLocalizedMessage());
+			UrlHelper.LOGGER.debug("Error parsing source URL.", exception);
+		}
+		UriComponents actualReferrer = null;
+		try {
+			// Gets the actual referrer (filling the protocol if not filled).
+			actualReferrer = (StringUtils.isNotBlank(referrer) ? UriComponentsBuilder.fromUriString(referrer).build() : null);
+			actualReferrer = ((actualReferrer != null) && (actualReferrer.getHost() == null) ? UriComponentsBuilder.fromUriString("http://" + referrer).build()
+					: actualReferrer);
+		}
+		catch (final IllegalArgumentException exception) {
+			UrlHelper.LOGGER.error("Error parsing referrer URL" + exception.getLocalizedMessage());
+			UrlHelper.LOGGER.debug("Error parsing referrer URL.", exception);
+		}
 		// Gets the UTM variables.
 		return UrlHelper.getUtm(actualSource, actualReferrer, ownDomains, searchEngines);
 	}
