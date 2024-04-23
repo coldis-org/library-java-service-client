@@ -10,8 +10,6 @@ import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
 
-import jakarta.jms.JMSException;
-
 /**
  * JMS template helper.
  */
@@ -36,10 +34,13 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
-			if ((message.getFixedDelay().isPositive()) || (message.getRandomDelay().isPositive())) {
-				final long scheduledTimestamp = System.currentTimeMillis() + ((message.getFixedDelay().toMillis()
-						+ (message.getRandomDelay().isPositive() ? Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextLong(message.getRandomDelay().toMillis()))
-								: 0L)));
+			// Adds the delay.
+			if ((message.getFixedDelay() != null) || (message.getRandomDelay() != null)) {
+				final Long fixedDelay = (message.getFixedDelay() == null ? 0L : message.getFixedDelay().toMillis());
+				final Long randomDelay = ((message.getRandomDelay() != null) && message.getRandomDelay().isPositive()
+						? Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextLong(message.getRandomDelay().toMillis()))
+						: 0L);
+				final long scheduledTimestamp = (System.currentTimeMillis() + fixedDelay + randomDelay);
 				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
 			}
 			// Sets the priority.

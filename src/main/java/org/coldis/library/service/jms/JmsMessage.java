@@ -211,7 +211,7 @@ public class JmsMessage<MessageType> {
 	 * @return The fixedDelay.
 	 */
 	public Duration getFixedDelay() {
-		this.fixedDelay = ((this.fixedDelay == null) || (this.fixedDelay.isNegative()) ? Duration.ofMillis(0L) : this.fixedDelay);
+		this.fixedDelay = ((this.fixedDelay != null) && (this.fixedDelay.isNegative()) ? Duration.ofMillis(0L) : this.fixedDelay);
 		return this.fixedDelay;
 	}
 
@@ -243,7 +243,7 @@ public class JmsMessage<MessageType> {
 	 * @return The randomDelay.
 	 */
 	public Duration getRandomDelay() {
-		this.randomDelay = ((this.randomDelay == null) || (this.randomDelay.isNegative()) ? Duration.ofMillis(0L) : this.randomDelay);
+		this.randomDelay = ((this.randomDelay != null) && (this.randomDelay.isNegative()) ? Duration.ofMillis(0L) : this.randomDelay);
 		return this.randomDelay;
 	}
 
