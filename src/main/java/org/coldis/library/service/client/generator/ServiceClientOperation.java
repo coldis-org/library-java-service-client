@@ -66,6 +66,13 @@ public @interface ServiceClientOperation {
 	/**
 	 * Annotations to be copied.
 	 */
-	public Class<?>[] copiedAnnotations() default { Cacheable.class };
+	public Class<?>[] copiedAnnotations() default {
+
+			// Deprecation.
+			Deprecated.class,
+			// Cache.
+			Cacheable.class
+
+	};
 
 }
