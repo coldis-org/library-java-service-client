@@ -30,6 +30,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	public void send(
 			final JmsTemplate template,
 			final JmsMessage<?> message) {
+
 		// Tries sending the message.
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
