@@ -15,6 +15,8 @@ import org.springframework.jms.annotation.JmsListener;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -107,7 +109,7 @@ public class TestService {
 	 * @param  test6 Test parameter.
 	 * @return       Test object.
 	 */
-	@RequestMapping(path = "22",  method = RequestMethod.PUT)
+	@PutMapping(path = "22")
 	public DtoTestObject test22(
 			@RequestBody
 			final DtoTestObject test1,
@@ -186,9 +188,8 @@ public class TestService {
 	 * @param test Test argument.
 	 */
 	@Transactional
-	@RequestMapping(
-			path = "test5",
-			method = RequestMethod.PUT
+	@PostMapping(
+			path = "test5"
 	)
 	public void test5(
 			@RequestBody
