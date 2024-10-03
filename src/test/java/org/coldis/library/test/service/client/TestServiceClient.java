@@ -524,7 +524,7 @@ java.lang.Long test
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
 				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("test5") ? "" : "/test5") + "?"));
-		final HttpMethod method = HttpMethod.PUT;
+		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
 		final Map<String, Object> uriParameters = new HashMap<>();

@@ -42,10 +42,17 @@ import org.coldis.library.helper.TypeMirrorHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.lang.Nullable;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 
@@ -97,6 +104,13 @@ public class ServiceClientGenerator extends AbstractProcessor {
 		}
 		// Returns the operation metadata.
 		return serviceClientOperationAnno;
+	}
+
+	@Nullable
+	private String getRequestMappingPath(
+			String[] path,
+			String[] value) {
+		return ArrayUtils.isEmpty(path) ? ArrayUtils.isEmpty(value) ? null : value[0] : path[0];
 	}
 
 	/**
@@ -229,17 +243,59 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			}
 			// Tries to get the request mapping annotation.
 			final RequestMapping requestMapping = operation.getAnnotation(RequestMapping.class);
-			// If there is request mapping information.
-			if (requestMapping != null) {
-				// Sets the operation path, method and media type.
-				serviceClientOperationMetadata.setPath(ArrayUtils.isEmpty(requestMapping.path())
-						? (ArrayUtils.isEmpty(requestMapping.value()) ? serviceClientOperationMetadata.getPath() : requestMapping.value()[0])
-						: requestMapping.path()[0]);
-				serviceClientOperationMetadata.setMethod(
-						ArrayUtils.isEmpty(requestMapping.method()) ? serviceClientOperationMetadata.getMethod() : requestMapping.method()[0].name());
-				serviceClientOperationMetadata.setMediaType(
-						ArrayUtils.isEmpty(requestMapping.consumes()) ? serviceClientOperationMetadata.getMediaType() : requestMapping.consumes()[0]);
-			}
+			final GetMapping getMapping = operation.getAnnotation(GetMapping.class);
+			final PostMapping postMapping = operation.getAnnotation(PostMapping.class);
+			final PutMapping putMapping = operation.getAnnotation(PutMapping.class);
+			final PatchMapping patchMapping = operation.getAnnotation(PatchMapping.class);
+			final DeleteMapping deleteMapping = operation.getAnnotation(DeleteMapping.class);
+
+			final String getPath = getMapping != null ? this.getRequestMappingPath(getMapping.path(), getMapping.value()) : null;
+			final String postPath = postMapping != null ? this.getRequestMappingPath(postMapping.path(), postMapping.value()) : null;
+			final String putPath = putMapping != null ? this.getRequestMappingPath(putMapping.path(), putMapping.value()) : null;
+			final String patchPath = patchMapping != null ? this.getRequestMappingPath(patchMapping.path(), patchMapping.value()) : null;
+			final String deletePath = deleteMapping != null ? this.getRequestMappingPath(deleteMapping.path(), deleteMapping.value()) : null;
+			final String requestPath = requestMapping != null ? this.getRequestMappingPath(requestMapping.path(), requestMapping.value()) : null;
+			final String path = getPath != null
+					? getPath
+					: postPath != null ? postPath : putPath != null ? putPath : patchPath != null ? patchPath : deletePath != null ? deletePath : requestPath;
+
+			final RequestMethod method = getMapping != null
+					? RequestMethod.GET
+					: postMapping != null
+							? RequestMethod.POST
+							: putMapping != null
+									? RequestMethod.PUT
+									: patchMapping != null
+											? RequestMethod.PATCH
+											: deleteMapping != null
+													? RequestMethod.DELETE
+													: requestMapping != null && !ArrayUtils.isEmpty(requestMapping.method())
+															? requestMapping.method()[0]
+															: null;
+
+			final String getMediaType = getMapping != null ? !ArrayUtils.isEmpty(getMapping.consumes()) ? getMapping.consumes()[0] : null : null;
+			final String postMeditType = postMapping != null ? !ArrayUtils.isEmpty(postMapping.consumes()) ? postMapping.consumes()[0] : null : null;
+			final String putMeditType = putMapping != null ? !ArrayUtils.isEmpty(putMapping.consumes()) ? putMapping.consumes()[0] : null : null;
+			final String patchMeditType = patchMapping != null ? !ArrayUtils.isEmpty(patchMapping.consumes()) ? patchMapping.consumes()[0] : null : null;
+			final String deleteMeditType = deleteMapping != null ? !ArrayUtils.isEmpty(deleteMapping.consumes()) ? deleteMapping.consumes()[0] : null : null;
+			final String requestMeditType = requestMapping != null ? !ArrayUtils.isEmpty(requestMapping.consumes()) ? requestMapping.consumes()[0] : null : null;
+			final String mediaType = getMediaType != null
+					? getMediaType
+					: postMeditType != null
+							? postMeditType
+							: putMeditType != null
+									? putMeditType
+									: patchMeditType != null
+											? patchMeditType
+											: deleteMeditType != null
+													? deleteMeditType
+													: requestMeditType;
+
+			// Sets the operation path, method and media type.
+			serviceClientOperationMetadata.setPath(path == null ? serviceClientOperationMetadata.getPath(): path);
+			serviceClientOperationMetadata.setMethod(method == null ? serviceClientOperationMetadata.getMethod() : method.name());
+			serviceClientOperationMetadata.setMediaType(mediaType == null ? serviceClientOperationMetadata.getMediaType() : mediaType);
+
 			// If the operation metadata annotation is present.
 			if (serviceClientOperationAnno != null) {
 				// Gets the return type value.
