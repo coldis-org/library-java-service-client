@@ -4,7 +4,10 @@ import java.time.Duration;
 import java.util.Random;
 
 import org.coldis.library.test.ContainerExtension;
+import org.coldis.library.test.StartTestWithContainerExtension;
+import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
+import org.coldis.library.test.TestWithContainer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,8 +22,10 @@ import jakarta.jms.JMSException;
 /**
  * JMS message converter test.
  */
-@ExtendWith(ContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.DEFINED_PORT)
+@TestWithContainer
+@ExtendWith(StartTestWithContainerExtension.class)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@ExtendWith(StopTestWithContainerExtension.class)
 public class JmsTemplateServiceTest {
 
 	/**

@@ -9,7 +9,10 @@ import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.ContainerExtension;
+import org.coldis.library.test.StartTestWithContainerExtension;
+import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
+import org.coldis.library.test.TestWithContainer;
 import org.coldis.library.test.service.client.dto.DtoTestObject2Dto;
 import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
 import org.junit.jupiter.api.Assertions;
@@ -28,8 +31,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * Service client generator test.
  */
-@ExtendWith(ContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.DEFINED_PORT)
+@TestWithContainer
+@ExtendWith(StartTestWithContainerExtension.class)
+@SpringBootTest(
+		webEnvironment = WebEnvironment.RANDOM_PORT
+)
+@ExtendWith(StopTestWithContainerExtension.class)
 public class ServiceClientGeneratorTest extends TestHelper {
 
 	/**
@@ -128,7 +135,6 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			// Makes sure the object is transformed as expected on service call.
 			Assertions.assertEquals(clonedDto, this.serviceClient.test22(originalDto, null, "9", 7, new int[] { 2, 1 }, List.of(1, 2)));
 
-			
 			// Serializes the test object.
 			final String serializedDto = ObjectMapperHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.
@@ -150,7 +156,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 		// Asserts that multipart request succeed.
 		Assertions.assertEquals("Test", this.serviceClient.test7(List.of(this.testFile)));
 	}
-	
+
 	/**
 	 * Tests the service client creation with information inherited from Spring
 	 * annotations.
@@ -181,8 +187,7 @@ public class ServiceClientGeneratorTest extends TestHelper {
 			clonedDto.setTest88(new int[] { 8, 9 });
 			clonedDto.setTest10(null);
 			// Makes sure the object is transformed as expected on service call.
-			Assertions.assertEquals(clonedDto, this.service2Client.test22(originalDto, "5", "6", 7, new int[] { 8, 9 },
-					null));
+			Assertions.assertEquals(clonedDto, this.service2Client.test22(originalDto, "5", "6", 7, new int[] { 8, 9 }, null));
 			// Serializes the test object.
 			final String serializedDto = ObjectMapperHelper.serialize(this.objectMapper, originalDto, null, false);
 			// Executes the operation and de-serializes the object.
