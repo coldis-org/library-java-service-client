@@ -1,6 +1,5 @@
 package org.coldis.library.test.service.client;
 
-import org.coldis.library.test.ContainerExtension;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestWithContainer;

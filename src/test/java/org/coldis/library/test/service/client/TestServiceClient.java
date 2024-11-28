@@ -100,7 +100,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -142,7 +142,7 @@ java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -276,7 +276,7 @@ java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("22") ? "" : "/22") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("22") ? "" : "/22") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -400,7 +400,7 @@ org.coldis.library.service.model.FileResource test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -437,7 +437,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -523,7 +523,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("test5") ? "" : "/test5") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test5") ? "" : "/test5") + "?"));
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -557,7 +557,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -592,7 +592,7 @@ java.util.List<org.springframework.core.io.Resource> test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:8080/test" + (StringUtils.isBlank("parts") ? "" : "/parts") + "?"));
+				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("parts") ? "" : "/parts") + "?"));
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

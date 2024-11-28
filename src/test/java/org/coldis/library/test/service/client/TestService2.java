@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @ServiceClient(
 		targetPath = "src/test/java",
 		namespace = "org.coldis.library.test.service.client",
-		endpoint = "http://localhost:8080/test2"
+		endpoint = "http://localhost:${local.server.port}/test2"
 )
 public class TestService2 {
 

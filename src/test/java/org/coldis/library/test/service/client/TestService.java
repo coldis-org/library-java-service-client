@@ -36,7 +36,7 @@ import com.fasterxml.jackson.annotation.JsonView;
 @ServiceClient(
 		targetPath = "src/test/java",
 		namespace = "org.coldis.library.test.service.client",
-		endpoint = "http://localhost:8080/test"
+		endpoint = "http://localhost:${local.server.port}/test"
 )
 public class TestService {
 

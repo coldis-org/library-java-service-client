@@ -3,7 +3,6 @@ package org.coldis.library.test.service.client;
 import java.time.Duration;
 import java.util.Random;
 
-import org.coldis.library.test.ContainerExtension;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;

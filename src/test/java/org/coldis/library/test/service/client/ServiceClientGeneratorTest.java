@@ -1,14 +1,12 @@
 package org.coldis.library.test.service.client;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
 import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.service.model.FileResource;
-import org.coldis.library.test.ContainerExtension;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
