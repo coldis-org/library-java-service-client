@@ -12,10 +12,11 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
  */
 @TestWithContainer
 @ExtendWith(StartTestWithContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT,
-properties = "org.coldis.library.service-client.always-sync=true")
+@SpringBootTest(
+		webEnvironment = WebEnvironment.RANDOM_PORT,
+		properties = "org.coldis.library.service-client.always-sync=true"
+)
 @ExtendWith(StopTestWithContainerExtension.class)
 public class ServiceClientGeneratorNoAsyncTest extends ServiceClientGeneratorTest {
-	
 
 }

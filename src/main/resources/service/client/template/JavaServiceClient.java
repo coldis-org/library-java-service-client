@@ -9,11 +9,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.helper.RandomHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.jms.JmsTemplateHelper;
@@ -47,6 +49,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Value resolver.
 	 */
 	private StringValueResolver valueResolver;
+	
 	
 	/**
 	 * Always-sync.
@@ -82,6 +85,24 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	}
 	
 	/**
+	 * Gets all available endpoints.
+	 * @return All available endpoints.
+	 */
+	private List<String> getEndpoints() {
+		String endpoints = this.valueResolver.resolveStringValue("${serviceClient.endpoint}");
+		return (endpoints == null ? null : List.of(endpoints.split(",")));
+	}
+	
+	/**
+	 * Gets one endpoint (balanced).
+	 * @return One endpoint (balanced).
+	 */
+	private String getEndpoint() {
+		List<String> endpoints = this.getEndpoints();
+		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
+	}
+	
+	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#
 	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
 	 */
@@ -107,7 +128,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("${serviceClient.endpoint}" + (StringUtils.isBlank("${operation.path}") ? "" : "/${operation.path}") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("${operation.path}") ? "" : "/${operation.path}") + "?"));
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

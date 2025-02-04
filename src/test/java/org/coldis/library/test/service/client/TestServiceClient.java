@@ -9,11 +9,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.helper.RandomHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.jms.JmsTemplateHelper;
@@ -49,6 +51,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	 */
 	private StringValueResolver valueResolver;
 	
+	
 	/**
 	 * Always-sync.
 	 */
@@ -81,6 +84,24 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 	}
 	
 	/**
+	 * Gets all available endpoints.
+	 * @return All available endpoints.
+	 */
+	private List<String> getEndpoints() {
+		String endpoints = this.valueResolver.resolveStringValue("http://localhost:${local.server.port}/test");
+		return (endpoints == null ? null : List.of(endpoints.split(",")));
+	}
+	
+	/**
+	 * Gets one endpoint (balanced).
+	 * @return One endpoint (balanced).
+	 */
+	private String getEndpoint() {
+		List<String> endpoints = this.getEndpoints();
+		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
+	}
+	
+	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#
 	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
 	 */
@@ -100,7 +121,7 @@ public class TestServiceClient implements EmbeddedValueResolverAware {
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -142,7 +163,7 @@ java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("") ? "" : "/") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("") ? "" : "/") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -276,7 +297,7 @@ java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("22") ? "" : "/22") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("22") ? "" : "/22") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -400,7 +421,7 @@ org.coldis.library.service.model.FileResource test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -437,7 +458,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("test") ? "" : "/test") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -523,7 +544,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("test5") ? "" : "/test5") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("test5") ? "" : "/test5") + "?"));
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -557,7 +578,7 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -592,7 +613,7 @@ java.util.List<org.springframework.core.io.Resource> test
 			) throws BusinessException {
 		// Operation parameters.
 		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue("http://localhost:${local.server.port}/test" + (StringUtils.isBlank("parts") ? "" : "/parts") + "?"));
+				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("parts") ? "" : "/parts") + "?"));
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
