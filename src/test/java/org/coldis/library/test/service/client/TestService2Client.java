@@ -148,9 +148,9 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 	 */
 	private String getDynamicEndpoint() {
 		String endpoint = this.getFixedEndpoint();
-		Object endpointBean = this.getEndpointBean();
+		final Object endpointBean = this.getEndpointBean();
 		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
-			ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
+			endpoint = ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
 		}
 		return endpoint;
 	}

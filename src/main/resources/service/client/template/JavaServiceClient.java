@@ -154,7 +154,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		String endpoint = this.getFixedEndpoint();
 		final Object endpointBean = this.getEndpointBean();
 		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
-			endpoint = ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
+			endpoint = (String) ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
 		}
 		return endpoint;
 	}
