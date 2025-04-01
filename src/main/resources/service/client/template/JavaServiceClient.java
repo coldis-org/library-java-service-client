@@ -150,7 +150,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Gets the dynamic endpoint.
 	 * @return The dynamic endpoint.
 	 */
-	private String getDynamicEndpoint() {
+	private String getActualEndpoint() {
 		String endpoint = this.getFixedEndpoint();
 		final Object endpointBean = this.getEndpointBean();
 		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
@@ -164,7 +164,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
-		String endpoints = this.getFixedEndpoint();
+		String endpoints = this.getActualEndpoint();
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 	

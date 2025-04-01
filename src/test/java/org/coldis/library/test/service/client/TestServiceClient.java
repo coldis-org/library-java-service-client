@@ -146,11 +146,11 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	 * Gets the dynamic endpoint.
 	 * @return The dynamic endpoint.
 	 */
-	private String getDynamicEndpoint() {
+	private String getActualEndpoint() {
 		String endpoint = this.getFixedEndpoint();
 		final Object endpointBean = this.getEndpointBean();
 		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
-			endpoint = ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
+			endpoint = (String) ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
 		}
 		return endpoint;
 	}
@@ -160,7 +160,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
-		String endpoints = this.getFixedEndpoint();
+		String endpoints = this.getActualEndpoint();
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 	
