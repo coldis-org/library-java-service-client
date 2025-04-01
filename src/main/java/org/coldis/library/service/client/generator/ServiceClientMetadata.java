@@ -64,6 +64,16 @@ public class ServiceClientMetadata implements Serializable {
 	private String endpoint;
 
 	/**
+	 * Service client endpoint bean name.
+	 */
+	private String endpointBean;
+
+	/**
+	 * Service client endpoint bean property.
+	 */
+	private String endpointBeanProperty;
+
+	/**
 	 * Internal service client qualifier to be used.
 	 */
 	private String serviceClientQualifier;
@@ -94,10 +104,21 @@ public class ServiceClientMetadata implements Serializable {
 	 * @param jmsListenerQualifier   JMS listener qualifier.
 	 * @param operations             Service client operations metadata.
 	 */
-	public ServiceClientMetadata(final String context, final String targetPath, final String templatePath,
-			final String fileExtension, final String namespace, final String superclass, final String name,
-			final String docComment, final String endpoint, final String serviceClientQualifier,
-			final String jmsListenerQualifier, final List<ServiceClientOperationMetadata> operations) {
+	public ServiceClientMetadata(
+			final String context,
+			final String targetPath,
+			final String templatePath,
+			final String fileExtension,
+			final String namespace,
+			final String superclass,
+			final String name,
+			final String docComment,
+			final String endpoint,
+			final String endpointBean,
+			final String endpointBeanProperty,
+			final String serviceClientQualifier,
+			final String jmsListenerQualifier,
+			final List<ServiceClientOperationMetadata> operations) {
 		super();
 		this.context = context;
 		this.targetPath = targetPath;
@@ -108,6 +129,8 @@ public class ServiceClientMetadata implements Serializable {
 		this.name = name;
 		this.docComment = docComment;
 		this.endpoint = endpoint;
+		this.endpointBean = endpointBean;
+		this.endpointBeanProperty = endpointBeanProperty;
 		this.serviceClientQualifier = serviceClientQualifier;
 		this.jmsListenerQualifier = jmsListenerQualifier;
 		this.operations = operations;
@@ -127,7 +150,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param context New context.
 	 */
-	public void setContext(final String context) {
+	public void setContext(
+			final String context) {
 		this.context = context;
 	}
 
@@ -145,7 +169,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param targetPath New targetPath.
 	 */
-	public void setTargetPath(final String targetPath) {
+	public void setTargetPath(
+			final String targetPath) {
 		this.targetPath = targetPath;
 	}
 
@@ -163,7 +188,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param templatePath New templatePath.
 	 */
-	public void setTemplatePath(final String templatePath) {
+	public void setTemplatePath(
+			final String templatePath) {
 		this.templatePath = templatePath;
 	}
 
@@ -181,7 +207,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param fileExtension New fileExtension.
 	 */
-	public void setFileExtension(final String fileExtension) {
+	public void setFileExtension(
+			final String fileExtension) {
 		this.fileExtension = fileExtension;
 	}
 
@@ -199,7 +226,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param namespace New namespace.
 	 */
-	public void setNamespace(final String namespace) {
+	public void setNamespace(
+			final String namespace) {
 		this.namespace = namespace;
 	}
 
@@ -226,7 +254,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param superclass New superclass.
 	 */
-	public void setSuperclass(final String superclass) {
+	public void setSuperclass(
+			final String superclass) {
 		this.superclass = superclass;
 	}
 
@@ -244,7 +273,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param name New name.
 	 */
-	public void setName(final String name) {
+	public void setName(
+			final String name) {
 		this.name = name;
 	}
 
@@ -262,7 +292,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param docComment New docComment.
 	 */
-	public void setDocComment(final String docComment) {
+	public void setDocComment(
+			final String docComment) {
 		this.docComment = docComment;
 	}
 
@@ -280,8 +311,45 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param endpoint New endpoint.
 	 */
-	public void setEndpoint(final String endpoint) {
+	public void setEndpoint(
+			final String endpoint) {
 		this.endpoint = endpoint;
+	}
+	
+	
+
+	/**
+	 * Gets the endpointBean.
+	 * @return The endpointBean.
+	 */
+	public String getEndpointBean() {
+		return endpointBean;
+	}
+
+	/**
+	 * Sets the endpointBean.
+	 * @param endpointBean New endpointBean.
+	 */
+	public void setEndpointBean(
+			String endpointBean) {
+		this.endpointBean = endpointBean;
+	}
+
+	/**
+	 * Gets the endpointBeanProperty.
+	 * @return The endpointBeanProperty.
+	 */
+	public String getEndpointBeanProperty() {
+		return endpointBeanProperty;
+	}
+
+	/**
+	 * Sets the endpointBeanProperty.
+	 * @param endpointBeanProperty New endpointBeanProperty.
+	 */
+	public void setEndpointBeanProperty(
+			String endpointBeanProperty) {
+		this.endpointBeanProperty = endpointBeanProperty;
 	}
 
 	/**
@@ -298,7 +366,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param serviceClientQualifier New serviceClientQualifier.
 	 */
-	public void setServiceClientQualifier(final String serviceClientQualifier) {
+	public void setServiceClientQualifier(
+			final String serviceClientQualifier) {
 		this.serviceClientQualifier = serviceClientQualifier;
 	}
 
@@ -316,7 +385,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param jmsListenerQualifier New jmsListenerQualifier.
 	 */
-	public void setJmsListenerQualifier(final String jmsListenerQualifier) {
+	public void setJmsListenerQualifier(
+			final String jmsListenerQualifier) {
 		this.jmsListenerQualifier = jmsListenerQualifier;
 	}
 
@@ -340,7 +410,8 @@ public class ServiceClientMetadata implements Serializable {
 	 *
 	 * @param operations New operations.
 	 */
-	public void setOperations(final List<ServiceClientOperationMetadata> operations) {
+	public void setOperations(
+			final List<ServiceClientOperationMetadata> operations) {
 		this.operations = operations;
 	}
 
@@ -349,31 +420,27 @@ public class ServiceClientMetadata implements Serializable {
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.context, this.docComment, this.endpoint, this.fileExtension, this.name, this.namespace,
-				this.operations, this.targetPath, this.superclass, this.templatePath);
+		return Objects.hash(this.context, this.docComment, this.endpoint, this.fileExtension, this.name, this.namespace, this.operations, this.targetPath,
+				this.superclass, this.templatePath);
 	}
 
 	/**
 	 * @see java.lang.Object#equals(java.lang.Object)
 	 */
 	@Override
-	public boolean equals(final Object obj) {
+	public boolean equals(
+			final Object obj) {
 		if (this == obj) {
 			return true;
 		}
-		if (obj == null) {
-			return false;
-		}
-		if (!(obj instanceof ServiceClientMetadata)) {
+		if ((obj == null) || !(obj instanceof ServiceClientMetadata)) {
 			return false;
 		}
 		final ServiceClientMetadata other = (ServiceClientMetadata) obj;
-		return Objects.equals(this.context, other.context) && Objects.equals(this.docComment, other.docComment)
-				&& Objects.equals(this.endpoint, other.endpoint)
+		return Objects.equals(this.context, other.context) && Objects.equals(this.docComment, other.docComment) && Objects.equals(this.endpoint, other.endpoint)
 				&& Objects.equals(this.fileExtension, other.fileExtension) && Objects.equals(this.name, other.name)
 				&& Objects.equals(this.namespace, other.namespace) && Objects.equals(this.operations, other.operations)
-				&& Objects.equals(this.targetPath, other.targetPath)
-				&& Objects.equals(this.superclass, other.superclass)
+				&& Objects.equals(this.targetPath, other.targetPath) && Objects.equals(this.superclass, other.superclass)
 				&& Objects.equals(this.templatePath, other.templatePath);
 	}
 

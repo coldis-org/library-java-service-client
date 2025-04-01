@@ -15,9 +15,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.helper.ObjectHelper;
 import org.coldis.library.helper.RandomHelper;
+import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
+import org.coldis.library.service.client.generator.ServiceClientOperation;
 import org.coldis.library.service.jms.JmsTemplateHelper;
 import org.coldis.library.service.jms.JmsMessage;
 import org.springframework.beans.BeansException;
@@ -25,6 +28,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.EmbeddedValueResolverAware;
@@ -44,13 +49,28 @@ import org.springframework.util.StringValueResolver;
   */
 @Service
 @SuppressWarnings({ "rawtypes", "unchecked" })
-public class TestService2Client implements EmbeddedValueResolverAware {
+public class TestService2Client implements ApplicationContextAware, EmbeddedValueResolverAware {
 	
-	/**
-	 * Value resolver.
-	 */
+	/** Application context. */
+	private ApplicationContext applicationContext;
+
+	/** Value resolver. */
 	private StringValueResolver valueResolver;
 	
+	/**
+	 * Fixed endpoint.
+	 */
+	private String fixedEndpoint;
+	
+	/**
+	 * Endpoint bean.
+	 */
+	private Object endpointBean;
+	
+	/**
+	 * Endpoint bean property.
+	 */
+	private String endpointBeanProperty = "endpoint";
 	
 	/**
 	 * Always-sync.
@@ -74,7 +94,8 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	 * Service client.
 	 */
 	@Autowired
-@Qualifier(value = "restServiceClient")	private GenericRestServiceClient serviceClient;
+	@Qualifier(value = "restServiceClient")
+	private GenericRestServiceClient serviceClient;
 
 	/**
 	 * No arguments constructor.
@@ -84,11 +105,62 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 	}
 	
 	/**
+	* @see ApplicationContextAware#
+	*     setApplicationContext(org.springframework.context.ApplicationContext)
+	*/
+	@Override
+	public void setApplicationContext(final ApplicationContext applicationContext) {
+		this.applicationContext = applicationContext;
+	}
+
+	
+	/**
+	 * @see org.springframework.context.EmbeddedValueResolverAware#
+	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
+	 */
+	@Override
+	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
+		valueResolver = resolver;
+	}
+	
+	/** 
+	 * Gets the fixed endpoint.
+	 * @return The fixed endpoint.
+	 */
+	private String getFixedEndpoint() {
+		this.fixedEndpoint = (this.fixedEndpoint == null ? this.valueResolver.resolveStringValue("http://localhost:${local.server.port}/test2") : this.fixedEndpoint);
+		this.fixedEndpoint = (this.fixedEndpoint == null ? "" : this.fixedEndpoint);
+		return this.fixedEndpoint;
+	}
+	
+	/**
+	 * Gets the endpoint bean.
+	 * @return The endpoint bean.
+	 */
+	private Object getEndpointBean() {
+		this.endpointBean = (this.endpointBean == null && StringUtils.isEmpty(this.getFixedEndpoint()) ? this.applicationContext.getBean("") : this.endpointBean);
+		return this.endpointBean;
+	}
+	
+	/**
+	 * Gets the dynamic endpoint.
+	 * @return The dynamic endpoint.
+	 */
+	private String getDynamicEndpoint() {
+		String endpoint = this.getFixedEndpoint();
+		Object endpointBean = this.getEndpointBean();
+		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
+			ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
+		}
+		return endpoint;
+	}
+	
+	/**
 	 * Gets all available endpoints.
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
-		String endpoints = this.valueResolver.resolveStringValue("http://localhost:${local.server.port}/test2");
+		String endpoints = this.getFixedEndpoint();
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 	
@@ -101,15 +173,13 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
 	}
 	
+
 	/**
-	 * @see org.springframework.context.EmbeddedValueResolverAware#
-	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
+	 * Endpoint for the operation.
 	 */
-	@Override
-	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
-		valueResolver = resolver;
-	}
-	
+	@Value("")
+	private String test1Path;
+
 	/**
 	 * Test service.
  
@@ -120,8 +190,7 @@ public class TestService2Client implements EmbeddedValueResolverAware {
 
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("") ? "" : "/") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test1Path) ? "" : "/" + test1Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -139,6 +208,13 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
 				
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("")
+	private String test2Path;
+
 	/**
 	 * Test service.
 
@@ -163,8 +239,7 @@ int[] test5,
 java.util.List<java.lang.Integer> test7
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("") ? "" : "/") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test2Path) ? "" : "/" + test2Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -274,6 +349,13 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 				
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("22")
+	private String test22Path;
+
 	/**
 	 * Test service.
 
@@ -298,8 +380,7 @@ int[] test5,
 java.util.List<java.lang.Integer> test7
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("22") ? "" : "/22") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test22Path) ? "" : "/" + test22Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -368,6 +449,13 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 				
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("/test")
+	private String test3Path;
+
 	/**
 	 * Test service.
 
@@ -381,8 +469,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 org.coldis.library.service.model.FileResource test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("/test") ? "" : "//test") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test3Path) ? "" : "/" + test3Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -405,6 +492,13 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 				
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("/test")
+	private String test4Path;
+
 	/**
 	 * Test service.
 
@@ -418,8 +512,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("/test") ? "" : "//test") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test4Path) ? "" : "/" + test4Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -463,6 +556,13 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 				
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("")
+	private String test5AsyncPath;
+
 	/**
 	 * Test service.
 
@@ -492,6 +592,13 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 		}
 	}
 	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("a/{test}")
+	private String test6Path;
+
 	/**
 	 * Test service.
 
@@ -505,8 +612,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.valueResolver
-				.resolveStringValue(this.getEndpoint() + (StringUtils.isBlank("a/{test}") ? "" : "/a/{test}") + "?"));
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test6Path) ? "" : "/" + test6Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

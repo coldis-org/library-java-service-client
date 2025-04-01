@@ -32,12 +32,12 @@ public class ServiceClientAutoConfiguration {
 	 * @param  restTemplateBuilder Rest template builder.
 	 * @return                     The rest template.
 	 */
-	@Bean(name = "restTemplate")
+	@Bean
 	@Qualifier(value = "restTemplate")
 	@ConditionalOnMissingBean(value = RestOperations.class)
-	public RestTemplate createRestTemplate(final RestTemplateBuilder restTemplateBuilder) {
-		return restTemplateBuilder.setConnectTimeout(Duration.ofSeconds(this.serviceClientTimeout))
-				.setReadTimeout(Duration.ofSeconds(this.serviceClientTimeout)).build();
+	public RestTemplate restTemplate(final RestTemplateBuilder restTemplateBuilder) {
+		return restTemplateBuilder.connectTimeout(Duration.ofSeconds(this.serviceClientTimeout))
+				.readTimeout(Duration.ofSeconds(this.serviceClientTimeout)).build();
 	}
 
 	/**
@@ -45,9 +45,9 @@ public class ServiceClientAutoConfiguration {
 	 *
 	 * @return The service client.
 	 */
-	@Bean(name = "restServiceClient")
+	@Bean
 	@Qualifier(value = "restServiceClient")
-	public GenericRestServiceClient createRestServiceClient() {
+	public GenericRestServiceClient restServiceClient() {
 		return new GenericRestServiceClient();
 	}
 

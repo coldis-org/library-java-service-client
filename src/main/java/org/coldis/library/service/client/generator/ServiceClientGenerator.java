@@ -108,8 +108,8 @@ public class ServiceClientGenerator extends AbstractProcessor {
 
 	@Nullable
 	private String getRequestMappingPath(
-			String[] path,
-			String[] value) {
+			final String[] path,
+			final String[] value) {
 		return ArrayUtils.isEmpty(path) ? ArrayUtils.isEmpty(value) ? null : value[0] : path[0];
 	}
 
@@ -255,22 +255,15 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			final String patchPath = patchMapping != null ? this.getRequestMappingPath(patchMapping.path(), patchMapping.value()) : null;
 			final String deletePath = deleteMapping != null ? this.getRequestMappingPath(deleteMapping.path(), deleteMapping.value()) : null;
 			final String requestPath = requestMapping != null ? this.getRequestMappingPath(requestMapping.path(), requestMapping.value()) : null;
-			final String path = getPath != null
-					? getPath
+			final String path = getPath != null ? getPath
 					: postPath != null ? postPath : putPath != null ? putPath : patchPath != null ? patchPath : deletePath != null ? deletePath : requestPath;
 
-			final RequestMethod method = getMapping != null
-					? RequestMethod.GET
-					: postMapping != null
-							? RequestMethod.POST
-							: putMapping != null
-									? RequestMethod.PUT
-									: patchMapping != null
-											? RequestMethod.PATCH
-											: deleteMapping != null
-													? RequestMethod.DELETE
-													: requestMapping != null && !ArrayUtils.isEmpty(requestMapping.method())
-															? requestMapping.method()[0]
+			final RequestMethod method = getMapping != null ? RequestMethod.GET
+					: postMapping != null ? RequestMethod.POST
+							: putMapping != null ? RequestMethod.PUT
+									: patchMapping != null ? RequestMethod.PATCH
+											: deleteMapping != null ? RequestMethod.DELETE
+													: (requestMapping != null) && !ArrayUtils.isEmpty(requestMapping.method()) ? requestMapping.method()[0]
 															: null;
 
 			final String getMediaType = getMapping != null ? !ArrayUtils.isEmpty(getMapping.consumes()) ? getMapping.consumes()[0] : null : null;
@@ -278,21 +271,15 @@ public class ServiceClientGenerator extends AbstractProcessor {
 			final String putMeditType = putMapping != null ? !ArrayUtils.isEmpty(putMapping.consumes()) ? putMapping.consumes()[0] : null : null;
 			final String patchMeditType = patchMapping != null ? !ArrayUtils.isEmpty(patchMapping.consumes()) ? patchMapping.consumes()[0] : null : null;
 			final String deleteMeditType = deleteMapping != null ? !ArrayUtils.isEmpty(deleteMapping.consumes()) ? deleteMapping.consumes()[0] : null : null;
-			final String requestMeditType = requestMapping != null ? !ArrayUtils.isEmpty(requestMapping.consumes()) ? requestMapping.consumes()[0] : null : null;
-			final String mediaType = getMediaType != null
-					? getMediaType
-					: postMeditType != null
-							? postMeditType
-							: putMeditType != null
-									? putMeditType
-									: patchMeditType != null
-											? patchMeditType
-											: deleteMeditType != null
-													? deleteMeditType
-													: requestMeditType;
+			final String requestMeditType = requestMapping != null ? !ArrayUtils.isEmpty(requestMapping.consumes()) ? requestMapping.consumes()[0] : null
+					: null;
+			final String mediaType = getMediaType != null ? getMediaType
+					: postMeditType != null ? postMeditType
+							: putMeditType != null ? putMeditType
+									: patchMeditType != null ? patchMeditType : deleteMeditType != null ? deleteMeditType : requestMeditType;
 
 			// Sets the operation path, method and media type.
-			serviceClientOperationMetadata.setPath(path == null ? serviceClientOperationMetadata.getPath(): path);
+			serviceClientOperationMetadata.setPath(path == null ? serviceClientOperationMetadata.getPath() : path);
 			serviceClientOperationMetadata.setMethod(method == null ? serviceClientOperationMetadata.getMethod() : method.name());
 			serviceClientOperationMetadata.setMediaType(mediaType == null ? serviceClientOperationMetadata.getMediaType() : mediaType);
 
@@ -347,8 +334,9 @@ public class ServiceClientGenerator extends AbstractProcessor {
 				serviceClientTypeAnno.templatePath(), serviceClientTypeAnno.fileExtension(), serviceClientTypeAnno.namespace(),
 				serviceClientTypeAnno.superclass(),
 				(serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client" : serviceClientTypeAnno.name()),
-				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(),
-				serviceClientTypeAnno.serviceClientQualifier(), serviceClientTypeAnno.jmsListenerQualifier(), null);
+				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(), serviceClientTypeAnno.endpointBean(),
+				serviceClientTypeAnno.endpointBeanProperty(), serviceClientTypeAnno.serviceClientQualifier(), serviceClientTypeAnno.jmsListenerQualifier(),
+				null);
 		// TODO Get request mapping information.
 		// If operations metadata should also be retrieved.
 		if (alsoGetOperationsMetadata) {
