@@ -155,6 +155,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		final Object endpointBean = this.getEndpointBean();
 		if (endpointBean != null && StringUtils.isNotBlank(this.endpointBeanProperty)) {
 			endpoint = (String) ReflectionHelper.getAttribute(endpointBean, this.endpointBeanProperty);
+			endpoint = (endpoint != null && endpoint.contains("${") ? valueResolver.resolveStringValue(endpoint) : endpoint);
 		}
 		return endpoint;
 	}
