@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serializable;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -270,25 +272,20 @@ public class ServiceClientOperationMetadata implements Serializable {
 		this.parameters = parameters;
 	}
 
-	@JsonIgnore
 	public String getOperationPathName(){
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("MD5");
+			byte[] digest = messageDigest.digest((this.getName() + getPath()).getBytes());
 
-		List<String> pathVariables = new ArrayList<>();
-		Matcher matcher = Pattern.compile("\\{(.*?)}").matcher(path);
-		while (matcher.find()) {
-			pathVariables.add(StringUtils.capitalize(matcher.group(1)));
-		}
+			StringBuilder hex = new StringBuilder();
+			for (int i = 0; i < 6; i++) {
+				hex.append(String.format("%02x", digest[i]));
+			}
 
-		String[] parts = path.replaceAll("\\{.*?}", "").replace("*", "All").split("/");
-
-		String pascalPath = Arrays.stream(parts)
-				.filter(p -> !p.isBlank())
-				.map(StringUtils::capitalize)
-				.collect(Collectors.joining());
-
-		String fullPath = pascalPath + (pathVariables.isEmpty() ? "" : "By" + String.join("And", pathVariables));
-
-		return getName() + fullPath;
+			return getName() + hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
 	}
 
 }
