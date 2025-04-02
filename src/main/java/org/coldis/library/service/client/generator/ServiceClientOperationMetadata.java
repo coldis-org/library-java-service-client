@@ -1,8 +1,16 @@
 package org.coldis.library.service.client.generator;
 
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static org.apache.commons.lang3.StringUtils.capitalize;
 
 /**
  * Service client operation metadata.
@@ -259,6 +267,26 @@ public class ServiceClientOperationMetadata implements Serializable {
 	public void setParameters(
 			final List<ServiceClientOperationParameterMetadata> parameters) {
 		this.parameters = parameters;
+	}
+
+	public String getOperationPathName(){
+
+		List<String> pathVariables = new ArrayList<>();
+		Matcher matcher = Pattern.compile("\\{(.*?)}").matcher(path);
+		while (matcher.find()) {
+			pathVariables.add(StringUtils.capitalize(matcher.group(1)));
+		}
+
+		String[] parts = path.replaceAll("\\{.*?}", "").replace("*", "All").split("/");
+
+		String pascalPath = Arrays.stream(parts)
+				.filter(p -> !p.isBlank())
+				.map(StringUtils::capitalize)
+				.collect(Collectors.joining());
+
+		String fullPath = pascalPath + (pathVariables.isEmpty() ? "" : "By" + String.join("And", pathVariables));
+
+		return getName() + fullPath;
 	}
 
 }

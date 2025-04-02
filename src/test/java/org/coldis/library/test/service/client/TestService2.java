@@ -59,6 +59,22 @@ public class TestService2 {
 
 	/**
 	 * Test service.
+	 */
+	@RequestMapping(path = "{code}", method = RequestMethod.GET)
+	public void test1(@PathVariable final String code) {
+
+	}
+
+	/**
+	 * Test service.
+	 */
+	@RequestMapping(path = "/*/test/*", method = RequestMethod.GET)
+	public void test1(@PathVariable final Integer test) {
+
+	}
+
+	/**
+	 * Test service.
 	 *
 	 * @param  test1 Test parameter.
 	 * @param  test2 Test parameter.
