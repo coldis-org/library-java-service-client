@@ -45,33 +45,33 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringValueResolver;
 
 /**
-  * Test service.
+ * Test service.
   */
 @Service
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class TestServiceClient implements ApplicationContextAware, EmbeddedValueResolverAware {
-	
+
 	/** Application context. */
 	private ApplicationContext applicationContext;
 
 	/** Value resolver. */
 	private StringValueResolver valueResolver;
-	
+
 	/**
 	 * Fixed endpoint.
 	 */
 	private String fixedEndpoint;
-	
+
 	/**
 	 * Endpoint bean.
 	 */
 	private Object endpointBean;
-	
+
 	/**
 	 * Endpoint bean property.
 	 */
 	private String endpointBeanProperty = "endpoint";
-	
+
 	/**
 	 * Always-sync.
 	 */
@@ -83,13 +83,13 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	 */
 	@Autowired(required = false)
 	private JmsTemplate jmsTemplate;
-	
+
 	/**
 	 * JMS template helper.
 	 */
 	@Autowired(required = false)
 	private JmsTemplateHelper jmsTemplateHelper;
-	
+
 	/**
 	 * Service client.
 	 */
@@ -103,17 +103,17 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	public TestServiceClient() {
 		super();
 	}
-	
+
 	/**
-	* @see ApplicationContextAware#
-	*     setApplicationContext(org.springframework.context.ApplicationContext)
-	*/
+	 * @see ApplicationContextAware#
+	 *     setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
 	@Override
 	public void setApplicationContext(final ApplicationContext applicationContext) {
 		this.applicationContext = applicationContext;
 	}
 
-	
+
 	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#
 	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
@@ -122,8 +122,8 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
 		valueResolver = resolver;
 	}
-	
-	/** 
+
+	/**
 	 * Gets the fixed endpoint.
 	 * @return The fixed endpoint.
 	 */
@@ -132,7 +132,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		this.fixedEndpoint = (this.fixedEndpoint == null ? "" : this.fixedEndpoint);
 		return this.fixedEndpoint;
 	}
-	
+
 	/**
 	 * Gets the endpoint bean.
 	 * @return The endpoint bean.
@@ -141,7 +141,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		this.endpointBean = (this.endpointBean == null && StringUtils.isEmpty(this.getFixedEndpoint()) ? this.applicationContext.getBean("") : this.endpointBean);
 		return this.endpointBean;
 	}
-	
+
 	/**
 	 * Gets the dynamic endpoint.
 	 * @return The dynamic endpoint.
@@ -155,7 +155,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		}
 		return endpoint;
 	}
-	
+
 	/**
 	 * Gets all available endpoints.
 	 * @return All available endpoints.
@@ -164,7 +164,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		String endpoints = this.getActualEndpoint();
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
-	
+
 	/**
 	 * Gets one endpoint (balanced).
 	 * @return One endpoint (balanced).
@@ -183,7 +183,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 
 	/**
 	 * Test service.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	@com.fasterxml.jackson.annotation.JsonView
@@ -226,7 +226,7 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
  @param  test5 Test parameter.
  @param  test6 Test parameter.
  @return       Test object.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -255,8 +255,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		if (test2 != null) {
 			// Adds the header to the map.
 			GenericRestServiceClient.addHeaders(headers, false, "test2", ((String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
-							((java.util.Collection)(java.lang.Object)test2).stream().map(Objects::toString).toArray() :
-							List.of(test2.toString()).toArray(new String[] {}))));
+			((java.util.Collection)(java.lang.Object)test2).stream().map(Objects::toString).toArray() :
+			List.of(test2.toString()).toArray(new String[] {}))));
 		}
 		// If the parameter is an array.
 		if (test3 != null && test3.getClass().isArray()) {
@@ -287,8 +287,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		if (test4 != null) {
 			// Adds the header to the map.
 			GenericRestServiceClient.addHeaders(headers, false, "test4", ((String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
-							((java.util.Collection)(java.lang.Object)test4).stream().map(Objects::toString).toArray() :
-							List.of(test4.toString()).toArray(new String[] {}))));
+			((java.util.Collection)(java.lang.Object)test4).stream().map(Objects::toString).toArray() :
+			List.of(test4.toString()).toArray(new String[] {}))));
 		}
 		// If the parameter is an array.
 		if (test5 != null && test5.getClass().isArray()) {
@@ -366,7 +366,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
  @param  test5 Test parameter.
  @param  test6 Test parameter.
  @return       Test object.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -395,8 +395,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		if (test2 != null) {
 			// Adds the header to the map.
 			GenericRestServiceClient.addHeaders(headers, false, "test2", ((String[])(java.util.Collection.class.isAssignableFrom(test2.getClass()) ?
-							((java.util.Collection)(java.lang.Object)test2).stream().map(Objects::toString).toArray() :
-							List.of(test2.toString()).toArray(new String[] {}))));
+			((java.util.Collection)(java.lang.Object)test2).stream().map(Objects::toString).toArray() :
+			List.of(test2.toString()).toArray(new String[] {}))));
 		}
 		// If the parameter is an array.
 		if (test3 != null && test3.getClass().isArray()) {
@@ -427,8 +427,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		if (test4 != null) {
 			// Adds the header to the map.
 			GenericRestServiceClient.addHeaders(headers, false, "test4", ((String[])(java.util.Collection.class.isAssignableFrom(test4.getClass()) ?
-							((java.util.Collection)(java.lang.Object)test4).stream().map(Objects::toString).toArray() :
-							List.of(test4.toString()).toArray(new String[] {}))));
+			((java.util.Collection)(java.lang.Object)test4).stream().map(Objects::toString).toArray() :
+			List.of(test4.toString()).toArray(new String[] {}))));
 		}
 		// If the parameter is an array.
 		if (test5 != null && test5.getClass().isArray()) {
@@ -501,7 +501,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 
  @param  test Test argument.
  @return      Test object.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -523,8 +523,8 @@ org.coldis.library.service.model.FileResource test
 		// Adds the part parameter to the map.
 		partParameters.put("teste",
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
-						new ArrayList((java.util.Collection)(java.lang.Object)test) :
-						List.of(test)))));
+		new ArrayList((java.util.Collection)(java.lang.Object)test) :
+		List.of(test)))));
 		// Executes the operation and returns the response.
 return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
@@ -544,7 +544,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 
  @param  test Test argument.
  @return      Test object.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -607,12 +607,12 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Test service.
 
  @param test Test argument.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
 	public void test5Async(
-			JmsMessage<java.lang.Long> message
+	JmsMessage<java.lang.Long> message
 			) throws BusinessException {
 		String syncMethodName = "test5Async".replaceAll("Async", "");
 		Method syncMethod = MethodUtils.getMatchingMethod(this.getClass(), syncMethodName, message.getMessage().getClass());
@@ -643,7 +643,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Test service.
 
  @param test Test argument.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -683,7 +683,7 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
 
  @param  test Test argument.
  @return      Test object.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -724,7 +724,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
  @param  test        Test argument.
  @return             Test object.
  @throws IOException Exception.
- 
+
 	 * @throws BusinessException Any expected errors.
 	 */
 	
@@ -746,8 +746,8 @@ java.util.List<org.springframework.core.io.Resource> test
 		// Adds the part parameter to the map.
 		partParameters.put("test",
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
-						new ArrayList((java.util.Collection)(java.lang.Object)test) :
-						List.of(test)))));
+		new ArrayList((java.util.Collection)(java.lang.Object)test) :
+		List.of(test)))));
 		// Executes the operation and returns the response.
 return this.serviceClient.executeOperation(path.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,

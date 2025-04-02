@@ -1,5 +1,6 @@
 package org.coldis.library.service.client.generator;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serializable;
@@ -269,6 +270,7 @@ public class ServiceClientOperationMetadata implements Serializable {
 		this.parameters = parameters;
 	}
 
+	@JsonIgnore
 	public String getOperationPathName(){
 
 		List<String> pathVariables = new ArrayList<>();

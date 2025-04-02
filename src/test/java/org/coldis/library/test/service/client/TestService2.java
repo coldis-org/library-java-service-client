@@ -57,21 +57,13 @@ public class TestService2 {
 
 	}
 
-//	/**
-//	 * Test service.
-//	 */
-//	@RequestMapping(path = "{code}", method = RequestMethod.GET)
-//	public void test1(@PathVariable final String code) {
-//
-//	}
-//
-//	/**
-//	 * Test service.
-//	 */
-//	@RequestMapping(path = "/*/test/*", method = RequestMethod.GET)
-//	public void test1(@PathVariable final Integer test) {
-//
-//	}
+	/**
+	 * Test service.
+	 */
+	@RequestMapping(path = "{code}", method = RequestMethod.GET)
+	public void test1(@ServiceClientOperationParameter(kind = ServiceOperationParameterKind.PATH_VARIABLE) @PathVariable("code") final String code) {
+
+	}
 
 	/**
 	 * Test service.
