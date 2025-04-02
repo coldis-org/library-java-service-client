@@ -1,8 +1,19 @@
 package org.coldis.library.service.client.generator;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.Serializable;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static org.apache.commons.lang3.StringUtils.capitalize;
 
 /**
  * Service client operation metadata.
@@ -259,6 +270,22 @@ public class ServiceClientOperationMetadata implements Serializable {
 	public void setParameters(
 			final List<ServiceClientOperationParameterMetadata> parameters) {
 		this.parameters = parameters;
+	}
+
+	public String getOperationPathName(){
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("MD5");
+			byte[] digest = messageDigest.digest((this.getName() + getPath()).getBytes());
+
+			StringBuilder hex = new StringBuilder();
+			for (int i = 0; i < 6; i++) {
+				hex.append(String.format("%02x", digest[i]));
+			}
+
+			return getName() + hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
 	}
 
 }

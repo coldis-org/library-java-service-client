@@ -45,32 +45,32 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringValueResolver;
 
 /**
-  *${serviceClient.docComment}  */
+ *${serviceClient.docComment}  */
 @Service
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) extends ${serviceClient.superclass}#{end} implements ApplicationContextAware, EmbeddedValueResolverAware {
-	
+
 	/** Application context. */
 	private ApplicationContext applicationContext;
 
 	/** Value resolver. */
 	private StringValueResolver valueResolver;
-	
+
 	/**
 	 * Fixed endpoint.
 	 */
 	private String fixedEndpoint;
-	
+
 	/**
 	 * Endpoint bean.
 	 */
 	private Object endpointBean;
-	
+
 	/**
 	 * Endpoint bean property.
 	 */
 	private String endpointBeanProperty = "${serviceClient.endpointBeanProperty}";
-	
+
 	/**
 	 * Always-sync.
 	 */
@@ -85,13 +85,13 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	@Qualifier(value = "${serviceClient.jmsListenerQualifier}")
 	#{end}
 	private JmsTemplate jmsTemplate;
-	
+
 	/**
 	 * JMS template helper.
 	 */
 	@Autowired(required = false)
 	private JmsTemplateHelper jmsTemplateHelper;
-	
+
 	/**
 	 * Service client.
 	 */
@@ -107,17 +107,17 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public ${serviceClient.name}() {
 		super();
 	}
-	
+
 	/**
-	* @see ApplicationContextAware#
-	*     setApplicationContext(org.springframework.context.ApplicationContext)
-	*/
+	 * @see ApplicationContextAware#
+	 *     setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
 	@Override
 	public void setApplicationContext(final ApplicationContext applicationContext) {
 		this.applicationContext = applicationContext;
 	}
 
-	
+
 	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#
 	 *      setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
@@ -126,8 +126,8 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	public void setEmbeddedValueResolver(final StringValueResolver resolver) {
 		valueResolver = resolver;
 	}
-	
-	/** 
+
+	/**
 	 * Gets the fixed endpoint.
 	 * @return The fixed endpoint.
 	 */
@@ -136,7 +136,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		this.fixedEndpoint = (this.fixedEndpoint == null ? "" : this.fixedEndpoint);
 		return this.fixedEndpoint;
 	}
-	
+
 	/**
 	 * Gets the endpoint bean.
 	 * @return The endpoint bean.
@@ -145,7 +145,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		this.endpointBean = (this.endpointBean == null && StringUtils.isEmpty(this.getFixedEndpoint()) ? this.applicationContext.getBean("${serviceClient.endpointBean}") : this.endpointBean);
 		return this.endpointBean;
 	}
-	
+
 	/**
 	 * Gets the dynamic endpoint.
 	 * @return The dynamic endpoint.
@@ -159,7 +159,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		}
 		return endpoint;
 	}
-	
+
 	/**
 	 * Gets all available endpoints.
 	 * @return All available endpoints.
@@ -168,7 +168,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		String endpoints = this.getActualEndpoint();
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
-	
+
 	/**
 	 * Gets one endpoint (balanced).
 	 * @return One endpoint (balanced).
@@ -184,10 +184,10 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Endpoint for the operation.
 	 */
 	@Value("${operation.path}")
-	private String ${operation.name}Path;
+	private String ${operation.getOperationPathName()}Path;
 
 	/**
-	 *${operation.docComment} 
+	 *${operation.docComment}
 	 * @throws BusinessException Any expected errors.
 	 */
 	${operation.annotations}
@@ -196,12 +196,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			#{set}($currentItemIdx = 0)#{foreach}( ${parameter} in ${operation.parameters} )#{if}(${currentItemIdx} > 0),
 			#{end}#{set}($currentItemIdx = $currentItemIdx + 1)${parameter.type} ${parameter.originalName}#{end}
 		#{else}
-			JmsMessage<${operation.parameters[0].type}> message
+	JmsMessage<${operation.parameters[0].type}> message
 		#{end}
 			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(${operation.name}Path) ? "" : "/" + ${operation.name}Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(${operation.getOperationPathName()}Path) ? "" : "/" + ${operation.getOperationPathName()}Path) + "?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -252,8 +252,8 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			GenericRestServiceClient.addHeaders(headers, false, "${parameter.name}", #{if}(
 					${parameter.type.endsWith("[]")})Arrays.toString(${parameter.originalName}).split("[\\[\\]]")[1].split(", ")
 							#{else}((String[])(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
-							((java.util.Collection)(java.lang.Object)${parameter.originalName}).stream().map(Objects::toString).toArray() :
-							List.of(${parameter.originalName}.toString()).toArray(new String[] {})))#{end});
+			((java.util.Collection)(java.lang.Object)${parameter.originalName}).stream().map(Objects::toString).toArray() :
+			List.of(${parameter.originalName}.toString()).toArray(new String[] {})))#{end});
 		}
 #{elseif}(${parameter.kind.name().equals("REQUEST_PART")})
 		// Adds the part parameter to the map.
@@ -261,8 +261,8 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 				(${parameter.originalName} == null ? List.of() : (#{if}(
 				${parameter.type.endsWith("[]")})List.of(${parameter.originalName})
 						#{else}(java.util.Collection.class.isAssignableFrom(${parameter.originalName}.getClass()) ?
-						new ArrayList((java.util.Collection)(java.lang.Object)${parameter.originalName}) :
-						List.of(${parameter.originalName}))#{end})));
+		new ArrayList((java.util.Collection)(java.lang.Object)${parameter.originalName}) :
+		List.of(${parameter.originalName}))#{end})));
 #{end}
 #{end}
 		// Executes the operation and returns the response.
