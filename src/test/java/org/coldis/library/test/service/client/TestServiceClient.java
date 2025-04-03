@@ -179,7 +179,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	 * Endpoint for the operation.
 	 */
 	@Value("")
-	private String test15a105e8b9d40Path;
+	private String test1052689Path;
 
 	/**
 	 * Test service.
@@ -191,7 +191,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test15a105e8b9d40Path) ? "" : "/" + test15a105e8b9d40Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test1052689Path) ? "" : "/" + test1052689Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -214,7 +214,7 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("")
-	private String test2ad0234829205Path;
+	private String test2048567Path;
 
 	/**
 	 * Test service.
@@ -239,7 +239,7 @@ int[] test5,
 java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test2ad0234829205Path) ? "" : "/" + test2ad0234829205Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test2048567Path) ? "" : "/" + test2048567Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -354,7 +354,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("22")
-	private String test2288ac78015b2aPath;
+	private String test22082823Path;
 
 	/**
 	 * Test service.
@@ -379,7 +379,7 @@ int[] test5,
 java.util.List<java.lang.Integer> test6
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test2288ac78015b2aPath) ? "" : "/" + test2288ac78015b2aPath) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test22082823Path) ? "" : "/" + test22082823Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -494,7 +494,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("test")
-	private String test358e17d132c67Path;
+	private String test3068797Path;
 
 	/**
 	 * Test service.
@@ -509,7 +509,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 org.coldis.library.service.model.FileResource test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test358e17d132c67Path) ? "" : "/" + test358e17d132c67Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test3068797Path) ? "" : "/" + test3068797Path) + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -537,7 +537,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("test")
-	private String test44051a066af9cPath;
+	private String test4095099Path;
 
 	/**
 	 * Test service.
@@ -552,7 +552,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test44051a066af9cPath) ? "" : "/" + test44051a066af9cPath) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test4095099Path) ? "" : "/" + test4095099Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -601,7 +601,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("")
-	private String test5Asyncc099f7a425f1Path;
+	private String test5Async003775Path;
 
 	/**
 	 * Test service.
@@ -637,7 +637,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("test5")
-	private String test55b25f8c229dbPath;
+	private String test5055352Path;
 
 	/**
 	 * Test service.
@@ -651,7 +651,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test55b25f8c229dbPath) ? "" : "/" + test55b25f8c229dbPath) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test5055352Path) ? "" : "/" + test5055352Path) + "?");
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -676,7 +676,7 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("a/{test}")
-	private String test6770b77b2cd02Path;
+	private String test6066959Path;
 
 	/**
 	 * Test service.
@@ -691,7 +691,7 @@ this.serviceClient.executeOperation(path.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test6770b77b2cd02Path) ? "" : "/" + test6770b77b2cd02Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test6066959Path) ? "" : "/" + test6066959Path) + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -716,7 +716,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("parts")
-	private String test7211e75ae7e7dPath;
+	private String test7095682Path;
 
 	/**
 	 * Test service.
@@ -732,7 +732,7 @@ return this.serviceClient.executeOperation(path.toString(), method, headers,
 java.util.List<org.springframework.core.io.Resource> test
 			) throws BusinessException {
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test7211e75ae7e7dPath) ? "" : "/" + test7211e75ae7e7dPath) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(test7095682Path) ? "" : "/" + test7095682Path) + "?");
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

@@ -184,7 +184,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Endpoint for the operation.
 	 */
 	@Value("${operation.path}")
-	private String ${operation.getOperationPathName()}Path;
+	private String ${operation.pathName}Path;
 
 	/**
 	 *${operation.docComment}
@@ -201,7 +201,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(${operation.getOperationPathName()}Path) ? "" : "/" + ${operation.getOperationPathName()}Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(${operation.pathName}Path) ? "" : "/" + ${operation.pathName}Path) + "?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
