@@ -335,8 +335,8 @@ public class ServiceClientGenerator extends AbstractProcessor {
 				serviceClientTypeAnno.superclass(),
 				(serviceClientTypeAnno.name().isEmpty() ? originalService.getSimpleName() + "Client" : serviceClientTypeAnno.name()),
 				this.processingEnv.getElementUtils().getDocComment(originalService), serviceClientTypeAnno.endpoint(), serviceClientTypeAnno.endpointBean(),
-				serviceClientTypeAnno.endpointBeanProperty(), serviceClientTypeAnno.serviceClientQualifier(), serviceClientTypeAnno.jmsListenerQualifier(),
-				null);
+				serviceClientTypeAnno.endpointBeanProperty(), serviceClientTypeAnno.path(), serviceClientTypeAnno.serviceClientQualifier(),
+				serviceClientTypeAnno.jmsListenerQualifier(), null);
 		// TODO Get request mapping information.
 		// If operations metadata should also be retrieved.
 		if (alsoGetOperationsMetadata) {

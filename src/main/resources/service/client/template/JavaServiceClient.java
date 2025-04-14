@@ -70,6 +70,12 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Endpoint bean property.
 	 */
 	private String endpointBeanProperty = "${serviceClient.endpointBeanProperty}";
+	
+	/** 
+	 * Service path.
+	 */
+	@Value("${serviceClient.path}")
+	private String servicePath;
 
 	/**
 	 * Always-sync.
@@ -184,7 +190,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	 * Endpoint for the operation.
 	 */
 	@Value("${operation.path}")
-	private String ${operation.pathName}Path;
+	private String endpointPath${foreach.count};
 
 	/**
 	 *${operation.docComment}
@@ -201,7 +207,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + (StringUtils.isBlank(${operation.pathName}Path) ? "" : "/" + ${operation.pathName}Path) + "?");
+		StringBuilder path = new StringBuilder(this.getEndpoint() + servicePath + (StringUtils.isBlank(endpointPath${foreach.count}) ? "" : "/" + endpointPath${foreach.count}) + "?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;

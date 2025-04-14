@@ -74,6 +74,11 @@ public class ServiceClientMetadata implements Serializable {
 	private String endpointBeanProperty;
 
 	/**
+	 * Service path.
+	 */
+	private String path;
+
+	/**
 	 * Internal service client qualifier to be used.
 	 */
 	private String serviceClientQualifier;
@@ -116,6 +121,7 @@ public class ServiceClientMetadata implements Serializable {
 			final String endpoint,
 			final String endpointBean,
 			final String endpointBeanProperty,
+			final String path,
 			final String serviceClientQualifier,
 			final String jmsListenerQualifier,
 			final List<ServiceClientOperationMetadata> operations) {
@@ -131,6 +137,7 @@ public class ServiceClientMetadata implements Serializable {
 		this.endpoint = endpoint;
 		this.endpointBean = endpointBean;
 		this.endpointBeanProperty = endpointBeanProperty;
+		this.path = path;
 		this.serviceClientQualifier = serviceClientQualifier;
 		this.jmsListenerQualifier = jmsListenerQualifier;
 		this.operations = operations;
@@ -315,41 +322,62 @@ public class ServiceClientMetadata implements Serializable {
 			final String endpoint) {
 		this.endpoint = endpoint;
 	}
-	
-	
 
 	/**
 	 * Gets the endpointBean.
+	 *
 	 * @return The endpointBean.
 	 */
 	public String getEndpointBean() {
-		return endpointBean;
+		return this.endpointBean;
 	}
 
 	/**
 	 * Sets the endpointBean.
+	 *
 	 * @param endpointBean New endpointBean.
 	 */
 	public void setEndpointBean(
-			String endpointBean) {
+			final String endpointBean) {
 		this.endpointBean = endpointBean;
 	}
 
 	/**
 	 * Gets the endpointBeanProperty.
+	 *
 	 * @return The endpointBeanProperty.
 	 */
 	public String getEndpointBeanProperty() {
-		return endpointBeanProperty;
+		return this.endpointBeanProperty;
 	}
 
 	/**
 	 * Sets the endpointBeanProperty.
+	 *
 	 * @param endpointBeanProperty New endpointBeanProperty.
 	 */
 	public void setEndpointBeanProperty(
-			String endpointBeanProperty) {
+			final String endpointBeanProperty) {
 		this.endpointBeanProperty = endpointBeanProperty;
+	}
+
+	/**
+	 * Gets the path.
+	 *
+	 * @return The path.
+	 */
+	public String getPath() {
+		return this.path;
+	}
+
+	/**
+	 * Sets the path.
+	 *
+	 * @param path New path.
+	 */
+	public void setPath(
+			final String path) {
+		this.path = path;
 	}
 
 	/**

@@ -66,6 +66,11 @@ public @interface ServiceClient {
 	 * Service client endpoint bean property.
 	 */
 	public String endpointBeanProperty() default "endpoint";
+	
+	/**
+	 * Service client path.
+	 */
+	public String path() default "";
 
 	/**
 	 * Internal service client qualifier to be used.
