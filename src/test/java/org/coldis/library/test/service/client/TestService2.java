@@ -30,7 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 		targetPath = "src/test/java",
 		namespace = "org.coldis.library.test.service.client",
 		endpointBean = "testService2Properties",
-		endpointBeanProperty = "endpoint"
+		endpointBeanProperty = "endpoint",
+		path = "test2"
+		
 )
 public class TestService2 {
 

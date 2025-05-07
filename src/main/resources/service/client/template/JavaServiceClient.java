@@ -184,6 +184,16 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
 	}
 	
+	/**
+	 * Gets the service path.
+	 * @return The service path.
+	 */
+	private String getPath() {
+		String actualPath = (this.servicePath == null ? "" : this.servicePath);
+		actualPath = (StringUtils.isBlank(actualPath) || actualPath.startsWith("/") ? actualPath : "/" + actualPath);
+		return actualPath;
+	}
+	
 #{foreach}( ${operation} in ${serviceClient.operations} )
 
 	/**
@@ -207,7 +217,9 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			) throws BusinessException {
 #{if}(${operation.asynchronousDestination.isEmpty()})
 		// Operation parameters.
-		StringBuilder path = new StringBuilder(this.getEndpoint() + servicePath + (StringUtils.isBlank(endpointPath${foreach.count}) ? "" : "/" + endpointPath${foreach.count}) + "?");
+		String endpointPath = endpointPath${foreach.count};
+		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
+		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -224,7 +236,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		body = ${parameter.originalName};
 #{elseif}(${parameter.kind.name().equals("PATH_VARIABLE")})
 		// Adds the path parameter to the map.
-		path = new StringBuilder(path.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
+		url = new StringBuilder(url.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
 #{elseif}(${parameter.kind.name().equals("REQUEST_PARAMETER")})
 		// If the parameter is an array.
 		if (${parameter.originalName} != null && ${parameter.originalName}.getClass().isArray()) {
@@ -233,7 +245,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			for (Integer parameterItemIndex = 0; parameterItemIndex < ${parameter.originalName}s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.get(parameterItemIndex));
-				path.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+				url.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -243,14 +255,14 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			for (Integer parameterItemIndex = 0; ${parameter.originalName}s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.next());
-				path.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+				url.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (${parameter.originalName} != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("${parameter.originalName}", ${parameter.originalName});
-			path.append("${parameter.name}={${parameter.originalName}}&");
+			url.append("${parameter.name}={${parameter.originalName}}&");
 		}
 #{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		if (${parameter.originalName} != null) {
@@ -272,7 +284,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 #{end}
 #{end}
 		// Executes the operation and returns the response.
-		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(path.toString(), method, headers,
+		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(url.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
