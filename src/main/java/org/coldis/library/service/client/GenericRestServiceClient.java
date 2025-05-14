@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.commons.collections4.EnumerationUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
@@ -295,12 +296,13 @@ public class GenericRestServiceClient {
 				// Exception messages.
 				SimpleMessage[] exceptionMessages = null;
 				// If there is an exception response.
-				if (!StringUtils.isEmpty(exceptionResponse)) {
+				if (StringUtils.isNotBlank(exceptionResponse)) {
 					// Tries to get the exception messages.
 					exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse, SimpleMessage[].class, true);
 				}
 				// If no messages are available.
-				if ((exceptionMessages == null) || (exceptionMessages.length == 0)) {
+				if (ArrayUtils.isEmpty(exceptionMessages) || Arrays.stream(exceptionMessages)
+						.allMatch(message -> (message == null) || (StringUtils.isBlank(message.getCode()) && StringUtils.isBlank(message.getContent())))) {
 					// Creates a default message.
 					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error", exceptionResponse) };
 				}
