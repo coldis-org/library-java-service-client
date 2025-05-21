@@ -42,7 +42,9 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 						? Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextLong(message.getRandomDelay().toMillis()))
 						: 0L);
 				final long scheduledTimestamp = (System.currentTimeMillis() + fixedDelay + randomDelay);
-				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
+				if ((System.currentTimeMillis() + 1000) < scheduledTimestamp) {
+					jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), fixedDelay + randomDelay);
+				}
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
