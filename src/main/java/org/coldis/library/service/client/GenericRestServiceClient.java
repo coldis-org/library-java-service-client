@@ -298,9 +298,8 @@ public class GenericRestServiceClient {
 				final HttpStatusCodeException httpException = ((HttpStatusCodeException) actualException);
 				exceptionResponse = httpException.getResponseBodyAsString();
 				final List<String> retryAfterHeaders = httpException.getResponseHeaders().get(HttpHeaders.RETRY_AFTER);
-				final Duration retryIn = (CollectionUtils.isNotEmpty(retryAfterHeaders) && NumberUtils.isDigits(retryAfterHeaders.get(0))
-						? Duration.ofSeconds(Long.parseLong(retryAfterHeaders.get(0)))
-						: null);
+				final Duration retryIn = (CollectionUtils.isEmpty(retryAfterHeaders) ? BusinessException.DEFAULT_RETRY_IN
+						: (NumberUtils.isDigits(retryAfterHeaders.get(0)) ? Duration.ofSeconds(Long.parseLong(retryAfterHeaders.get(0))) : null));
 				// Exception messages.
 				SimpleMessage[] exceptionMessages = null;
 				// If there is an exception response.
