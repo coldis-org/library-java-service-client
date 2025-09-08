@@ -1,14 +1,18 @@
 package org.coldis.library.service.client;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.EnumerationUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.model.SimpleMessage;
@@ -293,6 +297,10 @@ public class GenericRestServiceClient {
 				// Gets the HTTP exception and its response.
 				final HttpStatusCodeException httpException = ((HttpStatusCodeException) actualException);
 				exceptionResponse = httpException.getResponseBodyAsString();
+				final List<String> retryAfterHeaders = httpException.getResponseHeaders().get(HttpHeaders.RETRY_AFTER);
+				final Duration retryIn = (CollectionUtils.isNotEmpty(retryAfterHeaders) && NumberUtils.isDigits(retryAfterHeaders.get(0))
+						? Duration.ofSeconds(Long.parseLong(retryAfterHeaders.get(0)))
+						: null);
 				// Exception messages.
 				SimpleMessage[] exceptionMessages = null;
 				// If there is an exception response.
@@ -309,13 +317,13 @@ public class GenericRestServiceClient {
 				// If the exception status code is for a client error.
 				if (this.isBusinessExceptionStatusCodes(httpException)) {
 					// Throws a business exception with the exception messages.
-					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(), httpException);
+					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(), retryIn, httpException);
 				}
 				// If the exception status code is not for bad request.
 				else {
 					// Throws an integration exception with the exception messages.
 					throw new IntegrationException(new SimpleMessage(exceptionMessages[0].getCode(), exceptionMessages[0].getContent()),
-							httpException.getStatusCode().value(), httpException);
+							httpException.getStatusCode().value(), retryIn, httpException);
 				}
 			}
 			// For every other exception.
