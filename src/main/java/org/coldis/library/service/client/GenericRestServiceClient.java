@@ -311,7 +311,8 @@ public class GenericRestServiceClient {
 				if (ArrayUtils.isEmpty(exceptionMessages) || Arrays.stream(exceptionMessages)
 						.allMatch(message -> (message == null) || (StringUtils.isBlank(message.getCode()) && StringUtils.isBlank(message.getContent())))) {
 					// Creates a default message.
-					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error", exceptionResponse) };
+					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error",
+							StringUtils.isBlank(exceptionResponse) ? "No error message. HTTP status: " + httpException.getStatusCode().value() : exceptionResponse) };
 				}
 				// If the exception status code is for a client error.
 				if (this.isBusinessExceptionStatusCodes(httpException)) {
