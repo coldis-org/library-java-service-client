@@ -106,6 +106,14 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	@Qualifier(value = "${serviceClient.serviceClientQualifier}")
 	#{end}
 	private GenericRestServiceClient serviceClient;
+	
+	/**
+	 * Sets the service client.
+	 * @param serviceClient Service client.
+	 */
+	public void setServiceClient(final GenericRestServiceClient serviceClient) {
+		this.serviceClient = serviceClient;
+	}
 
 	/**
 	 * No arguments constructor.

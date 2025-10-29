@@ -40,7 +40,7 @@ public class DtoTestObject2Dto implements Serializable {
 	 */
 	
 	public java.lang.Long getId() {
-		return id;
+		return  id ;
 	}
 	
 	/**
@@ -70,7 +70,7 @@ public class DtoTestObject2Dto implements Serializable {
 	 */
 	
 	public java.lang.String getTest() {
-		return test;
+		return  test ;
 	}
 	
 	/**
