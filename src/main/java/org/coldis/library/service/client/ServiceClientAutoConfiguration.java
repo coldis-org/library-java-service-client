@@ -13,6 +13,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestOperations;
@@ -21,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 /**
  * Service client auto configuration.
  */
+@Order(-700)
 @Configuration
 @PropertySource(
 		value = { "classpath:service-client.properties" },
@@ -94,7 +96,7 @@ public class ServiceClientAutoConfiguration {
 			final RestTemplateBuilder restTemplateBuilder,
 			final ClientHttpRequestFactory httpClientRequestFactory,
 			@Value(value = "${org.coldis.library.service-client.timeout}")
-			Long serviceClientTimeout) {
+			final Long serviceClientTimeout) {
 		return restTemplateBuilder.connectTimeout(Duration.ofSeconds(serviceClientTimeout)).readTimeout(Duration.ofSeconds(serviceClientTimeout))
 				.requestFactory(() -> httpClientRequestFactory).build();
 

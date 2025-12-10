@@ -1,13 +1,11 @@
-package org.coldis.library.test.service.client;
+package org.coldis.library.test.service;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.jms.annotation.EnableJms;
 
 /**
  * Test application.
  */
-@EnableJms
 @SpringBootApplication(scanBasePackages = "org.coldis")
 public class TestApplication {
 
@@ -16,7 +14,8 @@ public class TestApplication {
 	 *
 	 * @param args Application arguments.
 	 */
-	public static void main(final String[] args) {
+	public static void main(
+			final String[] args) {
 		SpringApplication.run(TestApplication.class, args);
 	}
 

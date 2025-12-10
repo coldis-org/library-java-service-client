@@ -102,6 +102,14 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	@Autowired
 	@Qualifier(value = "restServiceClient")
 	private GenericRestServiceClient serviceClient;
+	
+	/**
+	 * Sets the service client.
+	 * @param serviceClient Service client.
+	 */
+	public void setServiceClient(final GenericRestServiceClient serviceClient) {
+		this.serviceClient = serviceClient;
+	}
 
 	/**
 	 * No arguments constructor.
