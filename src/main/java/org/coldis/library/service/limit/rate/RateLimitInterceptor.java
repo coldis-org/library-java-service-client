@@ -6,14 +6,13 @@ import java.lang.reflect.Parameter;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.TreeMap;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -23,7 +22,6 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.coldis.library.exception.BusinessException;
 import org.coldis.library.model.SimpleMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +29,6 @@ import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.EmbeddedValueResolverAware;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.StringValueResolver;
 
 /**
@@ -51,14 +48,19 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	private static final Logger LOGGER = LoggerFactory.getLogger(RateLimitInterceptor.class);
 
 	/**
-	 * Local executions.
-	 */
-	public static Map<String, Map<String, RateLimitStats>> EXECUTIONS = new HashMap<>();
-
-	/**
 	 * Value resolver.
 	 */
 	public static StringValueResolver VALUE_RESOLVER;
+
+	/**
+	 * Application context.
+	 */
+	private ApplicationContext applicationContext;
+
+	/**
+	 * Cached rate limiter beans. Uses Optional to cache misses.
+	 */
+	private final Map<String, Optional<RateLimiter>> rateLimiters = new HashMap<>();
 
 	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#setEmbeddedValueResolver(org.springframework.util.StringValueResolver)
@@ -75,6 +77,26 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	@Override
 	public void setApplicationContext(
 			final ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;
+	}
+
+	/**
+	 * Gets a rate limiter bean by name, caching the result.
+	 *
+	 * @param  beanName Bean name.
+	 * @return          The rate limiter, or null if not found.
+	 */
+	private RateLimiter getRateLimiter(
+			final String beanName) {
+		return this.rateLimiters.computeIfAbsent(beanName, name -> {
+			try {
+				return Optional.of(this.applicationContext.getBean(name, RateLimiter.class));
+			}
+			catch (final Exception exception) {
+				RateLimitInterceptor.LOGGER.warn("Rate limiter bean '{}' not found.", name);
+				return Optional.empty();
+			}
+		}).orElse(null);
 	}
 
 	/**
@@ -110,92 +132,30 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	}
 
 	/**
-	 * Gets the local executions map.
-	 *
-	 * @param  name Name.
-	 * @param  key  Key.
-	 * @return      Local executions map.
-	 */
-	private Map<String, RateLimitStats> getLocalExecutionsMap(
-			final String name) {
-		Map<String, RateLimitStats> executionsMap = null;
-		synchronized (RateLimitInterceptor.EXECUTIONS) {
-			executionsMap = RateLimitInterceptor.EXECUTIONS.get(name);
-			if (executionsMap == null) {
-				executionsMap = new TreeMap<>();
-				RateLimitInterceptor.EXECUTIONS.put(name, executionsMap);
-			}
-		}
-		return executionsMap;
-	}
-
-	/**
-	 * Gets the local executions.
-	 *
-	 * @param  name Name.
-	 * @param  key  Key.
-	 * @return      Local executions.
-	 */
-	private RateLimitStats getLocalExecutions(
-			final String name,
-			final String key,
-			final RateLimit limit) {
-		RateLimitStats executions = null;
-		final Map<String, RateLimitStats> executionsMap = this.getLocalExecutionsMap(name);
-		synchronized (executionsMap) {
-			executions = executionsMap.get(key);
-			if (executions == null) {
-				executions = new RateLimitStats();
-				executionsMap.put(key, executions);
-			}
-		}
-		return executions;
-	}
-
-	/**
-	 * Gets the local executions.
-	 *
-	 * @param name Name.
-	 * @param key  Key.
-	 */
-	@Scheduled(cron = "0 */3 * * * *")
-	public void cleanLocalExecutions() {
-		for (final Map<String, RateLimitStats> executionsMap : RateLimitInterceptor.EXECUTIONS.values()) {
-			final List<String> emptyExecutionsList = executionsMap.entrySet().stream()
-					.filter(executions -> CollectionUtils.isEmpty(executions.getValue().getExecutions())).map(executions -> executions.getKey())
-					.collect(Collectors.toList());
-			for (final String emptyExecutions : emptyExecutionsList) {
-				synchronized (executionsMap) {
-					executionsMap.remove(emptyExecutions);
-				}
-			}
-		}
-	}
-
-	/**
-	 * Checks the local limit.
+	 * Checks the limit using the appropriate rate limiter.
 	 *
 	 * @param  name              Limit name.
-	 * @param  limit             Limit.
-	 *
-	 * @throws BusinessException If the limit was exceeded.
+	 * @param  key               Limit key.
+	 * @param  limit             Limit annotation.
+	 * @throws Exception         If the limit was exceeded or an error occurred.
 	 */
-	private void checkLocalLimit(
+	private void checkLimit(
 			final String name,
 			final String key,
 			final RateLimit limit) throws Exception {
-		// Gets the execution for the method.
-		final RateLimitStats executions = this.getLocalExecutions(name, key, limit);
-		// Adds the execution and check if the limit has been reached.
-		synchronized (executions) {
-			// Updates the constraints.
-			executions.setLimit(this.resolveLongValue(limit.limit()));
-			executions.setPeriod(Duration.ofSeconds(this.resolveLongValue(limit.period())));
-			executions.setBackoffPeriod(Duration.ofSeconds(this.resolveLongValue(limit.backoffPeriod())));
+		// Resolves the limit parameters.
+		final RateLimitConfig config = new RateLimitConfig(this.resolveLongValue(limit.limit()),
+				Duration.ofSeconds(this.resolveLongValue(limit.period())), Duration.ofSeconds(this.resolveLongValue(limit.backoffPeriod())),
+				(int) this.resolveLongValue(limit.bufferSize()), Duration.ofSeconds(this.resolveLongValue(limit.bufferDuration())));
 
-			// Checks the limit.
+		// Resolves the rate limiter bean by name.
+		final String limiterBeanName = RateLimitInterceptor.VALUE_RESOLVER.resolveStringValue(limit.limiter());
+		final RateLimiter rateLimiter = this.getRateLimiter(limiterBeanName);
+
+		// Checks the limit.
+		if (rateLimiter != null) {
 			try {
-				executions.checkLimit(name + (StringUtils.isNotBlank(key) ? "-" + key : ""));
+				rateLimiter.checkLimit(name, key, config);
 			}
 			// Uses a delegate exception if needed.
 			catch (final RateLimitException exception) {
@@ -308,14 +268,8 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 					final String name = (StringUtils.isBlank(limit.name())
 							? (targetObject.getClass().getSimpleName().toLowerCase() + "-" + method.getName().toLowerCase() + "-" + limit.period())
 							: limit.name());
-					// Checks the local limit.
-					if (Objects.equals(RateLimitInterceptor.VALUE_RESOLVER.resolveStringValue(limit.local()), "true")) {
-						this.checkLocalLimit(name, key, limit);
-					}
-					// Checks the central limit. FIXME
-					else {
-						this.checkLocalLimit(name, key, limit);
-					}
+					// Checks the limit.
+					this.checkLimit(name, key, limit);
 				}
 			}
 		}

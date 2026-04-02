@@ -1,8 +1,10 @@
 package org.coldis.library.service.limit.rate;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
-import java.util.TreeSet;
 
 import org.coldis.library.model.Typable;
 import org.coldis.library.model.view.ModelView;
@@ -44,18 +46,38 @@ public class RateLimitStats implements Typable {
 	/**
 	 * Executions.
 	 */
-	private TreeSet<Long> executions;
+	private ArrayList<Long> executions;
 
 	/**
-	 * Until when limitted.
+	 * Until when limited.
 	 */
-	private Long limittedUntil;
+	private Long limitedUntil;
 
 	/**
 	 * No arguments constructor.
 	 */
 	public RateLimitStats() {
 		super();
+	}
+
+	/**
+	 * Gets the current time in the appropriate unit.
+	 *
+	 * @return Current time.
+	 */
+	protected long currentTime() {
+		return System.nanoTime();
+	}
+
+	/**
+	 * Converts a duration to the appropriate time unit.
+	 *
+	 * @param  duration Duration.
+	 * @return          Duration in the appropriate unit.
+	 */
+	protected long toDurationUnit(
+			final Duration duration) {
+		return duration.toNanos();
 	}
 
 	/**
@@ -133,11 +155,11 @@ public class RateLimitStats implements Typable {
 	 * @return The executions.
 	 */
 	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
-	public TreeSet<Long> getExecutions() {
+	public ArrayList<Long> getExecutions() {
 		// Makes sure the set is initialized.
-		this.executions = (this.executions == null ? new TreeSet<>() : this.executions);
+		this.executions = (this.executions == null ? new ArrayList<>() : this.executions);
 		// Drops expired executions.
-		this.executions.removeIf(execution -> execution < (System.nanoTime() - (this.period.toNanos())));
+		this.executions.removeIf(execution -> execution < (this.currentTime() - this.toDurationUnit(this.getPeriod())));
 		// Returns the set.
 		return this.executions;
 	}
@@ -148,35 +170,35 @@ public class RateLimitStats implements Typable {
 	 * @param executions New executions.
 	 */
 	public void setExecutions(
-			final TreeSet<Long> executions) {
+			final ArrayList<Long> executions) {
 		this.executions = executions;
 	}
 
 	/**
-	 * Gets the limittedUntil.
+	 * Gets the limitedUntil.
 	 *
-	 * @return The limittedUntil.
+	 * @return The limitedUntil.
 	 */
 	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
-	public Long getLimittedUntil() {
+	public Long getLimitedUntil() {
 		// Clears limit if expired.
-		this.limittedUntil = ((this.limittedUntil != null) && (this.limittedUntil < System.nanoTime()) ? null : this.limittedUntil);
+		this.limitedUntil = ((this.limitedUntil != null) && (this.limitedUntil < this.currentTime()) ? null : this.limitedUntil);
 		// Re-checks the limit.
-		this.limittedUntil = ((this.limittedUntil == null)
-				? (this.getExecutions().size() >= this.getLimit()) ? this.getExecutions().first() + this.getBackoffPeriod().toNanos() : null
-				: this.limittedUntil);
+		this.limitedUntil = ((this.limitedUntil == null)
+				? (this.getExecutions().size() >= this.getLimit()) ? this.getExecutions().get(0) + this.toDurationUnit(this.getBackoffPeriod()) : null
+				: this.limitedUntil);
 		// Returns the limit.
-		return this.limittedUntil;
+		return this.limitedUntil;
 	}
 
 	/**
-	 * Sets the limittedUntil.
+	 * Sets the limitedUntil.
 	 *
-	 * @param limittedUntil New limittedUntil.
+	 * @param limitedUntil New limitedUntil.
 	 */
-	public void setLimittedUntil(
-			final Long limittedUntil) {
-		this.limittedUntil = limittedUntil;
+	public void setLimitedUntil(
+			final Long limitedUntil) {
+		this.limitedUntil = limitedUntil;
 	}
 
 	/**
@@ -188,11 +210,11 @@ public class RateLimitStats implements Typable {
 	public void checkLimit(
 			final String name) throws RateLimitException {
 		// Throws and exception limit is already scheduled.
-		if (this.getLimittedUntil() != null) {
+		if (this.getLimitedUntil() != null) {
 			throw new RateLimitException(name, this.limit);
 		}
 		else {
-			this.getExecutions().add(System.nanoTime());
+			this.getExecutions().add(this.currentTime());
 		}
 	}
 
@@ -210,7 +232,7 @@ public class RateLimitStats implements Typable {
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.backoffPeriod, this.executions, this.limit, this.limittedUntil, this.period);
+		return Objects.hash(this.backoffPeriod, this.executions, this.limit, this.limitedUntil, this.period);
 	}
 
 	/**
@@ -227,7 +249,7 @@ public class RateLimitStats implements Typable {
 		}
 		final RateLimitStats other = (RateLimitStats) obj;
 		return Objects.equals(this.backoffPeriod, other.backoffPeriod) && Objects.equals(this.executions, other.executions)
-				&& Objects.equals(this.limit, other.limit) && Objects.equals(this.limittedUntil, other.limittedUntil)
+				&& Objects.equals(this.limit, other.limit) && Objects.equals(this.limitedUntil, other.limitedUntil)
 				&& Objects.equals(this.period, other.period);
 	}
 

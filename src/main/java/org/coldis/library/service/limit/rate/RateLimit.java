@@ -36,14 +36,19 @@ public @interface RateLimit {
 	String limit();
 
 	/**
-	 * If the limit is local to the JVM or centralized.
+	 * Rate limiter bean name.
 	 */
-	String local() default "true";
+	String limiter() default "localRateLimiter";
 
 	/**
-	 * Relative error margin. Only applies to central limit.
+	 * Number of local executions before flushing to the central store.
 	 */
-	String errorMargin() default "10";
+	String bufferSize() default "5000";
+
+	/**
+	 * Maximum duration (in seconds) between flushes to the central store.
+	 */
+	String bufferDuration() default "60";
 
 	/**
 	 * If the exception type should be changed.
