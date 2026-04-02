@@ -54,8 +54,8 @@ public class RateLimitAutoConfiguration {
 		 * @param  transactionManager Transaction manager.
 		 * @return                    The central rate limiter.
 		 */
-		@Bean(name = "centralRateLimiter")
-		@ConditionalOnMissingBean(name = "centralRateLimiter")
+		@Bean(name = "jpaRateLimiter")
+		@ConditionalOnMissingBean(name = "jpaRateLimiter")
 		public JpaRateLimiter createCentralRateLimiter(final PlatformTransactionManager transactionManager) {
 			return new JpaRateLimiter(transactionManager);
 		}

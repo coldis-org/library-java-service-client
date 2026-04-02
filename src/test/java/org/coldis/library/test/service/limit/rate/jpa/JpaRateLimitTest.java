@@ -27,8 +27,8 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	 * Central rate limiter.
 	 */
 	@Autowired
-	@Qualifier("centralRateLimiter")
-	private JpaRateLimiter centralRateLimiter;
+	@Qualifier("jpaRateLimiter")
+	private JpaRateLimiter jpaRateLimiter;
 
 	/**
 	 * Cleans up JPA rate limit state.
@@ -36,7 +36,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	@BeforeEach
 	void cleanUp() {
 		this.jdbcTemplate.execute("DELETE FROM rate_limit");
-		this.centralRateLimiter.buffers.clear();
+		this.jpaRateLimiter.buffers.clear();
 	}
 
 	/**
@@ -46,7 +46,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	@RateLimit(
 			limit = "100",
 			period = "1",
-			limiter = "centralRateLimiter",
+			limiter = "jpaRateLimiter",
 			bufferSize = "10",
 			bufferDuration = "1",
 			errorType = BusinessException.class,
@@ -63,13 +63,13 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 			limits = { @RateLimit(
 					limit = "100",
 					period = "1",
-					limiter = "centralRateLimiter",
+					limiter = "jpaRateLimiter",
 					bufferSize = "10",
 					bufferDuration = "1"
 			), @RateLimit(
 					limit = "200",
 					period = "3",
-					limiter = "centralRateLimiter",
+					limiter = "jpaRateLimiter",
 					bufferSize = "10",
 					bufferDuration = "1",
 					errorType = Exception.class,
@@ -86,7 +86,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	@RateLimit(
 			limit = "100",
 			period = "1",
-			limiter = "centralRateLimiter",
+			limiter = "jpaRateLimiter",
 			bufferSize = "10",
 			bufferDuration = "1",
 			errorType = IntegrationException.class,
@@ -105,13 +105,13 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 			limits = { @RateLimit(
 					limit = "100",
 					period = "1",
-					limiter = "centralRateLimiter",
+					limiter = "jpaRateLimiter",
 					bufferSize = "10",
 					bufferDuration = "1"
 			), @RateLimit(
 					limit = "200",
 					period = "3",
-					limiter = "centralRateLimiter",
+					limiter = "jpaRateLimiter",
 					bufferSize = "10",
 					bufferDuration = "1",
 					errorType = BusinessException.class,
