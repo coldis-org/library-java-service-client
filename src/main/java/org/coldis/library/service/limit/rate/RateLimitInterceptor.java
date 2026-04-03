@@ -6,8 +6,8 @@ import java.lang.reflect.Parameter;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -60,7 +60,7 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	/**
 	 * Cached rate limiter beans. Uses Optional to cache misses.
 	 */
-	private final Map<String, Optional<RateLimiter>> rateLimiters = new HashMap<>();
+	private final Map<String, Optional<RateLimiter>> rateLimiters = new ConcurrentHashMap<>();
 
 	/**
 	 * @see org.springframework.context.EmbeddedValueResolverAware#setEmbeddedValueResolver(org.springframework.util.StringValueResolver)

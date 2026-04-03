@@ -1,18 +1,15 @@
 package org.coldis.library.service.limit.rate.local;
 
-import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.coldis.library.service.limit.rate.RateLimitConfig;
 import org.coldis.library.service.limit.rate.RateLimitException;
 import org.coldis.library.service.limit.rate.RateLimitStats;
 import org.coldis.library.service.limit.rate.RateLimiter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.stream.Collectors;
-
-import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,7 +28,7 @@ public class LocalRateLimiter implements RateLimiter {
 	/**
 	 * Local executions.
 	 */
-	public static Map<String, Map<String, RateLimitStats>> EXECUTIONS = new HashMap<>();
+	public static Map<String, Map<String, RateLimitStats>> EXECUTIONS = new ConcurrentHashMap<>();
 
 	/**
 	 * Gets the local executions map.
@@ -41,15 +38,7 @@ public class LocalRateLimiter implements RateLimiter {
 	 */
 	private Map<String, RateLimitStats> getExecutionsMap(
 			final String name) {
-		Map<String, RateLimitStats> executionsMap = null;
-		synchronized (LocalRateLimiter.EXECUTIONS) {
-			executionsMap = LocalRateLimiter.EXECUTIONS.get(name);
-			if (executionsMap == null) {
-				executionsMap = new TreeMap<>();
-				LocalRateLimiter.EXECUTIONS.put(name, executionsMap);
-			}
-		}
-		return executionsMap;
+		return LocalRateLimiter.EXECUTIONS.computeIfAbsent(name, k -> new ConcurrentHashMap<>());
 	}
 
 	/**
@@ -62,16 +51,7 @@ public class LocalRateLimiter implements RateLimiter {
 	private RateLimitStats getExecutions(
 			final String name,
 			final String key) {
-		RateLimitStats executions = null;
-		final Map<String, RateLimitStats> executionsMap = this.getExecutionsMap(name);
-		synchronized (executionsMap) {
-			executions = executionsMap.get(key);
-			if (executions == null) {
-				executions = new RateLimitStats();
-				executionsMap.put(key, executions);
-			}
-		}
-		return executions;
+		return this.getExecutionsMap(name).computeIfAbsent(key, k -> new RateLimitStats());
 	}
 
 	/**
@@ -99,12 +79,14 @@ public class LocalRateLimiter implements RateLimiter {
 	public void cleanExpiredEntries() {
 		for (final Map<String, RateLimitStats> executionsMap : LocalRateLimiter.EXECUTIONS.values()) {
 			final List<String> emptyExecutionsList = executionsMap.entrySet().stream()
-					.filter(executions -> CollectionUtils.isEmpty(executions.getValue().getExecutions())).map(executions -> executions.getKey())
+					.filter(entry -> {
+						synchronized (entry.getValue()) {
+							return CollectionUtils.isEmpty(entry.getValue().getExecutions());
+						}
+					}).map(entry -> entry.getKey())
 					.collect(Collectors.toList());
 			for (final String emptyExecutions : emptyExecutionsList) {
-				synchronized (executionsMap) {
-					executionsMap.remove(emptyExecutions);
-				}
+				executionsMap.remove(emptyExecutions);
 			}
 		}
 	}
