@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
@@ -53,6 +54,16 @@ public class JpaRateLimiter implements RateLimiter {
 	static class BufferedState {
 
 		/**
+		 * Rate limit name.
+		 */
+		final String name;
+
+		/**
+		 * Rate limit key.
+		 */
+		final String key;
+
+		/**
 		 * Local rate limit entry (transient, not JPA-managed).
 		 */
 		final RateLimitEntry localEntry = new RateLimitEntry();
@@ -66,6 +77,22 @@ public class JpaRateLimiter implements RateLimiter {
 		 * Last flush time (epoch millis).
 		 */
 		long lastFlushTimeMillis = System.currentTimeMillis();
+
+		/**
+		 * Last used configuration.
+		 */
+		RateLimitConfig lastConfig;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param name Rate limit name.
+		 * @param key  Rate limit key.
+		 */
+		BufferedState(final String name, final String key) {
+			this.name = name;
+			this.key = key;
+		}
 
 		/**
 		 * Checks if the buffer needs to be flushed.
@@ -101,9 +128,12 @@ public class JpaRateLimiter implements RateLimiter {
 			final RateLimitConfig config) throws RateLimitException {
 
 		final String bufKey = name + "-" + key;
-		final BufferedState state = this.buffers.computeIfAbsent(bufKey, k -> new BufferedState());
+		final BufferedState state = this.buffers.computeIfAbsent(bufKey, k -> new BufferedState(name, key));
 
 		synchronized (state) {
+			// Stores the latest config for shutdown flush.
+			state.lastConfig = config;
+
 			// Updates the constraints.
 			state.localEntry.setLimit(config.getLimit());
 			state.localEntry.setPeriod(config.getPeriod());
@@ -188,6 +218,29 @@ public class JpaRateLimiter implements RateLimiter {
 			throw exception;
 		}
 
+	}
+
+	/**
+	 * Flushes all pending buffers to the database on application shutdown.
+	 */
+	@PreDestroy
+	public void flushAllBuffers() {
+		for (final BufferedState state : this.buffers.values()) {
+			synchronized (state) {
+				if (!state.pending.isEmpty() && state.lastConfig != null) {
+					try {
+						this.flushToDatabase(state.name, state.key, state, state.lastConfig);
+					}
+					catch (final RateLimitException rateLimitException) {
+						// Ignore rate limit exceptions during shutdown.
+					}
+					catch (final Exception exception) {
+						JpaRateLimiter.LOGGER.warn("Error flushing rate limit buffer on shutdown for {}-{}: {}", state.name, state.key,
+								exception.getMessage());
+					}
+				}
+			}
+		}
 	}
 
 	/**
