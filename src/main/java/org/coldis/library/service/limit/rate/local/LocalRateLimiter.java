@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.coldis.library.service.limit.rate.RateLimitConfig;
 import org.coldis.library.service.limit.rate.RateLimitException;
 import org.coldis.library.service.limit.rate.RateLimitStats;
@@ -67,6 +67,7 @@ public class LocalRateLimiter implements RateLimiter {
 			executions.setLimit(config.getLimit());
 			executions.setPeriod(config.getPeriod());
 			executions.setBackoffPeriod(config.getBackoffPeriod());
+			executions.setBucketDuration(config.getBucket());
 			executions.checkLimit(name + (org.apache.commons.lang3.StringUtils.isNotBlank(key) ? "-" + key : ""));
 		}
 	}
@@ -81,7 +82,7 @@ public class LocalRateLimiter implements RateLimiter {
 			final List<String> emptyExecutionsList = executionsMap.entrySet().stream()
 					.filter(entry -> {
 						synchronized (entry.getValue()) {
-							return CollectionUtils.isEmpty(entry.getValue().getExecutions());
+							return MapUtils.isEmpty(entry.getValue().getBuckets());
 						}
 					}).map(entry -> entry.getKey())
 					.collect(Collectors.toList());

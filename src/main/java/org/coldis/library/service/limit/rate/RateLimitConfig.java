@@ -8,6 +8,11 @@ import java.time.Duration;
 public class RateLimitConfig {
 
 	/**
+	 * Default bucket duration in seconds (10 minutes).
+	 */
+	public static final String DEFAULT_BUCKET_SECONDS = "600";
+
+	/**
 	 * Maximum number of executions within the period.
 	 */
 	private Long limit;
@@ -33,6 +38,11 @@ public class RateLimitConfig {
 	private Duration bufferDuration;
 
 	/**
+	 * Bucket duration for the sliding window counter.
+	 */
+	private Duration bucket;
+
+	/**
 	 * No arguments constructor.
 	 */
 	public RateLimitConfig() {
@@ -47,18 +57,21 @@ public class RateLimitConfig {
 	 * @param backoffPeriod  Backoff period.
 	 * @param bufferSize     Buffer size.
 	 * @param bufferDuration Buffer duration.
+	 * @param bucket         Bucket duration.
 	 */
 	public RateLimitConfig(
 			final Long limit,
 			final Duration period,
 			final Duration backoffPeriod,
 			final Integer bufferSize,
-			final Duration bufferDuration) {
+			final Duration bufferDuration,
+			final Duration bucket) {
 		this.limit = limit;
 		this.period = period;
 		this.backoffPeriod = backoffPeriod;
 		this.bufferSize = bufferSize;
 		this.bufferDuration = bufferDuration;
+		this.bucket = bucket;
 	}
 
 	/**
@@ -156,6 +169,26 @@ public class RateLimitConfig {
 	public void setBufferDuration(
 			final Duration bufferDuration) {
 		this.bufferDuration = bufferDuration;
+	}
+
+	/**
+	 * Gets the bucket.
+	 *
+	 * @return The bucket.
+	 */
+	public Duration getBucket() {
+		this.bucket = (this.bucket == null ? Duration.ofSeconds(Long.parseLong(DEFAULT_BUCKET_SECONDS)) : this.bucket);
+		return this.bucket;
+	}
+
+	/**
+	 * Sets the bucket.
+	 *
+	 * @param bucket New bucket.
+	 */
+	public void setBucket(
+			final Duration bucket) {
+		this.bucket = bucket;
 	}
 
 }

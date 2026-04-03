@@ -51,6 +51,14 @@ public @interface RateLimit {
 	String bufferDuration() default "60";
 
 	/**
+	 * Bucket duration (in seconds) for the sliding window counter. Requests
+	 * within each bucket are counted together. Smaller buckets give more
+	 * accurate counting but use more memory. Auto-clamped to the period if
+	 * larger.
+	 */
+	String bucket() default RateLimitConfig.DEFAULT_BUCKET_SECONDS;
+
+	/**
 	 * If the exception type should be changed.
 	 */
 	Class<? extends Exception> errorType() default RateLimitException.class;

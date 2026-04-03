@@ -1,13 +1,11 @@
 package org.coldis.library.service.limit.rate.jpa;
 
 import java.time.Duration;
-
-import org.coldis.library.service.limit.rate.RateLimitStats;
-import java.util.ArrayList;
 import java.util.Objects;
+import java.util.TreeMap;
 
 import org.coldis.library.model.view.ModelView;
-import org.coldis.library.persistence.converter.ListJsonConverter;
+import org.coldis.library.service.limit.rate.RateLimitStats;
 
 import com.fasterxml.jackson.annotation.JsonView;
 
@@ -113,14 +111,14 @@ public class RateLimitEntry extends RateLimitStats {
 	}
 
 	/**
-	 * @see RateLimitStats#getExecutions()
+	 * @see RateLimitStats#getBuckets()
 	 */
 	@Override
 	@Column(columnDefinition = "JSONB")
-	@Convert(converter = ListJsonConverter.class)
+	@Convert(converter = BucketMapJsonConverter.class)
 	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
-	public ArrayList<Long> getExecutions() {
-		return super.getExecutions();
+	public TreeMap<Long, Long> getBuckets() {
+		return super.getBuckets();
 	}
 
 	/**

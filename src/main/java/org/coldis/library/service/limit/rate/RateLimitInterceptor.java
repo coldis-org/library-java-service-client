@@ -146,7 +146,8 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 		// Resolves the limit parameters.
 		final RateLimitConfig config = new RateLimitConfig(this.resolveLongValue(limit.limit()),
 				Duration.ofSeconds(this.resolveLongValue(limit.period())), Duration.ofSeconds(this.resolveLongValue(limit.backoffPeriod())),
-				(int) this.resolveLongValue(limit.bufferSize()), Duration.ofSeconds(this.resolveLongValue(limit.bufferDuration())));
+				(int) this.resolveLongValue(limit.bufferSize()), Duration.ofSeconds(this.resolveLongValue(limit.bufferDuration())),
+				Duration.ofSeconds(this.resolveLongValue(limit.bucket())));
 
 		// Resolves the rate limiter bean by name.
 		final String limiterBeanName = RateLimitInterceptor.VALUE_RESOLVER.resolveStringValue(limit.limiter());
