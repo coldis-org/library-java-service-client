@@ -3,7 +3,6 @@ package org.coldis.library.service.limit.rate;
 import org.aspectj.lang.Aspects;
 import org.coldis.library.service.limit.rate.jpa.JpaRateLimiter;
 import org.coldis.library.service.limit.rate.local.LocalRateLimiter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;

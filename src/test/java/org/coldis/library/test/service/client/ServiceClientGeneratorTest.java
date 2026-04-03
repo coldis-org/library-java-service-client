@@ -38,6 +38,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class ServiceClientGeneratorTest extends TestHelper {
 
 	/**
+	 * Postgres container.
+	 */
+	public static GenericContainer<?> POSTGRES_CONTAINER = TestHelper.createPostgresContainer();
+
+	/**
 	 * Artemis container.
 	 */
 	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
