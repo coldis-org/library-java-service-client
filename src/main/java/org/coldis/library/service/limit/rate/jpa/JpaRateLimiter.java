@@ -46,7 +46,14 @@ public class JpaRateLimiter implements RateLimiter {
 	/**
 	 * Local buffer state per rate limit (name-key).
 	 */
-	public final Map<String, BufferedState> buffers = new ConcurrentHashMap<>();
+	private final Map<String, BufferedState> buffers = new ConcurrentHashMap<>();
+
+	/**
+	 * Clears all local buffer state.
+	 */
+	public void clearBuffers() {
+		this.buffers.clear();
+	}
 
 	/**
 	 * Buffered state for a single rate limit entry.

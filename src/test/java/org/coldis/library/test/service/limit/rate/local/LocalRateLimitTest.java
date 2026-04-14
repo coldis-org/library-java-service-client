@@ -19,7 +19,7 @@ public class LocalRateLimitTest extends AbstractRateLimitTest {
 	 */
 	@BeforeEach
 	void cleanUp() {
-		LocalRateLimiter.EXECUTIONS.clear();
+		LocalRateLimiter.clearExecutions();
 	}
 
 	/**

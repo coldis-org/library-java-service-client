@@ -49,7 +49,7 @@ public class ServiceClientAutoConfiguration {
 		httpClientPoolingManager.setMaxTotal(maxTotal); // maximum total connections.
 		httpClientPoolingManager.setDefaultMaxPerRoute(defaultMaxPerRoute); // maximum connections per host.
 		if (closeIdle != null) {
-			httpClientPoolingManager.closeIdle(TimeValue.ofSeconds(30)); // close idle connections.
+			httpClientPoolingManager.closeIdle(TimeValue.ofSeconds(closeIdle)); // close idle connections.
 		}
 		if (closeExpired) {
 			httpClientPoolingManager.closeExpired(); // close expired connections.
@@ -65,8 +65,10 @@ public class ServiceClientAutoConfiguration {
 	 */
 	@Bean
 	public HttpClient httpClient(
-			final PoolingHttpClientConnectionManager httpClientPoolingManager) {
-		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(30))
+			final PoolingHttpClientConnectionManager httpClientPoolingManager,
+			@Value("${org.coldis.library.service-client.close-idle}")
+			final Integer closeIdle) {
+		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(closeIdle))
 				.build();
 	}
 

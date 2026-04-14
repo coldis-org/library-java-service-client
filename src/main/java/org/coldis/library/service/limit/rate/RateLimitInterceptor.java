@@ -50,7 +50,7 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	/**
 	 * Value resolver.
 	 */
-	public static StringValueResolver VALUE_RESOLVER;
+	private static StringValueResolver VALUE_RESOLVER;
 
 	/**
 	 * Application context.

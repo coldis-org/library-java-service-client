@@ -40,7 +40,7 @@ public class UrlHelper {
 	private static boolean isFromDomain(
 			final UriComponents url,
 			final List<String> domains) {
-		return ((url != null)
+		return ((url != null) && (url.getHost() != null)
 				&& domains.stream().anyMatch(searchEngine -> (searchEngine != null) && url.getHost().toLowerCase().startsWith(searchEngine.toLowerCase())));
 	}
 
@@ -55,7 +55,7 @@ public class UrlHelper {
 			final UriComponents referrer,
 			final UriComponents source,
 			final List<String> ownDomains) {
-		final boolean isFromAmpDomain = ((referrer != null) && referrer.getHost().toLowerCase().endsWith(UrlHelper.GOOGLE_AMP_DOMAIN)
+		final boolean isFromAmpDomain = ((referrer != null) && (referrer.getHost() != null) && referrer.getHost().toLowerCase().endsWith(UrlHelper.GOOGLE_AMP_DOMAIN)
 				&& ownDomains.stream().anyMatch(
 						ownDomain -> (ownDomain != null) && referrer.getHost().substring(0, referrer.getHost().length() - UrlHelper.GOOGLE_AMP_DOMAIN.length())
 								.replace("-", ".").toLowerCase().startsWith(ownDomain.toLowerCase())));

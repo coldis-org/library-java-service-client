@@ -128,7 +128,7 @@ public class FileResource extends AbstractResource {
 	@Override
 	@JsonIgnore
 	public long contentLength() {
-		return this.getContent().length;
+		return this.getContent() == null ? 0 : this.getContent().length;
 	}
 
 	/**
@@ -157,7 +157,7 @@ public class FileResource extends AbstractResource {
 	@Override
 	@JsonIgnore
 	public InputStream getInputStream() throws IOException {
-		return new ByteArrayInputStream(this.getContent());
+		return new ByteArrayInputStream(this.getContent() == null ? new byte[0] : this.getContent());
 	}
 
 	/**

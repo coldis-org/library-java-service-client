@@ -28,7 +28,14 @@ public class LocalRateLimiter implements RateLimiter {
 	/**
 	 * Local executions.
 	 */
-	public static Map<String, Map<String, RateLimitStats>> EXECUTIONS = new ConcurrentHashMap<>();
+	private static Map<String, Map<String, RateLimitStats>> EXECUTIONS = new ConcurrentHashMap<>();
+
+	/**
+	 * Clears all local rate limit executions.
+	 */
+	public static void clearExecutions() {
+		LocalRateLimiter.EXECUTIONS.clear();
+	}
 
 	/**
 	 * Gets the local executions map.

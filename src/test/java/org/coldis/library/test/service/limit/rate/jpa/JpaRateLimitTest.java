@@ -36,7 +36,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	@BeforeEach
 	void cleanUp() {
 		this.jdbcTemplate.execute("DELETE FROM rate_limit");
-		this.jpaRateLimiter.buffers.clear();
+		this.jpaRateLimiter.clearBuffers();
 	}
 
 	/**
