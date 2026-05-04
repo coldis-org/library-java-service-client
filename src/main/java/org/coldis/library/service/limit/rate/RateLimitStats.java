@@ -6,8 +6,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
+import org.coldis.library.helper.DateTimeHelper;
 import org.coldis.library.model.Typable;
 import org.coldis.library.model.view.ModelView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonView;
@@ -19,6 +22,8 @@ import com.fasterxml.jackson.annotation.JsonView;
  */
 @JsonTypeName(value = RateLimitStats.TYPE_NAME)
 public class RateLimitStats implements Typable {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(RateLimitStats.class);
 
 	/**
 	 * Serial.
@@ -68,23 +73,27 @@ public class RateLimitStats implements Typable {
 	}
 
 	/**
-	 * Gets the current time in the appropriate unit.
+	 * Gets the current time, in milliseconds, from the testable
+	 * DateTimeHelper.getClock(). Tests can adjust the clock with
+	 * DateTimeHelper.setClock / TestHelper.moveClockBy to drive bucket
+	 * boundaries deterministically; production uses the real system clock.
 	 *
 	 * @return Current time.
 	 */
 	protected long currentTime() {
-		return System.nanoTime();
+		return DateTimeHelper.getClock().millis();
 	}
 
 	/**
-	 * Converts a duration to the appropriate time unit.
+	 * Converts a duration to milliseconds, matching the unit returned by
+	 * {@link #currentTime()}.
 	 *
 	 * @param  duration Duration.
-	 * @return          Duration in the appropriate unit.
+	 * @return          Duration in milliseconds.
 	 */
 	protected long toDurationUnit(
 			final Duration duration) {
-		return duration.toNanos();
+		return duration.toMillis();
 	}
 
 	/**
@@ -267,9 +276,9 @@ public class RateLimitStats implements Typable {
 	 */
 	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
 	public Long getLimitedUntil() {
-		// Clears limit if expired.
-		this.limitedUntil = ((this.limitedUntil != null) && (this.limitedUntil < this.currentTime()) ? null : this.limitedUntil);
-		// Re-checks the limit.
+		final long now = this.currentTime();
+		final Long previous = this.limitedUntil;
+		this.limitedUntil = ((this.limitedUntil != null) && (this.limitedUntil < now) ? null : this.limitedUntil);
 		if (this.limitedUntil == null) {
 			final long count = this.getCount();
 			if (count >= this.getLimit()) {
@@ -279,8 +288,9 @@ public class RateLimitStats implements Typable {
 					this.limitedUntil = oldestBucketStart + this.toDurationUnit(this.getBackoffPeriod());
 				}
 			}
+			RateLimitStats.LOGGER.debug("getLimitedUntil entity={} now={} count={} limit={} prev={} new={} bucketsRaw={}",
+					System.identityHashCode(this), now, count, this.getLimit(), previous, this.limitedUntil, this.getBucketsRaw());
 		}
-		// Returns the limit.
 		return this.limitedUntil;
 	}
 
@@ -302,13 +312,17 @@ public class RateLimitStats implements Typable {
 	 */
 	public void checkLimit(
 			final String name) throws RateLimitException {
-		// Throws an exception if limit is already active.
-		if (this.getLimitedUntil() != null) {
+		final long now = this.currentTime();
+		final Long activeLimitedUntil = this.getLimitedUntil();
+		final long count = this.getCount();
+		RateLimitStats.LOGGER.debug(
+				"checkLimit name={} entity={} now={} period={} bucketDuration={} count={} limit={} limitedUntil={} bucketsRaw={}",
+				name, System.identityHashCode(this), now, this.toDurationUnit(this.getPeriod()),
+				this.toDurationUnit(this.getEffectiveBucketDuration()), count, this.getLimit(), activeLimitedUntil, this.getBucketsRaw());
+		if (activeLimitedUntil != null) {
 			throw new RateLimitException(name, this.limit);
 		}
 		else {
-			// Add to the current bucket.
-			final long now = this.currentTime();
 			final long bucketKey = this.toBucketKey(now);
 			this.getBucketsRaw().merge(bucketKey, 1L, Long::sum);
 		}

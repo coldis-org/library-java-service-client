@@ -1,13 +1,20 @@
 package org.coldis.library.test.service.limit.rate;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 
+import org.coldis.library.helper.DateTimeHelper;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.TestWithContainer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -46,6 +53,25 @@ public abstract class AbstractRateLimitTest {
 	 * Logger.
 	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRateLimitTest.class);
+
+	/**
+	 * Pins the test clock to a fixed instant so the rate limiter's bucket math
+	 * is fully deterministic — only explicit moveClockBy calls advance time
+	 * (real CPU time during loops does not).
+	 */
+	@BeforeEach
+	public void freezeClockBeforeTest() {
+		DateTimeHelper.setClock(Clock.fixed(Instant.now(), ZoneOffset.UTC));
+	}
+
+	/**
+	 * Resets the test clock so subsequent tests start with a fresh wall-clock
+	 * baseline.
+	 */
+	@AfterEach
+	public void cleanClockAfterTest() {
+		TestHelper.cleanClock();
+	}
 
 	/**
 	 * Rate limited method 1 (limit=100, period=1s).
@@ -91,7 +117,7 @@ public abstract class AbstractRateLimitTest {
 		Assertions.assertThrows(Exception.class, () -> this.rateLimit2());
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (Integer count = 1; count <= 100; count++) {
 			this.rateLimit1();
 			this.rateLimit2();
@@ -101,14 +127,14 @@ public abstract class AbstractRateLimitTest {
 		Assertions.assertThrows(Exception.class, () -> this.rateLimit1());
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (Integer count = 1; count <= 100; count++) {
 			this.rateLimit1();
 			Assertions.assertThrows(Exception.class, () -> this.rateLimit2());
 		}
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (Integer count = 1; count <= 100; count++) {
 			this.rateLimit1();
 			this.rateLimit2();
@@ -142,7 +168,7 @@ public abstract class AbstractRateLimitTest {
 		}
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (final String key : keys) {
 			for (Integer count = 1; count <= 100; count++) {
 				this.rateLimitWithKey1(key);
@@ -156,7 +182,7 @@ public abstract class AbstractRateLimitTest {
 		}
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (final String key : keys) {
 			for (Integer count = 1; count <= 100; count++) {
 				this.rateLimitWithKey1(key);
@@ -165,7 +191,7 @@ public abstract class AbstractRateLimitTest {
 		}
 
 		// Waits the period and try again.
-		Thread.sleep(1 * 1000);
+		TestHelper.moveClockBy(Duration.ofMillis(1100));
 		for (final String key : keys) {
 			for (Integer count = 1; count <= 100; count++) {
 				this.rateLimitWithKey1(key);

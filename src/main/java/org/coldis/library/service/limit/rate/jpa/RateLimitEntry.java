@@ -1,12 +1,12 @@
 package org.coldis.library.service.limit.rate.jpa;
 
-import java.time.Duration;
 import java.util.Objects;
 import java.util.TreeMap;
 
 import org.coldis.library.model.view.ModelView;
 import org.coldis.library.service.limit.rate.RateLimitStats;
 
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonView;
 
 import jakarta.persistence.Column;
@@ -24,6 +24,7 @@ import jakarta.persistence.Transient;
 @Entity
 @Table(name = "rate_limit")
 @IdClass(RateLimitEntryId.class)
+@JsonTypeName(value = RateLimitEntry.TYPE_NAME)
 public class RateLimitEntry extends RateLimitStats {
 
 	/**
@@ -53,24 +54,6 @@ public class RateLimitEntry extends RateLimitStats {
 		super();
 	}
 
-	/**
-	 * @see RateLimitStats#currentTime()
-	 */
-	@Override
-	@Transient
-	protected long currentTime() {
-		return System.currentTimeMillis();
-	}
-
-	/**
-	 * @see RateLimitStats#toDurationUnit(Duration)
-	 */
-	@Override
-	@Transient
-	protected long toDurationUnit(
-			final Duration duration) {
-		return duration.toMillis();
-	}
 
 	/**
 	 * Gets the name.

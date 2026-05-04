@@ -5,6 +5,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.lang3.StringUtils;
+import org.coldis.library.helper.DateTimeHelper;
 import org.coldis.library.service.limit.rate.RateLimitConfig;
 import org.coldis.library.service.limit.rate.RateLimitException;
 import org.coldis.library.service.limit.rate.RateLimiter;
@@ -88,7 +89,7 @@ public class JpaRateLimiter implements RateLimiter {
 		/**
 		 * Last flush time (epoch millis).
 		 */
-		long lastFlushTimeMillis = System.currentTimeMillis();
+		long lastFlushTimeMillis = DateTimeHelper.getClock().millis();
 
 		/**
 		 * Last used configuration.
@@ -115,7 +116,7 @@ public class JpaRateLimiter implements RateLimiter {
 		boolean needsFlush(
 				final RateLimitConfig config) {
 			return this.pendingCount >= config.getBufferSize()
-					|| (System.currentTimeMillis() - this.lastFlushTimeMillis) >= config.getBufferDuration().toMillis();
+					|| (DateTimeHelper.getClock().millis() - this.lastFlushTimeMillis) >= config.getBufferDuration().toMillis();
 		}
 
 	}
@@ -159,7 +160,7 @@ public class JpaRateLimiter implements RateLimiter {
 
 			// Checks local limit (adds current execution to bucket).
 			final String limitName = name + (StringUtils.isNotBlank(key) ? "-" + key : "");
-			final long bucketKey = state.localEntry.toBucketKey(state.localEntry.currentTime());
+			final long bucketKey = state.localEntry.toBucketKey(DateTimeHelper.getClock().millis());
 			state.localEntry.checkLimit(limitName);
 			state.pending.merge(bucketKey, 1L, Long::sum);
 			state.pendingCount++;
@@ -208,18 +209,20 @@ public class JpaRateLimiter implements RateLimiter {
 			dbEntry.setBackoffPeriod(config.getBackoffPeriod());
 			dbEntry.setBucketDuration(config.getBucket());
 
-			// Merges pending bucket counts into the database entry.
-			final TreeMap<Long, Long> updated = new TreeMap<>(dbEntry.getBuckets());
+			final TreeMap<Long, Long> dbBuckets = dbEntry.getBuckets();
+			final TreeMap<Long, Long> updated = new TreeMap<>(dbBuckets);
 			for (final Map.Entry<Long, Long> pendingEntry : state.pending.entrySet()) {
 				updated.merge(pendingEntry.getKey(), pendingEntry.getValue(), Long::sum);
 			}
 			dbEntry.setBuckets(updated);
 
-			// Replaces local state with the database state.
+			JpaRateLimiter.LOGGER.debug("flush name={} key={} dbBuckets={} pending={} merged={} dbLimitedUntil={} dbCount={}",
+					name, key, dbBuckets, state.pending, updated, dbEntry.getLimitedUntil(),
+					updated.values().stream().mapToLong(Long::longValue).sum());
+
 			state.localEntry.setBuckets(new TreeMap<>(updated));
 			state.localEntry.setLimitedUntil(dbEntry.getLimitedUntil());
 
-			// Checks if limit is exceeded on the merged state.
 			if (dbEntry.getLimitedUntil() != null) {
 				return new RateLimitException(name + (StringUtils.isNotBlank(key) ? "-" + key : ""), config.getLimit());
 			}
@@ -230,7 +233,7 @@ public class JpaRateLimiter implements RateLimiter {
 		// Resets buffer state.
 		state.pending.clear();
 		state.pendingCount = 0;
-		state.lastFlushTimeMillis = System.currentTimeMillis();
+		state.lastFlushTimeMillis = DateTimeHelper.getClock().millis();
 
 		if (exception != null) {
 			throw exception;
@@ -271,7 +274,7 @@ public class JpaRateLimiter implements RateLimiter {
 			this.transactionTemplate.executeWithoutResult(status -> {
 				final int deleted = this.entityManager
 						.createQuery("DELETE FROM RateLimitEntry e WHERE e.limitedUntil IS NOT NULL AND e.limitedUntil < :now")
-						.setParameter("now", System.currentTimeMillis()).executeUpdate();
+						.setParameter("now", DateTimeHelper.getClock().millis()).executeUpdate();
 				if (deleted > 0) {
 					JpaRateLimiter.LOGGER.debug("Cleaned up {} expired rate limit entries", deleted);
 				}
