@@ -32,6 +32,11 @@ public class RateLimitEntry extends RateLimitStats {
 	private static final long serialVersionUID = 1L;
 
 	/**
+	 * Type name.
+	 */
+	public static final String TYPE_NAME = "org.coldis.library.service.limit.rate.jpa.RateLimitEntry";
+
+	/**
 	 * Name.
 	 */
 	private String name;
@@ -129,6 +134,15 @@ public class RateLimitEntry extends RateLimitStats {
 	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
 	public Long getLimitedUntil() {
 		return super.getLimitedUntil();
+	}
+
+	/**
+	 * @see org.coldis.library.service.limit.rate.RateLimitStats#getTypeName()
+	 */
+	@Override
+	@Transient
+	public String getTypeName() {
+		return RateLimitEntry.TYPE_NAME;
 	}
 
 	/**
