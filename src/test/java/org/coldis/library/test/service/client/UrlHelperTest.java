@@ -94,6 +94,23 @@ public class UrlHelperTest {
 	}
 
 	/**
+	 * Tests {@link UrlHelper#reverseAmpHost(String)}.
+	 */
+	@Test
+	public void testReverseAmpHost() {
+		Assertions.assertNull(UrlHelper.reverseAmpHost(null));
+		Assertions.assertEquals("", UrlHelper.reverseAmpHost(""));
+		// Non-AMP hosts pass through unchanged.
+		Assertions.assertEquals("example.com", UrlHelper.reverseAmpHost("example.com"));
+		// Standard dot-only host: each "-" maps back to ".".
+		Assertions.assertEquals("www.supersim.com.br", UrlHelper.reverseAmpHost("www-supersim-com-br.cdn.ampproject.org"));
+		Assertions.assertEquals("example.com", UrlHelper.reverseAmpHost("example-com.cdn.ampproject.org"));
+		// Hyphenated original host: "--" maps back to "-", remaining "-" maps to ".".
+		Assertions.assertEquals("foo-bar.com", UrlHelper.reverseAmpHost("foo--bar-com.cdn.ampproject.org"));
+		Assertions.assertEquals("a-b-c.example.com", UrlHelper.reverseAmpHost("a--b--c-example-com.cdn.ampproject.org"));
+	}
+
+	/**
 	 * Tests {@link UrlHelper#normalizeHost(String)}.
 	 */
 	@Test
@@ -119,6 +136,10 @@ public class UrlHelperTest {
 
 		// Non-www subdomain is preserved (callers strip channel-specific prefixes).
 		Assertions.assertEquals("m.facebook.com", UrlHelper.normalizeHost("m.facebook.com"));
+
+		// AMP host reverses to its original form, then www is stripped.
+		Assertions.assertEquals("supersim.com.br", UrlHelper.normalizeHost("www-supersim-com-br.cdn.ampproject.org"));
+		Assertions.assertEquals("foo-bar.com", UrlHelper.normalizeHost("foo--bar-com.cdn.ampproject.org"));
 	}
 
 }
