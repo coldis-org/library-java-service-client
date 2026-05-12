@@ -48,4 +48,77 @@ public class UrlHelperTest {
 		}
 	}
 
+	/**
+	 * Tests {@link UrlHelper#safeUrlDecode(String)}.
+	 */
+	@Test
+	public void testSafeUrlDecode() {
+		Assertions.assertNull(UrlHelper.safeUrlDecode(null));
+		Assertions.assertEquals("", UrlHelper.safeUrlDecode(""));
+		Assertions.assertEquals("hello world", UrlHelper.safeUrlDecode("hello%20world"));
+		Assertions.assertEquals("a&b=c", UrlHelper.safeUrlDecode("a%26b%3Dc"));
+		Assertions.assertEquals("https://www.ticket.com.br/", UrlHelper.safeUrlDecode("https%3a%2f%2fwww.ticket.com.br%2f"));
+		// Invalid-UTF-8 percent-escape: URLDecoder produces the Unicode replacement
+		// character rather than throwing. normalizeHost then truncates at it.
+		Assertions.assertEquals("host�sf", UrlHelper.safeUrlDecode("host%fdsf"));
+	}
+
+	/**
+	 * Tests {@link UrlHelper#stripProtocol(String)}.
+	 */
+	@Test
+	public void testStripProtocol() {
+		Assertions.assertNull(UrlHelper.stripProtocol(null));
+		Assertions.assertEquals("", UrlHelper.stripProtocol(""));
+		Assertions.assertEquals("example.com", UrlHelper.stripProtocol("http://example.com"));
+		Assertions.assertEquals("example.com", UrlHelper.stripProtocol("https://example.com"));
+		Assertions.assertEquals("example.com", UrlHelper.stripProtocol("HTTPS://example.com"));
+		Assertions.assertEquals("example.com", UrlHelper.stripProtocol("example.com"));
+		Assertions.assertEquals("ftp://example.com", UrlHelper.stripProtocol("ftp://example.com"));
+	}
+
+	/**
+	 * Tests {@link UrlHelper#stripQuery(String)}.
+	 */
+	@Test
+	public void testStripQuery() {
+		Assertions.assertNull(UrlHelper.stripQuery(null));
+		Assertions.assertEquals("host", UrlHelper.stripQuery("host?utm_source=x"));
+		Assertions.assertEquals("host", UrlHelper.stripQuery("host&utm_source=x"));
+		// Malformed unicode-escape leaked into raw value.
+		Assertions.assertEquals("gridmidia.com", UrlHelper.stripQuery("gridmidia.comu0026utm_medium=ct.com"));
+		// Literal "%26" survived without being URL-decoded.
+		Assertions.assertEquals("admitad", UrlHelper.stripQuery("admitad%26utm_campaign=123"));
+		// Any stray "%" is treated as garbage and truncated.
+		Assertions.assertEquals("host", UrlHelper.stripQuery("host%fdsf"));
+	}
+
+	/**
+	 * Tests {@link UrlHelper#normalizeHost(String)}.
+	 */
+	@Test
+	public void testNormalizeHost() {
+		Assertions.assertNull(UrlHelper.normalizeHost(null));
+		Assertions.assertNull(UrlHelper.normalizeHost(""));
+		Assertions.assertNull(UrlHelper.normalizeHost("   "));
+
+		// Lowercase, strip www, strip trailing slash.
+		Assertions.assertEquals("google.com", UrlHelper.normalizeHost("WWW.Google.Com/"));
+
+		// Strip protocol + query.
+		Assertions.assertEquals("ticket.com.br", UrlHelper.normalizeHost("https://www.ticket.com.br/?utm_source=x"));
+
+		// URL-decode percent-encoded URL before further cleanup.
+		Assertions.assertEquals("ticket.com.br", UrlHelper.normalizeHost("https%3a%2f%2fwww.ticket.com.br%2f"));
+
+		// Truncate at malformed unicode-escape that leaked into the value.
+		Assertions.assertEquals("gridmidia.com", UrlHelper.normalizeHost("gridmidia.comu0026utm_medium=ct.com"));
+
+		// Garbage %XX that does not decode cleanly gets truncated.
+		Assertions.assertEquals("host", UrlHelper.normalizeHost("host%fdsf"));
+
+		// Non-www subdomain is preserved (callers strip channel-specific prefixes).
+		Assertions.assertEquals("m.facebook.com", UrlHelper.normalizeHost("m.facebook.com"));
+	}
+
 }

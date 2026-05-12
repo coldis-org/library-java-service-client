@@ -1,5 +1,7 @@
 package org.coldis.library.service.helper;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,122 @@ public class UrlHelper {
 	 * Search engines.
 	 */
 	public static final List<String> SEARCH_ENGINES = List.of("www.google.", "www.yahoo.", "www.bing.");
+
+	/**
+	 * Query-string and garbage markers used by {@link #normalizeHost(String)} to
+	 * truncate a host string. Includes:
+	 * <ul>
+	 *   <li>{@code ?} and {@code &} — real query-string delimiters.</li>
+	 *   <li>{@code u0026} / {@code %26} — malformed unicode/percent escapes
+	 *       observed in raw utm_source values stored without prior decoding.</li>
+	 *   <li>Bare {@code %} — any percent-sequence surviving
+	 *       {@link #safeUrlDecode(String)} is malformed since hosts cannot
+	 *       legitimately contain {@code %}.</li>
+	 *   <li>{@code �} (Unicode replacement character) — emitted by
+	 *       {@link java.net.URLDecoder} when a {@code %XX} sequence decodes to
+	 *       an invalid UTF-8 byte (e.g. {@code %fd}); marks garbage.</li>
+	 * </ul>
+	 */
+	private static final List<String> QUERY_MARKERS = List.of("?", "&", "u0026", "%26", "%", "�");
+
+	/**
+	 * Best-effort URL-decode. Returns the input unchanged on malformed escapes.
+	 *
+	 * @param  value Possibly percent-encoded string.
+	 * @return       Decoded string, or the input on error.
+	 */
+	public static String safeUrlDecode(
+			final String value) {
+		if (value == null) {
+			return null;
+		}
+		try {
+			return URLDecoder.decode(value, StandardCharsets.UTF_8);
+		}
+		catch (final IllegalArgumentException exception) {
+			return value;
+		}
+	}
+
+	/**
+	 * Strips the leading {@code http://} or {@code https://} from a URL-like
+	 * string, if present.
+	 *
+	 * @param  value URL-like string.
+	 * @return       Value without the protocol prefix.
+	 */
+	public static String stripProtocol(
+			final String value) {
+		if (value == null) {
+			return null;
+		}
+		final String lower = value.toLowerCase();
+		if (lower.startsWith("https://")) {
+			return value.substring(8);
+		}
+		if (lower.startsWith("http://")) {
+			return value.substring(7);
+		}
+		return value;
+	}
+
+	/**
+	 * Truncates the input at the first occurrence of any query-string marker
+	 * (see {@link #QUERY_MARKERS}).
+	 *
+	 * @param  value URL-like string.
+	 * @return       Value with query string removed.
+	 */
+	public static String stripQuery(
+			final String value) {
+		if (value == null) {
+			return null;
+		}
+		String result = value;
+		for (final String marker : UrlHelper.QUERY_MARKERS) {
+			final int index = result.indexOf(marker);
+			if (index >= 0) {
+				result = result.substring(0, index);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Normalizes a raw URL or host string to a canonical lowercase host. Applies,
+	 * in order: trim, lowercase, URL-decode, strip protocol, strip query string,
+	 * strip trailing slashes, and strip the {@code www.} prefix. Returns
+	 * {@code null} for null / blank input or when the result is empty.
+	 *
+	 * <p>This is the generic, content-agnostic part of host normalization. Callers
+	 * that need to collapse channel-specific tracking-redirect prefixes (e.g.
+	 * {@code m.}, {@code l.}, {@code lm.}, {@code amp.}) should do so on the
+	 * returned value.
+	 *
+	 * @param  raw Raw URL or host string.
+	 * @return     Canonical lowercase host, or {@code null}.
+	 */
+	public static String normalizeHost(
+			final String raw) {
+		if (raw == null) {
+			return null;
+		}
+		String result = raw.trim();
+		if (result.isEmpty()) {
+			return null;
+		}
+		result = result.toLowerCase();
+		result = UrlHelper.safeUrlDecode(result);
+		result = UrlHelper.stripProtocol(result);
+		result = UrlHelper.stripQuery(result);
+		while (result.endsWith("/")) {
+			result = result.substring(0, result.length() - 1);
+		}
+		if (result.startsWith("www.")) {
+			result = result.substring(4);
+		}
+		return result.isEmpty() ? null : result;
+	}
 
 	/**
 	 * Google AMP project domain.
