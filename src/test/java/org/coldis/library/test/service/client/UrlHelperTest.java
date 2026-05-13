@@ -140,6 +140,34 @@ public class UrlHelperTest {
 		// AMP host reverses to its original form, then www is stripped.
 		Assertions.assertEquals("supersim.com.br", UrlHelper.normalizeHost("www-supersim-com-br.cdn.ampproject.org"));
 		Assertions.assertEquals("foo-bar.com", UrlHelper.normalizeHost("foo--bar-com.cdn.ampproject.org"));
+
+		// Long real-world utm_source with chained %26-separated tracking parameters:
+		// %26 decodes to &, stripQuery truncates at the first &.
+		Assertions.assertEquals("google",
+				UrlHelper.normalizeHost("google%26utm_medium=cpc%26utm_campaign=defesa-de-marca"
+						+ "%26utm_content=psq-defesa-de-marca%26gad_source=1"
+						+ "%26gad_campaignid=21958736359"
+						+ "%26gclid=cj0kcqiak6rnbhcxarisan5mqltersz9q5pisjmcwqlnbacctw2s2hzcb2tqwp2fkcdy-yc2owvp4isaavjgealw_wcb,1"));
+	}
+
+	/**
+	 * Tests {@link UrlHelper#getUtm(String, String, List, List)} against a real-world
+	 * {@code utm_source} value where the upstream system collapsed an entire UTM
+	 * query string (encoded with {@code %26} as the separator) into the source
+	 * field. The helper should URL-decode the value, recognize the embedded
+	 * query, and pull out the individual UTM tags.
+	 */
+	@Test
+	public void testUtmFromEncodedSource() {
+		final String source = "google%26utm_medium=cpc%26utm_campaign=defesa-de-marca"
+				+ "%26utm_content=psq-defesa-de-marca%26gad_source=1"
+				+ "%26gad_campaignid=21958736359"
+				+ "%26gclid=cj0kcqiak6rnbhcxarisan5mqltersz9q5pisjmcwqlnbacctw2s2hzcb2tqwp2fkcdy-yc2owvp4isaavjgealw_wcb,1";
+		final Map<String, String> utm = UrlHelper.getUtm(source, null, List.of("coldis.org"), UrlHelper.SEARCH_ENGINES);
+		Assertions.assertEquals("google", utm.get("source"));
+		Assertions.assertEquals("cpc", utm.get("medium"));
+		Assertions.assertEquals("defesa-de-marca", utm.get("campaign"));
+		Assertions.assertEquals("psq-defesa-de-marca", utm.get("content"));
 	}
 
 }
