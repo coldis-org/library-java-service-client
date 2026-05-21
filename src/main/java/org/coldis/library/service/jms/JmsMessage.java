@@ -1,14 +1,23 @@
 package org.coldis.library.service.jms;
 
+import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 
 /**
  * JMS message.
  */
 public class JmsMessage<MessageType> {
+
+	/**
+	 * Random.
+	 */
+	private static final Random RANDOM = new SecureRandom();
 
 	/**
 	 * Message destination.
@@ -44,6 +53,16 @@ public class JmsMessage<MessageType> {
 	 * Random delay.
 	 */
 	private Duration randomDelay;
+
+	/**
+	 * Absolute scheduled delivery time (alternative to fixedDelay/randomDelay).
+	 */
+	private LocalDateTime scheduledAt;
+
+	/**
+	 * Computed scheduled delivery timestamp (epoch millis). Cached on first access, cleared on any scheduling change.
+	 */
+	private Long scheduledDeliveryTime;
 
 	/**
 	 * Properties.
@@ -223,6 +242,8 @@ public class JmsMessage<MessageType> {
 	public void setFixedDelay(
 			final Duration fixedDelay) {
 		this.fixedDelay = fixedDelay;
+		this.scheduledAt = null;
+		this.scheduledDeliveryTime = null;
 	}
 
 	/**
@@ -255,6 +276,8 @@ public class JmsMessage<MessageType> {
 	public void setRandomDelay(
 			final Duration randomDelay) {
 		this.randomDelay = randomDelay;
+		this.scheduledAt = null;
+		this.scheduledDeliveryTime = null;
 	}
 
 	/**
@@ -267,6 +290,62 @@ public class JmsMessage<MessageType> {
 			final Duration randomDelay) {
 		this.setRandomDelay(randomDelay);
 		return this;
+	}
+
+	/**
+	 * Gets the scheduledAt.
+	 *
+	 * @return The scheduledAt.
+	 */
+	public LocalDateTime getScheduledAt() {
+		return this.scheduledAt;
+	}
+
+	/**
+	 * Sets the scheduledAt.
+	 *
+	 * @param scheduledAt New scheduledAt.
+	 */
+	public void setScheduledAt(
+			final LocalDateTime scheduledAt) {
+		this.scheduledAt = scheduledAt;
+		this.fixedDelay = null;
+		this.randomDelay = null;
+		this.scheduledDeliveryTime = null;
+	}
+
+	/**
+	 * Sets the scheduledAt.
+	 *
+	 * @param  scheduledAt New scheduledAt.
+	 * @return             Message.
+	 */
+	public JmsMessage<MessageType> withScheduledAt(
+			final LocalDateTime scheduledAt) {
+		this.setScheduledAt(scheduledAt);
+		return this;
+	}
+
+	/**
+	 * Returns the scheduled delivery timestamp in epoch millis, computed once and cached.
+	 * Returns null if no schedule is set.
+	 *
+	 * @return Scheduled delivery time in epoch millis, or null.
+	 */
+	public Long getScheduledDeliveryTime() {
+		if (this.scheduledDeliveryTime == null) {
+			if (this.scheduledAt != null) {
+				this.scheduledDeliveryTime = this.scheduledAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+			}
+			else if ((this.getFixedDelay() != null) || (this.getRandomDelay() != null)) {
+				final long fixed = (this.getFixedDelay() == null ? 0L : this.getFixedDelay().toMillis());
+				final long random = ((this.getRandomDelay() != null) && this.getRandomDelay().isPositive()
+						? Math.abs(JmsMessage.RANDOM.nextLong(this.getRandomDelay().toMillis()))
+						: 0L);
+				this.scheduledDeliveryTime = System.currentTimeMillis() + fixed + random;
+			}
+		}
+		return this.scheduledDeliveryTime;
 	}
 
 	/**
@@ -309,7 +388,7 @@ public class JmsMessage<MessageType> {
 	@Override
 	public int hashCode() {
 		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.message, this.priority, this.properties,
-				this.randomDelay);
+				this.randomDelay, this.scheduledAt);
 	}
 
 	/**
@@ -328,7 +407,8 @@ public class JmsMessage<MessageType> {
 		return Objects.equals(this.correlationId, other.correlationId) && Objects.equals(this.destination, other.destination)
 				&& Objects.equals(this.fixedDelay, other.fixedDelay) && Objects.equals(this.lastValueKey, other.lastValueKey)
 				&& Objects.equals(this.message, other.message) && Objects.equals(this.priority, other.priority)
-				&& Objects.equals(this.properties, other.properties) && Objects.equals(this.randomDelay, other.randomDelay);
+				&& Objects.equals(this.properties, other.properties) && Objects.equals(this.randomDelay, other.randomDelay)
+				&& Objects.equals(this.scheduledAt, other.scheduledAt);
 	}
 
 }

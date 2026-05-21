@@ -1,8 +1,6 @@
 package org.coldis.library.service.jms;
 
-import java.security.SecureRandom;
 import java.util.Map;
-import java.util.Random;
 
 import org.apache.activemq.artemis.api.core.Message;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -18,11 +16,6 @@ import org.springframework.stereotype.Component;
 public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 
 	/**
-	 * Random.
-	 */
-	private static final Random RANDOM = new SecureRandom();
-
-	/**
 	 * @see org.coldis.library.service.jms.JmsTemplateHelper#send(org.springframework.jms.core.JmsTemplate,
 	 *      org.coldis.library.service.jms.JmsMessage)
 	 */
@@ -35,16 +28,10 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
-			// Adds the delay.
-			if ((message.getFixedDelay() != null) || (message.getRandomDelay() != null)) {
-				final Long fixedDelay = (message.getFixedDelay() == null ? 0L : message.getFixedDelay().toMillis());
-				final Long randomDelay = ((message.getRandomDelay() != null) && message.getRandomDelay().isPositive()
-						? Math.abs(ArtemisJmsTemplateHelper.RANDOM.nextLong(message.getRandomDelay().toMillis()))
-						: 0L);
-				final long scheduledTimestamp = (System.currentTimeMillis() + fixedDelay + randomDelay);
-				if ((System.currentTimeMillis()) < scheduledTimestamp) {
-					jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
-				}
+			// Adds the scheduled delivery time.
+			final Long scheduledTimestamp = message.getScheduledDeliveryTime();
+			if ((scheduledTimestamp != null) && (System.currentTimeMillis() < scheduledTimestamp)) {
+				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
