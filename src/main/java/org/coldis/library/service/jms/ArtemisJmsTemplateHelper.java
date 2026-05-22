@@ -7,6 +7,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * JMS template helper.
@@ -23,8 +25,25 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	public void send(
 			final JmsTemplate template,
 			final JmsMessage<?> message) {
+		if (message.isAfterCommit() && TransactionSynchronizationManager.isActualTransactionActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					ArtemisJmsTemplateHelper.this.doSend(template, message);
+				}
+			});
+		}
+		else {
+			this.doSend(template, message);
+		}
+	}
 
-		// Tries sending the message.
+	/**
+	 * Performs the actual JMS send.
+	 */
+	private void doSend(
+			final JmsTemplate template,
+			final JmsMessage<?> message) {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);

@@ -65,6 +65,13 @@ public class JmsMessage<MessageType> {
 	private Long scheduledDeliveryTime;
 
 	/**
+	 * If true and a transaction is active when {@code JmsTemplateHelper.send} is called, the
+	 * actual JMS send is deferred until after the transaction commits. Falls back to an immediate
+	 * send when no transaction is active.
+	 */
+	private boolean afterCommit;
+
+	/**
 	 * Properties.
 	 */
 	private Map<String, Object> properties;
@@ -346,6 +353,37 @@ public class JmsMessage<MessageType> {
 			}
 		}
 		return this.scheduledDeliveryTime;
+	}
+
+	/**
+	 * Gets the afterCommit.
+	 *
+	 * @return The afterCommit.
+	 */
+	public boolean isAfterCommit() {
+		return this.afterCommit;
+	}
+
+	/**
+	 * Sets the afterCommit.
+	 *
+	 * @param afterCommit New afterCommit.
+	 */
+	public void setAfterCommit(
+			final boolean afterCommit) {
+		this.afterCommit = afterCommit;
+	}
+
+	/**
+	 * Sets the afterCommit.
+	 *
+	 * @param  afterCommit New afterCommit.
+	 * @return             Message.
+	 */
+	public JmsMessage<MessageType> withAfterCommit(
+			final boolean afterCommit) {
+		this.setAfterCommit(afterCommit);
+		return this;
 	}
 
 	/**
