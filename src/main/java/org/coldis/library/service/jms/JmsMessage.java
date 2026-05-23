@@ -3,11 +3,12 @@ package org.coldis.library.service.jms;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+
+import org.coldis.library.helper.DateTimeHelper;
 
 /**
  * JMS message.
@@ -342,14 +343,16 @@ public class JmsMessage<MessageType> {
 	public Long getScheduledDeliveryTime() {
 		if (this.scheduledDeliveryTime == null) {
 			if (this.scheduledAt != null) {
-				this.scheduledDeliveryTime = this.scheduledAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+				this.scheduledDeliveryTime = DateTimeHelper.toTimestamp(this.scheduledAt);
 			}
 			else if ((this.getFixedDelay() != null) || (this.getRandomDelay() != null)) {
 				final long fixed = (this.getFixedDelay() == null ? 0L : this.getFixedDelay().toMillis());
 				final long random = ((this.getRandomDelay() != null) && this.getRandomDelay().isPositive()
 						? Math.abs(JmsMessage.RANDOM.nextLong(this.getRandomDelay().toMillis()))
 						: 0L);
-				this.scheduledDeliveryTime = System.currentTimeMillis() + fixed + random;
+				// Anchor to DateTimeHelper.now() (mockable clock) rather than System.currentTimeMillis(),
+				// so callers using a virtual clock see consistent scheduling decisions.
+				this.scheduledDeliveryTime = DateTimeHelper.toTimestamp(DateTimeHelper.getCurrentLocalDateTime()) + fixed + random;
 			}
 		}
 		return this.scheduledDeliveryTime;

@@ -3,6 +3,7 @@ package org.coldis.library.service.jms;
 import java.util.Map;
 
 import org.apache.activemq.artemis.api.core.Message;
+import org.coldis.library.helper.DateTimeHelper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
 import org.springframework.jms.core.JmsTemplate;
@@ -47,9 +48,14 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
-			// Adds the scheduled delivery time.
+			// Adds the scheduled delivery time. Compare against DateTimeHelper.now() (mockable
+			// clock) so callers using a virtual clock get consistent immediate-vs-scheduled
+			// decisions — when the requested time is already in the past relative to the
+			// application clock, the message is sent without HDR_SCHEDULED_DELIVERY_TIME
+			// and delivers immediately.
 			final Long scheduledTimestamp = message.getScheduledDeliveryTime();
-			if ((scheduledTimestamp != null) && (System.currentTimeMillis() < scheduledTimestamp)) {
+			if ((scheduledTimestamp != null)
+					&& (DateTimeHelper.toTimestamp(DateTimeHelper.getCurrentLocalDateTime()) < scheduledTimestamp)) {
 				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
 			}
 			// Sets the priority.
