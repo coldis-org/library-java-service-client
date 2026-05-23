@@ -48,15 +48,21 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 		template.send(message.getDestination(), session -> {
 			// Creates the message.
 			final jakarta.jms.Message jmsMessage = template.getMessageConverter().toMessage(message.getMessage(), session);
-			// Adds the scheduled delivery time. Compare against DateTimeHelper.now() (mockable
-			// clock) so callers using a virtual clock get consistent immediate-vs-scheduled
-			// decisions — when the requested time is already in the past relative to the
-			// application clock, the message is sent without HDR_SCHEDULED_DELIVERY_TIME
-			// and delivers immediately.
+			// Adds the scheduled delivery time. The decision ("should we schedule?") uses
+			// DateTimeHelper.now() so callers on a virtual clock get consistent behaviour.
+			// The wall-clock value sent to the broker, however, must be anchored to
+			// System.currentTimeMillis() because Artemis gates HDR_SCHEDULED_DELIVERY_TIME
+			// against real wall time — using the DateTimeHelper-derived epoch directly
+			// would hold messages for the full clock-offset under tests that advance the
+			// simulated clock.
 			final Long scheduledTimestamp = message.getScheduledDeliveryTime();
-			if ((scheduledTimestamp != null)
-					&& (DateTimeHelper.toTimestamp(DateTimeHelper.getCurrentLocalDateTime()) < scheduledTimestamp)) {
-				jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(), scheduledTimestamp);
+			if (scheduledTimestamp != null) {
+				final long delay = scheduledTimestamp
+						- DateTimeHelper.toTimestamp(DateTimeHelper.getCurrentLocalDateTime());
+				if (delay > 0L) {
+					jmsMessage.setLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME.toString(),
+							System.currentTimeMillis() + delay);
+				}
 			}
 			// Sets the priority.
 			if (message.getPriority() != null) {
