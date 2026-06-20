@@ -31,6 +31,16 @@ public @interface RateLimit {
 	String backoffPeriod() default "-1";
 
 	/**
+	 * Whether to reset (clear) the counter when the limit is reached and the
+	 * backoff starts. When true (default), the window is cleared on block so the
+	 * caller is released cleanly once the backoff elapses. When false, the
+	 * counter keeps draining naturally through the sliding window, so with a
+	 * backoff shorter than the period the caller may be re-blocked until the
+	 * window empties.
+	 */
+	boolean resetOnBlock() default true;
+
+	/**
 	 * Limit for the period.
 	 */
 	String limit();

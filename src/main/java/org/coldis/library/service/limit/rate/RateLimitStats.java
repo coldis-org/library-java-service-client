@@ -66,6 +66,12 @@ public class RateLimitStats implements Typable {
 	private Long limitedUntil;
 
 	/**
+	 * Whether to reset the counter when the limit is reached and the backoff
+	 * starts.
+	 */
+	private Boolean resetOnBlock;
+
+	/**
 	 * No arguments constructor.
 	 */
 	public RateLimitStats() {
@@ -282,10 +288,15 @@ public class RateLimitStats implements Typable {
 		if (this.limitedUntil == null) {
 			final long count = this.getCount();
 			if (count >= this.getLimit()) {
-				final TreeMap<Long, Long> b = this.getBucketsRaw();
-				if (!b.isEmpty()) {
-					final long oldestBucketStart = b.firstKey() * this.toDurationUnit(this.getEffectiveBucketDuration());
-					this.limitedUntil = oldestBucketStart + this.toDurationUnit(this.getBackoffPeriod());
+				// Anchors the backoff to the moment the limit was breached (now), not to
+				// the window/oldest-bucket start, so the caller is always blocked for the
+				// full backoff period.
+				this.limitedUntil = now + this.toDurationUnit(this.getBackoffPeriod());
+				// Clears the window on block so the caller is released cleanly once
+				// the backoff elapses, instead of being re-blocked by counts that
+				// still linger inside the sliding window.
+				if (this.getResetOnBlock()) {
+					this.getBucketsRaw().clear();
 				}
 			}
 			RateLimitStats.LOGGER.debug("getLimitedUntil entity={} now={} count={} limit={} prev={} new={} bucketsRaw={}",
@@ -302,6 +313,28 @@ public class RateLimitStats implements Typable {
 	public void setLimitedUntil(
 			final Long limitedUntil) {
 		this.limitedUntil = limitedUntil;
+	}
+
+	/**
+	 * Gets the resetOnBlock.
+	 *
+	 * @return The resetOnBlock.
+	 */
+	@JsonView({ ModelView.Persistent.class, ModelView.Public.class })
+	public Boolean getResetOnBlock() {
+		// Resets the counter on block by default.
+		this.resetOnBlock = (this.resetOnBlock == null ? Boolean.TRUE : this.resetOnBlock);
+		return this.resetOnBlock;
+	}
+
+	/**
+	 * Sets the resetOnBlock.
+	 *
+	 * @param resetOnBlock New resetOnBlock.
+	 */
+	public void setResetOnBlock(
+			final Boolean resetOnBlock) {
+		this.resetOnBlock = resetOnBlock;
 	}
 
 	/**

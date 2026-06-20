@@ -43,6 +43,12 @@ public class RateLimitConfig {
 	private Duration bucket;
 
 	/**
+	 * Whether to reset the counter when the limit is reached and the backoff
+	 * starts.
+	 */
+	private Boolean resetOnBlock;
+
+	/**
 	 * No arguments constructor.
 	 */
 	public RateLimitConfig() {
@@ -58,6 +64,7 @@ public class RateLimitConfig {
 	 * @param bufferSize     Buffer size.
 	 * @param bufferDuration Buffer duration.
 	 * @param bucket         Bucket duration.
+	 * @param resetOnBlock   Whether to reset the counter on block.
 	 */
 	public RateLimitConfig(
 			final Long limit,
@@ -65,13 +72,15 @@ public class RateLimitConfig {
 			final Duration backoffPeriod,
 			final Integer bufferSize,
 			final Duration bufferDuration,
-			final Duration bucket) {
+			final Duration bucket,
+			final Boolean resetOnBlock) {
 		this.limit = limit;
 		this.period = period;
 		this.backoffPeriod = backoffPeriod;
 		this.bufferSize = bufferSize;
 		this.bufferDuration = bufferDuration;
 		this.bucket = bucket;
+		this.resetOnBlock = resetOnBlock;
 	}
 
 	/**
@@ -189,6 +198,26 @@ public class RateLimitConfig {
 	public void setBucket(
 			final Duration bucket) {
 		this.bucket = bucket;
+	}
+
+	/**
+	 * Gets the resetOnBlock.
+	 *
+	 * @return The resetOnBlock.
+	 */
+	public Boolean getResetOnBlock() {
+		this.resetOnBlock = (this.resetOnBlock == null ? Boolean.TRUE : this.resetOnBlock);
+		return this.resetOnBlock;
+	}
+
+	/**
+	 * Sets the resetOnBlock.
+	 *
+	 * @param resetOnBlock New resetOnBlock.
+	 */
+	public void setResetOnBlock(
+			final Boolean resetOnBlock) {
+		this.resetOnBlock = resetOnBlock;
 	}
 
 }

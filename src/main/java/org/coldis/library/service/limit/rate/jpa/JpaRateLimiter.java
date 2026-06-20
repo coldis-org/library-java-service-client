@@ -152,6 +152,7 @@ public class JpaRateLimiter implements RateLimiter {
 			state.localEntry.setPeriod(config.getPeriod());
 			state.localEntry.setBackoffPeriod(config.getBackoffPeriod());
 			state.localEntry.setBucketDuration(config.getBucket());
+			state.localEntry.setResetOnBlock(config.getResetOnBlock());
 
 			// Flushes to database if buffer threshold reached.
 			if (state.needsFlush(config)) {
@@ -208,6 +209,7 @@ public class JpaRateLimiter implements RateLimiter {
 			dbEntry.setPeriod(config.getPeriod());
 			dbEntry.setBackoffPeriod(config.getBackoffPeriod());
 			dbEntry.setBucketDuration(config.getBucket());
+			dbEntry.setResetOnBlock(config.getResetOnBlock());
 
 			final TreeMap<Long, Long> dbBuckets = dbEntry.getBuckets();
 			final TreeMap<Long, Long> updated = new TreeMap<>(dbBuckets);

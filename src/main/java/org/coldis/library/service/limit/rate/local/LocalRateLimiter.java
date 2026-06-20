@@ -75,6 +75,7 @@ public class LocalRateLimiter implements RateLimiter {
 			executions.setPeriod(config.getPeriod());
 			executions.setBackoffPeriod(config.getBackoffPeriod());
 			executions.setBucketDuration(config.getBucket());
+			executions.setResetOnBlock(config.getResetOnBlock());
 			executions.checkLimit(name + (org.apache.commons.lang3.StringUtils.isNotBlank(key) ? "-" + key : ""));
 		}
 	}

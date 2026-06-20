@@ -133,8 +133,11 @@ public abstract class AbstractRateLimitTest {
 			Assertions.assertThrows(Exception.class, () -> this.rateLimit2());
 		}
 
-		// Waits the period and try again.
-		TestHelper.moveClockBy(Duration.ofMillis(1100));
+		// Waits for the full backoff to elapse before retrying. The 200/3s limit
+		// was breached in the previous step, and the backoff is anchored to that
+		// breach (the burst), so the caller stays blocked for the whole 3s backoff
+		// — not just until the sliding window's start boundary.
+		TestHelper.moveClockBy(Duration.ofMillis(3100));
 		for (Integer count = 1; count <= 100; count++) {
 			this.rateLimit1();
 			this.rateLimit2();
@@ -190,8 +193,11 @@ public abstract class AbstractRateLimitTest {
 			}
 		}
 
-		// Waits the period and try again.
-		TestHelper.moveClockBy(Duration.ofMillis(1100));
+		// Waits for the full backoff to elapse before retrying. The 200/3s limit
+		// was breached in the previous step, and the backoff is anchored to that
+		// breach (the burst), so the caller stays blocked for the whole 3s backoff
+		// — not just until the sliding window's start boundary.
+		TestHelper.moveClockBy(Duration.ofMillis(3100));
 		for (final String key : keys) {
 			for (Integer count = 1; count <= 100; count++) {
 				this.rateLimitWithKey1(key);
