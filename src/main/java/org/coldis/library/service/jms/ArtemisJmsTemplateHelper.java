@@ -76,6 +76,12 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			if (message.getLastValueKey() != null) {
 				jmsMessage.setStringProperty(Message.HDR_LAST_VALUE_NAME.toString(), message.getLastValueKey());
 			}
+			// Sets the stale message filter key. The posted-at timestamp is not set
+			// here: consumers derive it from the scheduled delivery time (when set) or
+			// the JMS timestamp, both in wall-clock domain.
+			if (message.getStaleFilterKey() != null) {
+				jmsMessage.setStringProperty(JmsMessage.STALE_FILTER_KEY_PROPERTY, message.getStaleFilterKey());
+			}
 			// Adds each extra properties.
 			for (final Map.Entry<String, Object> property : message.getProperties().entrySet()) {
 				jmsMessage.setObjectProperty(property.getKey(), property.getValue());

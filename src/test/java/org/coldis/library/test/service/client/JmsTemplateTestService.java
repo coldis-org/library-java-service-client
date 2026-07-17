@@ -81,4 +81,19 @@ public class JmsTemplateTestService {
 				.withFixedDelay(minimumDelaySeconds).withRandomDelay(maximumDelaySeconds));
 	}
 
+	/**
+	 * Sends a message with a stale filter key.
+	 *
+	 * @param destination    Destination.
+	 * @param message        Message.
+	 * @param staleFilterKey Stale filter key.
+	 */
+	@Transactional
+	public void sendMessageWithStaleFilterKey(
+			final String destination,
+			final Object message,
+			final String staleFilterKey) {
+		this.jmsTemplateHelper.send(this.jmsTemplate, new JmsMessage<>().withDestination(destination).withMessage(message).withStaleFilterKey(staleFilterKey));
+	}
+
 }

@@ -21,6 +21,19 @@ public class JmsMessage<MessageType> {
 	private static final Random RANDOM = new SecureRandom();
 
 	/**
+	 * Name of the message property holding the stale message filter key.
+	 */
+	public static final String STALE_FILTER_KEY_PROPERTY = "staleFilterKey";
+
+	/**
+	 * Name of the optional message property overriding the timestamp (wall-clock
+	 * epoch millis) at which the message was posted. When absent, consumers fall
+	 * back to the scheduled delivery time (when set) and then to the JMS
+	 * timestamp, so producers do not usually need to set this property.
+	 */
+	public static final String STALE_FILTER_POSTED_AT_PROPERTY = "staleFilterPostedAt";
+
+	/**
 	 * Message destination.
 	 */
 	private String destination;
@@ -44,6 +57,16 @@ public class JmsMessage<MessageType> {
 	 * Last value key.
 	 */
 	private String lastValueKey;
+
+	/**
+	 * Stale message filter key. Unlike {@link #lastValueKey} (which relies on
+	 * broker-side last-value queues), this key enables consumer-side stale message
+	 * filtering: consumers may drop this message if another message with the same
+	 * key started successful processing after this message was posted. Only
+	 * suitable for refresh-style messages (triggers to recompute from current
+	 * state), never for messages whose body carries state.
+	 */
+	private String staleFilterKey;
 
 	/**
 	 * Fixed delay.
@@ -229,6 +252,37 @@ public class JmsMessage<MessageType> {
 	public JmsMessage<MessageType> withLastValueKey(
 			final String lastValueKey) {
 		this.setLastValueKey(lastValueKey);
+		return this;
+	}
+
+	/**
+	 * Gets the staleFilterKey.
+	 *
+	 * @return The staleFilterKey.
+	 */
+	public String getStaleFilterKey() {
+		return this.staleFilterKey;
+	}
+
+	/**
+	 * Sets the staleFilterKey.
+	 *
+	 * @param staleFilterKey New staleFilterKey.
+	 */
+	public void setStaleFilterKey(
+			final String staleFilterKey) {
+		this.staleFilterKey = staleFilterKey;
+	}
+
+	/**
+	 * Sets the staleFilterKey.
+	 *
+	 * @param  staleFilterKey New staleFilterKey.
+	 * @return                Message.
+	 */
+	public JmsMessage<MessageType> withStaleFilterKey(
+			final String staleFilterKey) {
+		this.setStaleFilterKey(staleFilterKey);
 		return this;
 	}
 
@@ -428,8 +482,8 @@ public class JmsMessage<MessageType> {
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.message, this.priority, this.properties,
-				this.randomDelay, this.scheduledAt);
+		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.staleFilterKey, this.message, this.priority,
+				this.properties, this.randomDelay, this.scheduledAt);
 	}
 
 	/**
@@ -447,9 +501,9 @@ public class JmsMessage<MessageType> {
 		final JmsMessage other = (JmsMessage) obj;
 		return Objects.equals(this.correlationId, other.correlationId) && Objects.equals(this.destination, other.destination)
 				&& Objects.equals(this.fixedDelay, other.fixedDelay) && Objects.equals(this.lastValueKey, other.lastValueKey)
-				&& Objects.equals(this.message, other.message) && Objects.equals(this.priority, other.priority)
-				&& Objects.equals(this.properties, other.properties) && Objects.equals(this.randomDelay, other.randomDelay)
-				&& Objects.equals(this.scheduledAt, other.scheduledAt);
+				&& Objects.equals(this.staleFilterKey, other.staleFilterKey) && Objects.equals(this.message, other.message)
+				&& Objects.equals(this.priority, other.priority) && Objects.equals(this.properties, other.properties)
+				&& Objects.equals(this.randomDelay, other.randomDelay) && Objects.equals(this.scheduledAt, other.scheduledAt);
 	}
 
 }

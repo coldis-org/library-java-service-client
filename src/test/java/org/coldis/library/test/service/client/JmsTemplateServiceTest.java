@@ -3,6 +3,7 @@ package org.coldis.library.test.service.client;
 import java.time.Duration;
 import java.util.Random;
 
+import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
@@ -18,6 +19,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.containers.GenericContainer;
 
 import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 /**
  * JMS message converter test.
@@ -100,6 +102,29 @@ public class JmsTemplateServiceTest extends TestHelper{
 				Duration.ofMillis(0));
 		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 1000L);
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("message5-" + random));
+	}
+
+	/**
+	 * Tests that the stale filter key is sent as a message property (and that
+	 * consumers can derive the posted-at timestamp from the JMS timestamp).
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testStaleFilterKey() throws Exception {
+
+		final Integer random = JmsTemplateServiceTest.RANDOM.nextInt();
+
+		// Sends and consumes a message with a stale filter key.
+		this.jmsTemplateTestService.sendMessageWithStaleFilterKey(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, "staleFilterMessage-" + random,
+				"staleFilterKey-" + random);
+		final Message message = this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 1000L);
+
+		// The stale filter key property and the JMS timestamp should be available.
+		Assertions.assertNotNull(message);
+		Assertions.assertEquals("staleFilterKey-" + random, message.getStringProperty(JmsMessage.STALE_FILTER_KEY_PROPERTY));
+		Assertions.assertTrue(message.getJMSTimestamp() > 0);
+
 	}
 
 	/**
