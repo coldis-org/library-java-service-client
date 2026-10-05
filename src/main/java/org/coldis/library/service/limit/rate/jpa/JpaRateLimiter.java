@@ -27,7 +27,10 @@ import jakarta.persistence.PersistenceException;
  * round-trips, flushing to the database every {@code bufferSize} executions or
  * every {@code bufferDuration} (configured per rate limit via annotation).
  * Entries whose window has elapsed are removed from the database and from the
- * local buffer by {@link #cleanExpiredEntries()}.
+ * local buffer by {@link #cleanExpiredEntries()}, for the rate limits this
+ * instance has checked since it started. A rate limit name is expected to have
+ * one period wherever it is used; when one instance sees several, the longest
+ * is the one its clean up uses.
  */
 public class JpaRateLimiter implements RateLimiter {
 
@@ -53,7 +56,7 @@ public class JpaRateLimiter implements RateLimiter {
 	private final Map<String, BufferedState> buffers = new ConcurrentHashMap<>();
 
 	/**
-	 * Last used configuration per rate limit name.
+	 * Configuration with the longest period seen per rate limit name.
 	 */
 	private final Map<String, RateLimitConfig> configsByName = new ConcurrentHashMap<>();
 
@@ -63,6 +66,7 @@ public class JpaRateLimiter implements RateLimiter {
 	 */
 	private static final String DELETE_IDLE_ENTRIES = "DELETE FROM rate_limit WHERE name = :name"
 			+ " AND (limited_until IS NULL OR limited_until < :now)"
+			+ " AND (buckets IS NULL OR jsonb_typeof(buckets) = 'object')"
 			+ " AND COALESCE((SELECT MAX(CAST(bucket_key AS BIGINT)) FROM jsonb_object_keys(buckets) AS bucket_key),"
 			+ " :lastExpiredBucket) <= :lastExpiredBucket";
 
@@ -74,7 +78,8 @@ public class JpaRateLimiter implements RateLimiter {
 	}
 
 	/**
-	 * Gets the number of entries held in the local buffer.
+	 * Gets the number of entries held in the local buffer. Diagnostics only: the
+	 * buffering strategy is not part of the contract of this class.
 	 *
 	 * @return The number of entries held in the local buffer.
 	 */
@@ -113,9 +118,10 @@ public class JpaRateLimiter implements RateLimiter {
 		int pendingCount = 0;
 
 		/**
-		 * Last flush time (epoch millis).
+		 * Last flush time (epoch millis). Zero until the first flush, so the first
+		 * check of a state reads the database.
 		 */
-		long lastFlushTimeMillis = DateTimeHelper.getClock().millis();
+		long lastFlushTimeMillis = 0L;
 
 		/**
 		 * Last used configuration.
@@ -125,7 +131,7 @@ public class JpaRateLimiter implements RateLimiter {
 		/**
 		 * If the state was removed from the local buffer.
 		 */
-		boolean evicted = false;
+		boolean isEvicted = false;
 
 		/**
 		 * Constructor.
@@ -182,38 +188,38 @@ public class JpaRateLimiter implements RateLimiter {
 			final RateLimitConfig config) throws RateLimitException {
 
 		final String bufKey = name + "-" + key;
-		this.configsByName.put(name, config);
+		this.configsByName.merge(name, config,
+				(previous, current) -> (current.getPeriod().compareTo(previous.getPeriod()) > 0 ? current : previous));
 
 		// Retries while the state taken from the buffer has been evicted meanwhile.
-		while (true) {
+		boolean isRecorded = false;
+		while (!isRecorded) {
 			final BufferedState state = this.buffers.computeIfAbsent(bufKey, k -> new BufferedState(name, key));
 			synchronized (state) {
-				if (state.evicted) {
-					continue;
+				if (!state.isEvicted) {
+					// Stores the latest config for shutdown flush.
+					state.lastConfig = config;
+
+					// Updates the constraints.
+					state.localEntry.setLimit(config.getLimit());
+					state.localEntry.setPeriod(config.getPeriod());
+					state.localEntry.setBackoffPeriod(config.getBackoffPeriod());
+					state.localEntry.setBucketDuration(config.getBucket());
+					state.localEntry.setResetOnBlock(config.getResetOnBlock());
+
+					// Flushes to database if buffer threshold reached.
+					if (state.needsFlush(config)) {
+						this.flushToDatabase(name, key, state, config);
+					}
+
+					// Checks local limit (adds current execution to bucket).
+					final String limitName = name + (StringUtils.isNotBlank(key) ? "-" + key : "");
+					final long bucketKey = state.localEntry.toBucketKey(DateTimeHelper.getClock().millis());
+					state.localEntry.checkLimit(limitName);
+					state.pending.merge(bucketKey, 1L, Long::sum);
+					state.pendingCount++;
+					isRecorded = true;
 				}
-
-				// Stores the latest config for shutdown flush.
-				state.lastConfig = config;
-
-				// Updates the constraints.
-				state.localEntry.setLimit(config.getLimit());
-				state.localEntry.setPeriod(config.getPeriod());
-				state.localEntry.setBackoffPeriod(config.getBackoffPeriod());
-				state.localEntry.setBucketDuration(config.getBucket());
-				state.localEntry.setResetOnBlock(config.getResetOnBlock());
-
-				// Flushes to database if buffer threshold reached.
-				if (state.needsFlush(config)) {
-					this.flushToDatabase(name, key, state, config);
-				}
-
-				// Checks local limit (adds current execution to bucket).
-				final String limitName = name + (StringUtils.isNotBlank(key) ? "-" + key : "");
-				final long bucketKey = state.localEntry.toBucketKey(DateTimeHelper.getClock().millis());
-				state.localEntry.checkLimit(limitName);
-				state.pending.merge(bucketKey, 1L, Long::sum);
-				state.pendingCount++;
-				return;
 			}
 		}
 
@@ -329,7 +335,7 @@ public class JpaRateLimiter implements RateLimiter {
 		final RateLimitStats stats = new RateLimitStats();
 		stats.setPeriod(config.getPeriod());
 		stats.setBucketDuration(config.getBucket());
-		return stats.toBucketKey(now - config.getPeriod().toMillis());
+		return stats.getLastExpiredBucketKey(now);
 	}
 
 	/**
@@ -340,7 +346,7 @@ public class JpaRateLimiter implements RateLimiter {
 			final BufferedState state = entry.getValue();
 			synchronized (state) {
 				if (state.isIdle()) {
-					state.evicted = true;
+					state.isEvicted = true;
 					this.buffers.remove(entry.getKey(), state);
 				}
 			}
@@ -358,18 +364,12 @@ public class JpaRateLimiter implements RateLimiter {
 	@Scheduled(cron = "0 */3 * * * *")
 	public void cleanExpiredEntries() {
 		final long now = DateTimeHelper.getClock().millis();
+		// Removes the entries whose block has expired.
 		try {
 			this.transactionTemplate.executeWithoutResult(status -> {
-				// Removes the entries whose block has expired.
-				int deleted = this.entityManager
+				final int deleted = this.entityManager
 						.createQuery("DELETE FROM RateLimitEntry e WHERE e.limitedUntil IS NOT NULL AND e.limitedUntil < :now")
 						.setParameter("now", now).executeUpdate();
-				// Removes the entries whose window has elapsed.
-				for (final Map.Entry<String, RateLimitConfig> config : this.configsByName.entrySet()) {
-					deleted += this.entityManager.createNativeQuery(JpaRateLimiter.DELETE_IDLE_ENTRIES)
-							.setParameter("name", config.getKey()).setParameter("now", now)
-							.setParameter("lastExpiredBucket", JpaRateLimiter.getLastExpiredBucket(config.getValue(), now)).executeUpdate();
-				}
 				if (deleted > 0) {
 					JpaRateLimiter.LOGGER.debug("Cleaned up {} expired rate limit entries", deleted);
 				}
@@ -377,6 +377,24 @@ public class JpaRateLimiter implements RateLimiter {
 		}
 		catch (final Exception exception) {
 			JpaRateLimiter.LOGGER.warn("Error cleaning up rate limit entries: {}", exception.getMessage());
+		}
+		// Removes, per rate limit, the entries whose window has elapsed.
+		for (final Map.Entry<String, RateLimitConfig> configByName : this.configsByName.entrySet()) {
+			final String rateLimitName = configByName.getKey();
+			final RateLimitConfig rateLimitConfig = configByName.getValue();
+			try {
+				this.transactionTemplate.executeWithoutResult(status -> {
+					final int deleted = this.entityManager.createNativeQuery(JpaRateLimiter.DELETE_IDLE_ENTRIES)
+							.setParameter("name", rateLimitName).setParameter("now", now)
+							.setParameter("lastExpiredBucket", JpaRateLimiter.getLastExpiredBucket(rateLimitConfig, now)).executeUpdate();
+					if (deleted > 0) {
+						JpaRateLimiter.LOGGER.debug("Cleaned up {} idle rate limit entries of {}", deleted, rateLimitName);
+					}
+				});
+			}
+			catch (final Exception exception) {
+				JpaRateLimiter.LOGGER.warn("Error cleaning up idle rate limit entries of {}: {}", rateLimitName, exception.getMessage());
+			}
 		}
 		// Removes the idle states from the local buffer.
 		this.evictIdleBuffers();

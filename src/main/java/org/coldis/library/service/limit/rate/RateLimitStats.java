@@ -218,6 +218,18 @@ public class RateLimitStats implements Typable {
 	}
 
 	/**
+	 * Gets the newest bucket key that is outside the window, by the rule
+	 * {@link #getBuckets()} prunes with.
+	 *
+	 * @param  time Time value.
+	 * @return      The newest bucket key that is outside the window.
+	 */
+	public long getLastExpiredBucketKey(
+			final long time) {
+		return this.toBucketKey(time - this.toDurationUnit(this.getPeriod()));
+	}
+
+	/**
 	 * Gets the raw buckets map, initializing if needed.
 	 *
 	 * @return The buckets map.
