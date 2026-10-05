@@ -260,7 +260,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	public void testBlockedEntryIsKeptUntilTheBlockExpires() throws Exception {
 		this.cleanUpLimit("blocked");
 		this.cleanUpLimit("blocked");
-		Assertions.assertThrows(Exception.class, () -> this.cleanUpLimit("blocked"));
+		Assertions.assertThrows(RateLimitException.class, () -> this.cleanUpLimit("blocked"));
 		Assertions.assertNotNull(this.jdbcTemplate.queryForObject(
 				"SELECT limited_until FROM rate_limit WHERE name LIKE '%clean-up' AND key = 'blocked'", Long.class));
 
@@ -296,23 +296,24 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	}
 
 	/**
-	 * Tests that a state with executions not yet flushed is kept by the clean up
-	 * once its window has elapsed, and that its flush still reaches the database.
+	 * Tests that a state whose last executions were never flushed is kept while
+	 * they are inside the window, and is evicted once the window has elapsed,
+	 * without any flush.
 	 *
 	 * @throws Exception If the test fails.
 	 */
 	@Test
-	public void testUnflushedStateIsKeptByTheCleanUp() throws Exception {
-		this.bufferedCleanUpLimit("unflushed");
-		this.bufferedCleanUpLimit("unflushed");
+	public void testIdleStateIsEvictedWithoutAFlush() throws Exception {
+		this.bufferedCleanUpLimit("lazy");
+		this.bufferedCleanUpLimit("lazy");
 
-		TestHelper.moveClockBy(Duration.ofSeconds(61));
+		TestHelper.moveClockBy(Duration.ofSeconds(30));
 		this.jpaRateLimiter.cleanExpiredEntries();
 		Assertions.assertEquals(1, this.jpaRateLimiter.getBufferedEntryCount());
 
-		this.jpaRateLimiter.flushAllBuffers();
-		Assertions.assertEquals(1L, this.jdbcTemplate.queryForObject(
-				"SELECT COUNT(*) FROM rate_limit WHERE name LIKE '%clean-up-buffered' AND key = 'unflushed'", Long.class));
+		TestHelper.moveClockBy(Duration.ofSeconds(31));
+		this.jpaRateLimiter.cleanExpiredEntries();
+		Assertions.assertEquals(0, this.jpaRateLimiter.getBufferedEntryCount());
 	}
 
 	/**

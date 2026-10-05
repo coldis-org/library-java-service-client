@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Set;
+import java.util.TreeMap;
 
 import org.coldis.library.helper.DateTimeHelper;
 import org.coldis.library.service.limit.rate.RateLimitException;
@@ -152,6 +154,28 @@ public class RateLimitStatsTest {
 		// finally released.
 		TestHelper.moveClockBy(Duration.ofMillis(8000));
 		Assertions.assertDoesNotThrow(() -> stats.checkLimit("test"));
+	}
+
+	/**
+	 * Tests that the last expired bucket key is the boundary the buckets are
+	 * pruned by: a bucket at that key is pruned and the next one is kept.
+	 */
+	@Test
+	public void testLastExpiredBucketKeyIsThePruningBoundary() {
+		for (final long offsetMillis : new long[] { 0L, 1L, 5_999L, 6_000L }) {
+			final long now = 1_800_000_000_000L + offsetMillis;
+			DateTimeHelper.setClock(Clock.fixed(Instant.ofEpochMilli(now), ZoneOffset.UTC));
+			final RateLimitStats stats = new RateLimitStats();
+			stats.setPeriod(Duration.ofSeconds(60));
+			stats.setBucketDuration(Duration.ofSeconds(6));
+			final long lastExpiredBucketKey = stats.getLastExpiredBucketKey(now);
+			final TreeMap<Long, Long> buckets = new TreeMap<>();
+			buckets.put(lastExpiredBucketKey, 1L);
+			buckets.put(lastExpiredBucketKey + 1, 1L);
+			stats.setBuckets(buckets);
+
+			Assertions.assertEquals(Set.of(lastExpiredBucketKey + 1), stats.getBuckets().keySet(), "offset " + offsetMillis);
+		}
 	}
 
 }

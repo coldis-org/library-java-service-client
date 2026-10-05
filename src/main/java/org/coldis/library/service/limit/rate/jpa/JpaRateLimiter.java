@@ -78,10 +78,13 @@ public class JpaRateLimiter implements RateLimiter {
 			+ " FROM jsonb_object_keys(buckets) AS bucket_key), :lastExpiredBucketKey) <= :lastExpiredBucketKey ELSE FALSE END))";
 
 	/**
-	 * Clears all local buffer state.
+	 * Clears all local buffer state, and the configurations registered per rate
+	 * limit name.
 	 */
 	public void clearBuffers() {
 		this.buffers.clear();
+		this.configsByName.clear();
+		this.conflictingNames.clear();
 	}
 
 	/**
@@ -164,12 +167,23 @@ public class JpaRateLimiter implements RateLimiter {
 		}
 
 		/**
-		 * Checks if the state holds nothing: no pending execution, no bucket inside
-		 * the window and no active block.
+		 * Drops the pending executions whose bucket is outside the window, since they
+		 * no longer count towards any limit.
+		 */
+		void dropExpiredPending() {
+			final long lastExpiredBucketKey = this.localEntry.getLastExpiredBucketKey(DateTimeHelper.getClock().millis());
+			this.pending.headMap(lastExpiredBucketKey, true).clear();
+			this.pendingCount = (int) this.pending.values().stream().mapToLong(Long::longValue).sum();
+		}
+
+		/**
+		 * Checks if the state holds nothing: no pending execution inside the window,
+		 * no bucket inside the window and no active block.
 		 *
 		 * @return True if the state holds nothing.
 		 */
 		boolean isIdle() {
+			this.dropExpiredPending();
 			return this.pending.isEmpty() && this.localEntry.getBuckets().isEmpty() && (this.localEntry.getLimitedUntil() == null);
 		}
 
@@ -183,6 +197,24 @@ public class JpaRateLimiter implements RateLimiter {
 	public JpaRateLimiter(final PlatformTransactionManager transactionManager) {
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.transactionTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+	}
+
+	/**
+	 * Registers the configuration of a rate limit name, and marks the name as
+	 * conflicting when it is seen with another period or bucket.
+	 *
+	 * @param name   Rate limit name.
+	 * @param config Rate limit configuration.
+	 */
+	private void registerConfig(
+			final String name,
+			final RateLimitConfig config) {
+		final RateLimitConfig registeredConfig = this.configsByName.putIfAbsent(name, config);
+		if ((registeredConfig != null)
+				&& (!Objects.equals(registeredConfig.getPeriod(), config.getPeriod()) || !Objects.equals(registeredConfig.getBucket(), config.getBucket()))
+				&& this.conflictingNames.add(name)) {
+			JpaRateLimiter.LOGGER.warn("Rate limit {} is used with more than one period or bucket; its idle entries are not cleaned up", name);
+		}
 	}
 
 	/**
@@ -325,23 +357,6 @@ public class JpaRateLimiter implements RateLimiter {
 					}
 				}
 			}
-		}
-	}
-
-	/**
-	 * Registers the configuration of a rate limit name, and marks the name as
-	 * conflicting when it is seen with another period or bucket.
-	 *
-	 * @param name   Rate limit name.
-	 * @param config Rate limit configuration.
-	 */
-	private void registerConfig(
-			final String name,
-			final RateLimitConfig config) {
-		final RateLimitConfig first = this.configsByName.putIfAbsent(name, config);
-		if ((first != null) && (!Objects.equals(first.getPeriod(), config.getPeriod()) || !Objects.equals(first.getBucket(), config.getBucket()))
-				&& this.conflictingNames.add(name)) {
-			JpaRateLimiter.LOGGER.warn("Rate limit {} is used with more than one period or bucket; its idle entries are not cleaned up", name);
 		}
 	}
 
