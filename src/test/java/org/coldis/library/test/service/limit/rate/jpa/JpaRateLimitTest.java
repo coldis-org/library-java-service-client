@@ -6,6 +6,7 @@ import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.helper.DateTimeHelper;
 import org.coldis.library.service.limit.rate.RateLimit;
+import org.coldis.library.service.limit.rate.RateLimitException;
 import org.coldis.library.service.limit.rate.RateLimitKey;
 import org.coldis.library.service.limit.rate.RateLimits;
 import org.coldis.library.service.limit.rate.jpa.JpaRateLimiter;
@@ -166,6 +167,42 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	}
 
 	/**
+	 * Rate limited method sharing its name with {@link #longSharedLimit(String)}
+	 * under a shorter period (limit=100, period=60s).
+	 *
+	 * @param key Rate limit key.
+	 */
+	@RateLimit(
+			name = "clean-up-shared",
+			limit = "100",
+			period = "60",
+			limiter = "jpaRateLimiter",
+			bufferSize = "1"
+	)
+	protected void shortSharedLimit(
+			@RateLimitKey
+			final String key) {
+	}
+
+	/**
+	 * Rate limited method sharing its name with {@link #shortSharedLimit(String)}
+	 * under a longer period (limit=100, period=300s).
+	 *
+	 * @param key Rate limit key.
+	 */
+	@RateLimit(
+			name = "clean-up-shared",
+			limit = "100",
+			period = "300",
+			limiter = "jpaRateLimiter",
+			bufferSize = "1"
+	)
+	protected void longSharedLimit(
+			@RateLimitKey
+			final String key) {
+	}
+
+	/**
 	 * Gets the stored name of a rate limit entry.
 	 *
 	 * @param  key Rate limit key.
@@ -235,6 +272,7 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 		TestHelper.moveClockBy(Duration.ofSeconds(31));
 		this.jpaRateLimiter.cleanExpiredEntries();
 		Assertions.assertEquals(0L, this.countEntries("blocked"));
+		Assertions.assertEquals(0, this.jpaRateLimiter.getBufferedEntryCount());
 	}
 
 	/**
@@ -258,8 +296,8 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	}
 
 	/**
-	 * Tests that a state with executions not yet flushed is kept by the clean up,
-	 * and that its count still reaches the database.
+	 * Tests that a state with executions not yet flushed is kept by the clean up
+	 * once its window has elapsed, and that its flush still reaches the database.
 	 *
 	 * @throws Exception If the test fails.
 	 */
@@ -268,15 +306,13 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 		this.bufferedCleanUpLimit("unflushed");
 		this.bufferedCleanUpLimit("unflushed");
 
-		TestHelper.moveClockBy(Duration.ofSeconds(30));
+		TestHelper.moveClockBy(Duration.ofSeconds(61));
 		this.jpaRateLimiter.cleanExpiredEntries();
 		Assertions.assertEquals(1, this.jpaRateLimiter.getBufferedEntryCount());
 
 		this.jpaRateLimiter.flushAllBuffers();
-		Assertions.assertEquals(2L, this.jdbcTemplate.queryForObject(
-				"SELECT SUM(CAST(bucket.bucket_count AS BIGINT)) FROM rate_limit, jsonb_each_text(buckets) AS bucket(bucket_key, bucket_count)"
-						+ " WHERE name LIKE '%clean-up-buffered' AND key = 'unflushed'",
-				Long.class));
+		Assertions.assertEquals(1L, this.jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM rate_limit WHERE name LIKE '%clean-up-buffered' AND key = 'unflushed'", Long.class));
 	}
 
 	/**
@@ -297,7 +333,45 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 		this.jdbcTemplate.update("INSERT INTO rate_limit (name, key, buckets, limited_until) VALUES (?, 'returning', '{}', ?)", name,
 				DateTimeHelper.getClock().millis() + 60000L);
 
-		Assertions.assertThrows(Exception.class, () -> this.cleanUpLimit("returning"));
+		Assertions.assertThrows(RateLimitException.class, () -> this.cleanUpLimit("returning"));
+	}
+
+	/**
+	 * Tests that a rate limit name used with two periods is left out of the
+	 * window clean up, so an entry inside the longer window is kept.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testNameWithTwoPeriodsIsNotCleaned() throws Exception {
+		this.shortSharedLimit("short");
+		this.longSharedLimit("long");
+		this.jpaRateLimiter.flushAllBuffers();
+
+		TestHelper.moveClockBy(Duration.ofSeconds(61));
+		this.jpaRateLimiter.cleanExpiredEntries();
+
+		Assertions.assertEquals(2L, this.jdbcTemplate
+				.queryForObject("SELECT COUNT(*) FROM rate_limit WHERE name LIKE '%clean-up-shared' AND key IN ('long', 'short')", Long.class));
+	}
+
+	/**
+	 * Tests that an entry whose buckets are not a JSON object is kept, and does not
+	 * stop the clean up of the other entries of its rate limit.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testNonObjectBucketsAreKeptAndDoNotStopTheCleanUp() throws Exception {
+		this.cleanUpLimit("object");
+		this.jpaRateLimiter.flushAllBuffers();
+		this.jdbcTemplate.update("INSERT INTO rate_limit (name, key, buckets) VALUES (?, 'array', '[]')", this.storedName("object"));
+
+		TestHelper.moveClockBy(Duration.ofSeconds(61));
+		this.jpaRateLimiter.cleanExpiredEntries();
+
+		Assertions.assertEquals(0L, this.countEntries("object"));
+		Assertions.assertEquals(1L, this.countEntries("array"));
 	}
 
 }

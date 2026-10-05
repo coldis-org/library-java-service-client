@@ -1,6 +1,8 @@
 package org.coldis.library.service.limit.rate.jpa;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,8 +31,9 @@ import jakarta.persistence.PersistenceException;
  * Entries whose window has elapsed are removed from the database and from the
  * local buffer by {@link #cleanExpiredEntries()}, for the rate limits this
  * instance has checked since it started. A rate limit name is expected to have
- * one period wherever it is used; when one instance sees several, the longest
- * is the one its clean up uses.
+ * one period and one bucket wherever it is used; a name this instance sees
+ * with two of them is left out of the window clean up, and only its expired
+ * blocks are removed.
  */
 public class JpaRateLimiter implements RateLimiter {
 
@@ -56,9 +59,14 @@ public class JpaRateLimiter implements RateLimiter {
 	private final Map<String, BufferedState> buffers = new ConcurrentHashMap<>();
 
 	/**
-	 * Configuration with the longest period seen per rate limit name.
+	 * First configuration seen per rate limit name.
 	 */
 	private final Map<String, RateLimitConfig> configsByName = new ConcurrentHashMap<>();
+
+	/**
+	 * Rate limit names seen with more than one period or bucket.
+	 */
+	private final Set<String> conflictingNames = ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Deletes the entries of a rate limit that are not blocked and whose newest
@@ -66,9 +74,8 @@ public class JpaRateLimiter implements RateLimiter {
 	 */
 	private static final String DELETE_IDLE_ENTRIES = "DELETE FROM rate_limit WHERE name = :name"
 			+ " AND (limited_until IS NULL OR limited_until < :now)"
-			+ " AND (buckets IS NULL OR jsonb_typeof(buckets) = 'object')"
-			+ " AND COALESCE((SELECT MAX(CAST(bucket_key AS BIGINT)) FROM jsonb_object_keys(buckets) AS bucket_key),"
-			+ " :lastExpiredBucket) <= :lastExpiredBucket";
+			+ " AND (buckets IS NULL OR (CASE WHEN jsonb_typeof(buckets) = 'object' THEN COALESCE((SELECT MAX(CAST(bucket_key AS BIGINT))"
+			+ " FROM jsonb_object_keys(buckets) AS bucket_key), :lastExpiredBucketKey) <= :lastExpiredBucketKey ELSE FALSE END))";
 
 	/**
 	 * Clears all local buffer state.
@@ -188,8 +195,7 @@ public class JpaRateLimiter implements RateLimiter {
 			final RateLimitConfig config) throws RateLimitException {
 
 		final String bufKey = name + "-" + key;
-		this.configsByName.merge(name, config,
-				(previous, current) -> (current.getPeriod().compareTo(previous.getPeriod()) > 0 ? current : previous));
+		this.registerConfig(name, config);
 
 		// Retries while the state taken from the buffer has been evicted meanwhile.
 		boolean isRecorded = false;
@@ -323,13 +329,30 @@ public class JpaRateLimiter implements RateLimiter {
 	}
 
 	/**
+	 * Registers the configuration of a rate limit name, and marks the name as
+	 * conflicting when it is seen with another period or bucket.
+	 *
+	 * @param name   Rate limit name.
+	 * @param config Rate limit configuration.
+	 */
+	private void registerConfig(
+			final String name,
+			final RateLimitConfig config) {
+		final RateLimitConfig first = this.configsByName.putIfAbsent(name, config);
+		if ((first != null) && (!Objects.equals(first.getPeriod(), config.getPeriod()) || !Objects.equals(first.getBucket(), config.getBucket()))
+				&& this.conflictingNames.add(name)) {
+			JpaRateLimiter.LOGGER.warn("Rate limit {} is used with more than one period or bucket; its idle entries are not cleaned up", name);
+		}
+	}
+
+	/**
 	 * Gets the newest bucket key that is outside the window of a rate limit.
 	 *
 	 * @param  config Rate limit configuration.
 	 * @param  now    Current time (epoch millis).
 	 * @return        The newest bucket key that is outside the window.
 	 */
-	private static long getLastExpiredBucket(
+	private static long getLastExpiredBucketKey(
 			final RateLimitConfig config,
 			final long now) {
 		final RateLimitStats stats = new RateLimitStats();
@@ -382,11 +405,14 @@ public class JpaRateLimiter implements RateLimiter {
 		for (final Map.Entry<String, RateLimitConfig> configByName : this.configsByName.entrySet()) {
 			final String rateLimitName = configByName.getKey();
 			final RateLimitConfig rateLimitConfig = configByName.getValue();
+			if (this.conflictingNames.contains(rateLimitName)) {
+				continue;
+			}
 			try {
 				this.transactionTemplate.executeWithoutResult(status -> {
 					final int deleted = this.entityManager.createNativeQuery(JpaRateLimiter.DELETE_IDLE_ENTRIES)
 							.setParameter("name", rateLimitName).setParameter("now", now)
-							.setParameter("lastExpiredBucket", JpaRateLimiter.getLastExpiredBucket(rateLimitConfig, now)).executeUpdate();
+							.setParameter("lastExpiredBucketKey", JpaRateLimiter.getLastExpiredBucketKey(rateLimitConfig, now)).executeUpdate();
 					if (deleted > 0) {
 						JpaRateLimiter.LOGGER.debug("Cleaned up {} idle rate limit entries of {}", deleted, rateLimitName);
 					}
