@@ -1,13 +1,19 @@
 package org.coldis.library.test.service.limit.rate.jpa;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.helper.DateTimeHelper;
+import org.aspectj.lang.Aspects;
 import org.coldis.library.service.limit.rate.RateLimit;
+import org.coldis.library.service.limit.rate.RateLimitConfig;
 import org.coldis.library.service.limit.rate.RateLimitException;
+import org.coldis.library.service.limit.rate.RateLimitInterceptor;
 import org.coldis.library.service.limit.rate.RateLimitKey;
+import org.coldis.library.service.limit.rate.RateLimiter;
 import org.coldis.library.service.limit.rate.RateLimits;
 import org.coldis.library.service.limit.rate.jpa.JpaRateLimiter;
 import org.coldis.library.test.TestHelper;
@@ -17,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -29,6 +37,42 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 	 */
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
+
+	/**
+	 * Rate limiter that only records the limits it is asked to check.
+	 */
+	private static class RecordingRateLimiter implements RateLimiter {
+
+		/**
+		 * Names of the checked limits.
+		 */
+		private final List<String> checkedLimits = new CopyOnWriteArrayList<>();
+
+		/**
+		 * @see RateLimiter#checkLimit(String, String, RateLimitConfig)
+		 */
+		@Override
+		public void checkLimit(
+				final String name,
+				final String key,
+				final RateLimitConfig config) {
+			this.checkedLimits.add(name);
+		}
+
+		/**
+		 * @see RateLimiter#cleanExpiredEntries()
+		 */
+		@Override
+		public void cleanExpiredEntries() {
+		}
+
+	}
+
+	/**
+	 * Test application context.
+	 */
+	@Autowired
+	private ApplicationContext applicationContext;
 
 	/**
 	 * Central rate limiter.
@@ -373,6 +417,37 @@ public class JpaRateLimitTest extends AbstractRateLimitTest {
 
 		Assertions.assertEquals(0L, this.countEntries("object"));
 		Assertions.assertEquals(1L, this.countEntries("array"));
+	}
+
+	/**
+	 * Tests that the aspect takes the rate limiter from the context it was last
+	 * given, not from one it took it from before: with several contexts in a JVM
+	 * (a test suite), a cached bean of a closed context failed every limited call.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testRateLimiterOfTheCurrentContextIsUsed() throws Exception {
+		final RateLimitInterceptor interceptor = Aspects.aspectOf(RateLimitInterceptor.class);
+		final RecordingRateLimiter recordingRateLimiter = new RecordingRateLimiter();
+		final GenericApplicationContext otherContext = new GenericApplicationContext();
+		otherContext.registerBean("jpaRateLimiter", RateLimiter.class, () -> recordingRateLimiter);
+		otherContext.refresh();
+		try {
+			// Takes this context's limiter first, then the other context's one.
+			this.rateLimit1();
+			interceptor.setApplicationContext(otherContext);
+			this.rateLimit1();
+			Assertions.assertEquals(1, recordingRateLimiter.checkedLimits.size());
+		}
+		finally {
+			interceptor.setApplicationContext(this.applicationContext);
+			otherContext.close();
+		}
+
+		// Back to this context's limiter.
+		this.rateLimit1();
+		Assertions.assertEquals(1, recordingRateLimiter.checkedLimits.size());
 	}
 
 }

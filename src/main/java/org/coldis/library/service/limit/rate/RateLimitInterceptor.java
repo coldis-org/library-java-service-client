@@ -72,12 +72,18 @@ public class RateLimitInterceptor implements ApplicationContextAware, EmbeddedVa
 	}
 
 	/**
+	 * Sets the context the rate limiter beans are taken from, and forgets the ones
+	 * taken from the previous context: the aspect is one instance per JVM, while a
+	 * JVM may run several contexts (a test suite does), and a bean of a closed
+	 * context must not be used.
+	 *
 	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
 	 */
 	@Override
 	public void setApplicationContext(
 			final ApplicationContext applicationContext) throws BeansException {
 		this.applicationContext = applicationContext;
+		this.rateLimiters.clear();
 	}
 
 	/**
