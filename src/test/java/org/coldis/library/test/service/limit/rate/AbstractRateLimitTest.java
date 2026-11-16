@@ -42,8 +42,10 @@ public abstract class AbstractRateLimitTest extends AbstractServiceTest {
 	 * is fully deterministic — only explicit moveClockBy calls advance time
 	 * (real CPU time during loops does not).
 	 */
+	@Override
 	@BeforeEach
-	public void freezeClockBeforeTest() {
+	public void beforeEach() {
+		super.beforeEach();
 		DateTimeHelper.setClock(Clock.fixed(Instant.now(), ZoneOffset.UTC));
 	}
 

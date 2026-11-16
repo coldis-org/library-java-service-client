@@ -2,8 +2,10 @@ package org.coldis.library.test.service.client;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.coldis.library.serialization.ObjectMapperHelper;
 import org.coldis.library.service.jms.JmsMessage;
 import org.coldis.library.service.model.FileResource;
@@ -15,6 +17,10 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.Resource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -48,6 +54,12 @@ public class ServiceClientGeneratorTest extends AbstractServiceTest {
 	 */
 	@Value(value = "classpath:test.txt")
 	private Resource testFile;
+
+	/**
+	 * Application context.
+	 */
+	@Autowired
+	private ConfigurableApplicationContext applicationContext;
 
 	/**
 	 * Object mapper.
@@ -186,6 +198,28 @@ public class ServiceClientGeneratorTest extends AbstractServiceTest {
 				return this.service2.getState();
 			}, state -> (state.get("test5") != null) && ((long) state.get("test5") == 5L), TestHelper.VERY_LONG_WAIT, TestHelper.SHORT_WAIT));
 			Assertions.assertEquals(Integer.valueOf(11), this.service2Client.test6(11L).get("test6"));
+		}
+	}
+
+	/**
+	 * The generated clients read {@code always-sync} from the configuration (the
+	 * other tests switch it at runtime): a client bean created with the property
+	 * set has it on, one created without it has it off. The property is added to
+	 * the shared context's environment only while the bean is created.
+	 *
+	 * @throws IllegalAccessException If the setting cannot be read.
+	 */
+	@Test
+	public void testAlwaysSyncProperty() throws IllegalAccessException {
+		final MutablePropertySources propertySources = this.applicationContext.getEnvironment().getPropertySources();
+		final AutowireCapableBeanFactory beanFactory = this.applicationContext.getAutowireCapableBeanFactory();
+		Assertions.assertEquals(Boolean.FALSE, FieldUtils.readField(beanFactory.createBean(TestService2Client.class), "alwaysSync", true));
+		propertySources.addFirst(new MapPropertySource("alwaysSyncTest", Map.of("org.coldis.library.service-client.always-sync", "true")));
+		try {
+			Assertions.assertEquals(Boolean.TRUE, FieldUtils.readField(beanFactory.createBean(TestService2Client.class), "alwaysSync", true));
+		}
+		finally {
+			propertySources.remove("alwaysSyncTest");
 		}
 	}
 

@@ -35,11 +35,12 @@ public class JmsTemplateServiceTest extends AbstractServiceTest {
 	/**
 	 * Clears before tests.
 	 *
-	 * @throws JMSException If the test fails.
+	 * @see org.coldis.library.test.service.AbstractServiceTest#beforeEach()
 	 */
+	@Override
 	@BeforeEach
-	public void clear() throws JMSException {
-
+	public void beforeEach() {
+		super.beforeEach();
 		// Clears acked messages.
 		JmsTemplateTestService.ACKED_MESSAGES.clear();
 

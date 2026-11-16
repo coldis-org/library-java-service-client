@@ -2,6 +2,7 @@ package org.coldis.library.test.service.client;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -25,6 +26,7 @@ import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -217,7 +219,8 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 			final InetSocketAddress fullAddress = new InetSocketAddress(InetAddress.getLoopbackAddress(), fullServerSocket.getLocalPort());
 			// Fills the accept queue until a connect no longer completes.
 			boolean isQueueFull = false;
-			while (!isQueueFull && (queuedSockets.size() < 16)) {
+			boolean isRefused = false;
+			while (!isQueueFull && !isRefused && (queuedSockets.size() < 16)) {
 				final Socket queuedSocket = new Socket();
 				queuedSockets.add(queuedSocket);
 				try {
@@ -226,8 +229,13 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 				catch (final SocketTimeoutException exception) {
 					isQueueFull = true;
 				}
+				catch (final ConnectException exception) {
+					isRefused = true;
+				}
 			}
-			Assertions.assertTrue(isQueueFull, "The accept queue could not be filled.");
+			// Some systems refuse instead of dropping when the queue is full (macOS, or
+			// Linux with tcp_abort_on_overflow): the connect timeout cannot be observed.
+			Assumptions.assumeTrue(isQueueFull, "The accept queue could not be filled.");
 			final long startNanos = System.nanoTime();
 			final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
 					() -> this.restTemplate.getForObject("http://" + fullAddress.getHostString() + ":" + fullAddress.getPort() + "/", String.class));
@@ -262,7 +270,9 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 				holdingCalls.add(callers.submit(() -> this.restTemplate.getForObject(holdUrl, String.class)));
 			}
 			final long holdStartNanos = System.nanoTime();
-			while ((ServiceClientTimeoutTest.HOLD_REQUESTS.get() < maxPerRoute) && (Duration.ofNanos(System.nanoTime() - holdStartNanos).toSeconds() < 5)) {
+			// They must all arrive within 2 seconds (the hold minus the pool wait), or the
+			// first ones would be released before the extra request gives up.
+			while ((ServiceClientTimeoutTest.HOLD_REQUESTS.get() < maxPerRoute) && (Duration.ofNanos(System.nanoTime() - holdStartNanos).toMillis() < 2000)) {
 				Thread.sleep(10);
 			}
 			Assertions.assertEquals(maxPerRoute, ServiceClientTimeoutTest.HOLD_REQUESTS.get());

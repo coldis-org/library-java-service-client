@@ -82,11 +82,36 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
-	 * Creates an HTTP request factory over the pooled HTTP client. It is prototype
-	 * scoped: {@link RestTemplateBuilder} sets the connect and read timeouts on the
-	 * factory it is given, so a factory shared by two templates would carry the
-	 * timeouts of whichever was built last. Each injection point gets its own
-	 * factory; all of them share the same HTTP client and connection pool.
+
+	/**
+	 * Creates an HTTP request factory over an HTTP client (every request factory of
+	 * the library is created here).
+	 *
+	 * @param  httpClient               HTTP client.
+	 * @param  connectionRequestTimeout Time to wait for a pooled connection
+	 *                                      ({@code null} keeps the HTTP client
+	 *                                      default).
+	 * @return                          The HTTP request factory.
+	 */
+	private static HttpComponentsClientHttpRequestFactory createRequestFactory(
+			final HttpClient httpClient,
+			final Duration connectionRequestTimeout) {
+		final HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+		if (connectionRequestTimeout != null) {
+			requestFactory.setConnectionRequestTimeout(connectionRequestTimeout);
+		}
+		return requestFactory;
+	}
+
+	/**
+	 * Creates an HTTP request factory over the pooled HTTP client, with no pool
+	 * wait set (the HTTP client default, as before). It is prototype scoped:
+	 * {@link RestTemplateBuilder} sets the connect and read timeouts on the factory
+	 * it is given, so a factory shared by two templates would carry the timeouts of
+	 * whichever was built last. Each injection point gets its own factory; all of
+	 * them share the same HTTP client and connection pool. One injected factory
+	 * must back one template only: to build several templates, inject it once per
+	 * template, or use {@link #buildRestTemplate}.
 	 *
 	 * @param  httpClient HTTP client.
 	 * @return            The HTTP request factory.
@@ -95,27 +120,12 @@ public class ServiceClientAutoConfiguration {
 	@Scope(value = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	public ClientHttpRequestFactory httpClientRequestFactory(
 			final HttpClient httpClient) {
-		return new HttpComponentsClientHttpRequestFactory(httpClient);
-	}
-
-	/**
-	 * Creates an HTTP request factory with its own timeouts.
-	 *
-	 * @param  httpClient               HTTP client.
-	 * @param  connectionRequestTimeout Time to wait for a pooled connection.
-	 * @return                          The HTTP request factory.
-	 */
-	private static HttpComponentsClientHttpRequestFactory createRequestFactory(
-			final HttpClient httpClient,
-			final Duration connectionRequestTimeout) {
-		final HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
-		requestFactory.setConnectionRequestTimeout(connectionRequestTimeout);
-		return requestFactory;
+		return ServiceClientAutoConfiguration.createRequestFactory(httpClient, null);
 	}
 
 	/**
 	 * Builds a rest template with the given timeouts, over a request factory of its
-	 * own.
+	 * own (a new one at each build, so templates never share timeouts).
 	 *
 	 * @param  restTemplateBuilder      Rest template builder.
 	 * @param  httpClient               HTTP client.
@@ -124,7 +134,7 @@ public class ServiceClientAutoConfiguration {
 	 * @param  readTimeout              Read timeout.
 	 * @return                          The rest template.
 	 */
-	private static RestTemplate buildRestTemplate(
+	public static RestTemplate buildRestTemplate(
 			final RestTemplateBuilder restTemplateBuilder,
 			final HttpClient httpClient,
 			final Duration connectTimeout,
@@ -137,13 +147,13 @@ public class ServiceClientAutoConfiguration {
 	/**
 	 * Creates the rest template.
 	 *
-	 * @param  restTemplateBuilder      Rest template builder.
-	 * @param  httpClient               HTTP client.
-	 * @param  readTimeout              Read timeout (seconds).
-	 * @param  connectTimeout           Connect timeout (seconds).
-	 * @param  connectionRequestTimeout Time to wait for a pooled connection
-	 *                                      (seconds).
-	 * @return                          The rest template.
+	 * @param  restTemplateBuilder             Rest template builder.
+	 * @param  httpClient                      HTTP client.
+	 * @param  readTimeoutSeconds              Read timeout (seconds).
+	 * @param  connectTimeoutSeconds           Connect timeout (seconds).
+	 * @param  connectionRequestTimeoutSeconds Time to wait for a pooled connection
+	 *                                             (seconds).
+	 * @return                                 The rest template.
 	 */
 	@Bean
 	@Qualifier(value = "restTemplate")
@@ -151,16 +161,16 @@ public class ServiceClientAutoConfiguration {
 	public RestTemplate restTemplate(
 			final RestTemplateBuilder restTemplateBuilder,
 			final HttpClient httpClient,
-			@Value(value = "${org.coldis.library.service-client.timeout:9}")
-			final Long readTimeout,
-			@Value(value = "${org.coldis.library.service-client.connect-timeout:3}")
-			final Long connectTimeout,
-			@Value(value = "${org.coldis.library.service-client.connection-request-timeout:5}")
-			final Long connectionRequestTimeout) {
-		final RestTemplate restTemplate = ServiceClientAutoConfiguration.buildRestTemplate(restTemplateBuilder, httpClient, Duration.ofSeconds(connectTimeout),
-				Duration.ofSeconds(connectionRequestTimeout), Duration.ofSeconds(readTimeout));
+			@Value(value = "${org.coldis.library.service-client.timeout}")
+			final Long readTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connect-timeout}")
+			final Long connectTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connection-request-timeout}")
+			final Long connectionRequestTimeoutSeconds) {
+		final RestTemplate restTemplate = ServiceClientAutoConfiguration.buildRestTemplate(restTemplateBuilder, httpClient,
+				Duration.ofSeconds(connectTimeoutSeconds), Duration.ofSeconds(connectionRequestTimeoutSeconds), Duration.ofSeconds(readTimeoutSeconds));
 		ServiceClientAutoConfiguration.LOGGER.info("Default service client REST template timeouts: connect {}s, wait for a pooled connection {}s, read {}s.",
-				connectTimeout, connectionRequestTimeout, readTimeout);
+				connectTimeoutSeconds, connectionRequestTimeoutSeconds, readTimeoutSeconds);
 		return restTemplate;
 	}
 
