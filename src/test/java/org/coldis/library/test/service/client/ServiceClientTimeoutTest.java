@@ -2,7 +2,11 @@ package org.coldis.library.test.service.client;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -45,10 +49,6 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 	 */
 	private static final Duration SLOW_RESPONSE_DELAY = Duration.ofSeconds(2);
 
-	/**
-	 * An address that does not answer (connect attempts time out).
-	 */
-	private static final String UNROUTABLE_URL = "http://10.255.255.1:81/";
 
 	/**
 	 * How long the holding endpoint keeps a connection (less than the default read
@@ -203,17 +203,43 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * A connect to an address that does not answer fails within the default
-	 * template connect timeout (3s), not its read timeout (9s).
+	 * A connect that does not complete fails within the default template connect
+	 * timeout (3s), not its read timeout (9s). The connect goes to a local server
+	 * socket whose accept queue is full and that never accepts: the operating
+	 * system drops the new connection request, so the connect hangs on any network.
+	 *
+	 * @throws IOException If the local server socket cannot be set up.
 	 */
 	@Test
-	public void testDefaultTemplateConnectTimeout() {
-		final long startNanos = System.nanoTime();
-		final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
-				() -> this.restTemplate.getForObject(ServiceClientTimeoutTest.UNROUTABLE_URL, String.class));
-		final Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
-		Assertions.assertTrue(ExceptionUtils.indexOfType(exception, ConnectTimeoutException.class) >= 0, () -> "Not a connect timeout: " + exception);
-		Assertions.assertTrue(elapsed.compareTo(Duration.ofSeconds(5)) < 0, () -> "Connect took " + elapsed);
+	public void testDefaultTemplateConnectTimeout() throws IOException {
+		final List<Socket> queuedSockets = new ArrayList<>();
+		try (ServerSocket fullServerSocket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+			final InetSocketAddress fullAddress = new InetSocketAddress(InetAddress.getLoopbackAddress(), fullServerSocket.getLocalPort());
+			// Fills the accept queue until a connect no longer completes.
+			boolean isQueueFull = false;
+			while (!isQueueFull && (queuedSockets.size() < 16)) {
+				final Socket queuedSocket = new Socket();
+				queuedSockets.add(queuedSocket);
+				try {
+					queuedSocket.connect(fullAddress, 200);
+				}
+				catch (final SocketTimeoutException exception) {
+					isQueueFull = true;
+				}
+			}
+			Assertions.assertTrue(isQueueFull, "The accept queue could not be filled.");
+			final long startNanos = System.nanoTime();
+			final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
+					() -> this.restTemplate.getForObject("http://" + fullAddress.getHostString() + ":" + fullAddress.getPort() + "/", String.class));
+			final Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+			Assertions.assertTrue(ExceptionUtils.indexOfType(exception, ConnectTimeoutException.class) >= 0, () -> "Not a connect timeout: " + exception);
+			Assertions.assertTrue(elapsed.compareTo(Duration.ofSeconds(5)) < 0, () -> "Connect took " + elapsed);
+		}
+		finally {
+			for (final Socket queuedSocket : queuedSockets) {
+				queuedSocket.close();
+			}
+		}
 	}
 
 	/**
