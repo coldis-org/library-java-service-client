@@ -4,19 +4,12 @@ import java.time.Duration;
 import java.util.Random;
 
 import org.coldis.library.service.jms.JmsMessage;
-import org.coldis.library.test.StartTestWithContainerExtension;
-import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
-import org.coldis.library.test.TestWithContainer;
+import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
-import org.springframework.test.annotation.DirtiesContext;
-import org.testcontainers.containers.GenericContainer;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
@@ -24,22 +17,9 @@ import jakarta.jms.Message;
 /**
  * JMS message converter test.
  */
-@TestWithContainer
-@ExtendWith(StartTestWithContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-@ExtendWith(StopTestWithContainerExtension.class)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-public class JmsTemplateServiceTest extends TestHelper{
+public class JmsTemplateServiceTest extends AbstractServiceTest {
 
-	/**
-	 * Postgres container.
-	 */
-	public static GenericContainer<?> POSTGRES_CONTAINER = TestHelper.createPostgresContainer();
 
-	/**
-	 * Artemis container.
-	 */
-	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
 
 	/**
 	 * Random.

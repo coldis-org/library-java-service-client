@@ -17,25 +17,18 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
-import org.coldis.library.test.StartTestWithContainerExtension;
-import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
-import org.coldis.library.test.TestWithContainer;
+import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
-import org.testcontainers.containers.GenericContainer;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -43,22 +36,9 @@ import com.sun.net.httpserver.HttpServer;
 /**
  * Service client timeouts test.
  */
-@TestWithContainer
-@ExtendWith(StartTestWithContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-@ExtendWith(StopTestWithContainerExtension.class)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-public class ServiceClientTimeoutTest extends TestHelper {
+public class ServiceClientTimeoutTest extends AbstractServiceTest {
 
-	/**
-	 * Postgres container.
-	 */
-	public static GenericContainer<?> POSTGRES_CONTAINER = TestHelper.createPostgresContainer();
 
-	/**
-	 * Artemis container.
-	 */
-	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
 
 	/**
 	 * How long the slow endpoint takes to answer.
