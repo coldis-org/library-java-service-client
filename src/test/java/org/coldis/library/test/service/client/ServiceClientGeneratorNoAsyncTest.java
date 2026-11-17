@@ -1,22 +1,24 @@
 package org.coldis.library.test.service.client;
 
-import org.coldis.library.test.StartTestWithContainerExtension;
-import org.coldis.library.test.StopTestWithContainerExtension;
-import org.coldis.library.test.TestWithContainer;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.junit.jupiter.api.BeforeEach;
 
 /**
- * Service client generator test.
+ * Service client generator test, with the generated clients calling the
+ * asynchronous operations synchronously ({@code always-sync}), switched on at
+ * runtime so the test runs on the same Spring context as the others.
  */
-@TestWithContainer
-@ExtendWith(StartTestWithContainerExtension.class)
-@SpringBootTest(
-		webEnvironment = WebEnvironment.RANDOM_PORT,
-		properties = "org.coldis.library.service-client.always-sync=true"
-)
-@ExtendWith(StopTestWithContainerExtension.class)
 public class ServiceClientGeneratorNoAsyncTest extends ServiceClientGeneratorTest {
+
+	/**
+	 * Makes the generated clients call asynchronous operations synchronously.
+	 *
+	 * @see org.coldis.library.test.service.AbstractServiceTest#beforeEach()
+	 */
+	@Override
+	@BeforeEach
+	public void beforeEach() {
+		super.beforeEach();
+		this.setAlwaysSync(true);
+	}
 
 }

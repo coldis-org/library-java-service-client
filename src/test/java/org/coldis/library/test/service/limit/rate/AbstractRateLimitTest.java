@@ -9,45 +9,28 @@ import java.util.Objects;
 import java.util.Random;
 
 import org.coldis.library.helper.DateTimeHelper;
-import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
-import org.coldis.library.test.TestWithContainer;
+import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
-import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.containers.GenericContainer;
 
 /**
  * Abstract rate limit test. Subclasses provide the annotated methods with the
  * appropriate limiter configuration.
  */
-@TestWithContainer(reuse = true)
-@ExtendWith(StartTestWithContainerExtension.class)
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-public abstract class AbstractRateLimitTest {
+public abstract class AbstractRateLimitTest extends AbstractServiceTest {
 
 	/**
 	 * Redis container.
 	 */
 	public static GenericContainer<?> REDIS_CONTAINER = TestHelper.createRedisContainer();
 
-	/**
-	 * Postgres container.
-	 */
-	public static GenericContainer<?> POSTGRES_CONTAINER = TestHelper.createPostgresContainer();
 
-	/**
-	 * Artemis container.
-	 */
-	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
 
 	/**
 	 * Logger.
@@ -59,8 +42,10 @@ public abstract class AbstractRateLimitTest {
 	 * is fully deterministic — only explicit moveClockBy calls advance time
 	 * (real CPU time during loops does not).
 	 */
+	@Override
 	@BeforeEach
-	public void freezeClockBeforeTest() {
+	public void beforeEach() {
+		super.beforeEach();
 		DateTimeHelper.setClock(Clock.fixed(Instant.now(), ZoneOffset.UTC));
 	}
 
