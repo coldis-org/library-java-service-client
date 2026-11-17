@@ -1,21 +1,13 @@
 package org.coldis.library.service.client;
 
 import java.io.IOException;
-import java.io.InterruptedIOException;
-import java.net.ConnectException;
-import java.net.NoRouteToHostException;
-import java.net.UnknownHostException;
-import java.util.List;
 import java.util.function.Supplier;
 
-import javax.net.ssl.SSLException;
-
 import org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy;
-import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.HttpRequest;
+import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.protocol.HttpContext;
-import org.apache.hc.core5.util.TimeValue;
 
 /**
  * HTTP client retry strategy of the service client: the HTTP client's default
@@ -38,17 +30,11 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 	private static final ThreadLocal<Boolean> ARE_RETRIES_SUSPENDED = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
 	/**
-	 * I/O failures never re-sent (the HTTP client's default list).
-	 */
-	private static final List<Class<? extends IOException>> NON_RETRIABLE_FAILURES = List.of(InterruptedIOException.class, UnknownHostException.class,
-			ConnectException.class, ConnectionClosedException.class, NoRouteToHostException.class, SSLException.class);
-
-	/**
 	 * Default constructor (the HTTP client's default strategy: one retry, after one
 	 * second or the {@code Retry-After} header; a response re-sent on a 429 only).
 	 */
 	public ServiceClientRetryStrategy() {
-		super(1, TimeValue.ofSeconds(1L), ServiceClientRetryStrategy.NON_RETRIABLE_FAILURES, List.of(HttpStatus.SC_TOO_MANY_REQUESTS));
+		super();
 	}
 
 	/**
@@ -87,6 +73,21 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 			final int execCount,
 			final HttpContext context) {
 		return !ServiceClientRetryStrategy.ARE_RETRIES_SUSPENDED.get() && super.retryRequest(request, exception, execCount, context);
+	}
+
+	/**
+	 * Re-sends a response on a 429 only (the HTTP client's default also re-sends a
+	 * 503).
+	 *
+	 * @see DefaultHttpRequestRetryStrategy#retryRequest(HttpResponse, int,
+	 *      HttpContext)
+	 */
+	@Override
+	public boolean retryRequest(
+			final HttpResponse response,
+			final int execCount,
+			final HttpContext context) {
+		return (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS) && super.retryRequest(response, execCount, context);
 	}
 
 }

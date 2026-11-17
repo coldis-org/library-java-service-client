@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.context.annotation.Scope;
+import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
@@ -53,14 +54,19 @@ public class ServiceClientAutoConfiguration {
 	public static class ServiceClientMetricsConfiguration {
 
 		/**
-		 * Creates the service client metrics (a service may declare its own):
-		 * recorded in the meter registry if there is one, none otherwise.
+		 * Creates the service client metrics: recorded in the meter registry if there
+		 * is one, none otherwise. A service may declare its own bean; if both are
+		 * registered (this configuration is not an auto-configuration, so the
+		 * condition depends on the scan order), the failover executor takes the
+		 * first by order, and this one has the lowest precedence: give the service's
+		 * bean an {@code @Order}.
 		 *
 		 * @param  meterRegistry Meter registry.
 		 * @return               The service client metrics.
 		 */
 		@Bean
 		@ConditionalOnMissingBean
+		@Order(Ordered.LOWEST_PRECEDENCE)
 		public ServiceClientMetrics serviceClientMetrics(
 				final ObjectProvider<MeterRegistry> meterRegistry) {
 			final MeterRegistry availableMeterRegistry = meterRegistry.getIfAvailable();
@@ -296,7 +302,8 @@ public class ServiceClientAutoConfiguration {
 	 * @param  balancer                 Endpoint balancer.
 	 * @param  readTimeoutScope         Scope that applies a call's own read
 	 *                                      timeout to its attempts.
-	 * @param  metrics                  Metrics (none without Micrometer).
+	 * @param  metrics                  Metrics (the first by order; none without
+	 *                                      Micrometer).
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -318,7 +325,7 @@ public class ServiceClientAutoConfiguration {
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metrics) {
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
-				readTimeoutScope, metrics.getIfAvailable(() -> ServiceClientMetrics.NONE));
+				readTimeoutScope, metrics.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**

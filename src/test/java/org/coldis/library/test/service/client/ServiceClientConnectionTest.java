@@ -9,10 +9,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.classic.MainClientExec;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.core5.function.Resolver;
@@ -55,6 +57,12 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private PoolingHttpClientConnectionManager httpClientPoolingManager;
+
+	/**
+	 * Library HTTP client.
+	 */
+	@Autowired
+	private HttpClient httpClient;
 
 	/**
 	 * Keep-alive strategy of the library HTTP client.
@@ -101,9 +109,11 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * The shipped connection settings reach the pool and the keep-alive strategy:
+	 * The shipped connection settings reach the pool and the library HTTP client:
 	 * at most 15 seconds of keep-alive (a shorter one from the server wins), 60
-	 * seconds of time to live, validation after 1 second of inactivity.
+	 * seconds of time to live, validation after 1 second of inactivity. The pool's
+	 * configuration and the client's keep-alive strategy are private to the HTTP
+	 * client (field names as of HttpClient 5.5): they are read by reflection.
 	 *
 	 * @throws Exception If the test fails.
 	 */
@@ -115,6 +125,7 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 		Assertions.assertEquals(TimeValue.ofSeconds(60), connectionConfig.getTimeToLive());
 		Assertions.assertEquals(TimeValue.ofSeconds(1), connectionConfig.getValidateAfterInactivity());
 		Assertions.assertEquals(TimeValue.ofSeconds(15), this.keepAliveStrategy.getMaxKeepAlive());
+		Assertions.assertSame(this.keepAliveStrategy, ServiceClientConnectionTest.getKeepAliveStrategy(this.httpClient));
 		// No Keep-Alive header, or a longer one: the maximum. A shorter one: the server's.
 		final BasicHttpResponse response = new BasicHttpResponse(HttpStatus.SC_OK);
 		Assertions.assertEquals(TimeValue.ofSeconds(15), this.keepAliveStrategy.getKeepAliveDuration(response, HttpClientContext.create()));
@@ -123,6 +134,27 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 		response.setHeader("Keep-Alive", "timeout=5");
 		Assertions.assertEquals(TimeValue.ofSeconds(5), this.keepAliveStrategy.getKeepAliveDuration(response, HttpClientContext.create()));
 		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientKeepAliveStrategy(Duration.ofSeconds(-1)));
+	}
+
+	/**
+	 * Gets the keep-alive strategy of an HTTP client: the one of the main step of
+	 * its execution chain.
+	 *
+	 * @param  httpClient             HTTP client.
+	 * @return                        The keep-alive strategy ({@code null} if not
+	 *                                found).
+	 * @throws IllegalAccessException If the chain cannot be read.
+	 */
+	private static Object getKeepAliveStrategy(
+			final HttpClient httpClient) throws IllegalAccessException {
+		Object keepAliveStrategy = null;
+		Object chainElement = FieldUtils.readField(httpClient, "execChain", true);
+		while ((chainElement != null) && (keepAliveStrategy == null)) {
+			final Object handler = FieldUtils.readField(chainElement, "handler", true);
+			keepAliveStrategy = (handler instanceof MainClientExec ? FieldUtils.readField(handler, "keepAliveStrategy", true) : null);
+			chainElement = FieldUtils.readField(chainElement, "next", true);
+		}
+		return keepAliveStrategy;
 	}
 
 	/**
