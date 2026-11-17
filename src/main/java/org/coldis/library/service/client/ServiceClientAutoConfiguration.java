@@ -61,15 +61,15 @@ public class ServiceClientAutoConfiguration {
 		 * first by order, and this one has the lowest precedence: give the service's
 		 * bean an {@code @Order}.
 		 *
-		 * @param  meterRegistry Meter registry.
-		 * @return               The service client metrics.
+		 * @param  meterRegistryProvider Meter registry provider.
+		 * @return                       The service client metrics.
 		 */
 		@Bean
 		@ConditionalOnMissingBean
 		@Order(Ordered.LOWEST_PRECEDENCE)
 		public ServiceClientMetrics serviceClientMetrics(
-				final ObjectProvider<MeterRegistry> meterRegistry) {
-			final MeterRegistry availableMeterRegistry = meterRegistry.getIfAvailable();
+				final ObjectProvider<MeterRegistry> meterRegistryProvider) {
+			final MeterRegistry availableMeterRegistry = meterRegistryProvider.getIfAvailable();
 			return (availableMeterRegistry == null ? ServiceClientMetrics.NONE : new MicrometerServiceClientMetrics(availableMeterRegistry));
 		}
 
@@ -302,8 +302,8 @@ public class ServiceClientAutoConfiguration {
 	 * @param  balancer                 Endpoint balancer.
 	 * @param  readTimeoutScope         Scope that applies a call's own read
 	 *                                      timeout to its attempts.
-	 * @param  metrics                  Metrics (the first by order; none without
-	 *                                      Micrometer).
+	 * @param  metricsProvider          Metrics provider (the first by order; none
+	 *                                      without Micrometer).
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -323,9 +323,9 @@ public class ServiceClientAutoConfiguration {
 			final Boolean shouldRetryOnReadTimeout,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
-			final ObjectProvider<ServiceClientMetrics> metrics) {
+			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
-				readTimeoutScope, metrics.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+				readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**

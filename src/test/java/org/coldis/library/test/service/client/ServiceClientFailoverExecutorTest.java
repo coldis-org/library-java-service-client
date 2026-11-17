@@ -26,7 +26,8 @@ import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.core.Ordered;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpEntity;
@@ -338,19 +339,125 @@ public class ServiceClientFailoverExecutorTest {
 	}
 
 	/**
-	 * Without a meter registry, the metrics record nothing and the failover
-	 * executor is still created with them.
+	 * Creates the failover executor bean over the metrics beans of a bean factory.
+	 *
+	 * @param  beanFactory Bean factory.
+	 * @return             The failover executor.
+	 */
+	private static ServiceClientFailoverExecutor createExecutorBean(
+			final DefaultListableBeanFactory beanFactory) {
+		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				beanFactory.getBeanProvider(ServiceClientMetrics.class));
+	}
+
+	/**
+	 * Without a meter registry, the metrics bean records nothing, and the failover
+	 * executor built over it still makes its attempts.
 	 */
 	@Test
 	public void testNoMeterRegistry() {
+		final DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
 		final ServiceClientMetrics metrics = new ServiceClientAutoConfiguration.ServiceClientMetricsConfiguration()
-				.serviceClientMetrics(new StaticListableBeanFactory().getBeanProvider(MeterRegistry.class));
+				.serviceClientMetrics(beanFactory.getBeanProvider(MeterRegistry.class));
 		Assertions.assertSame(ServiceClientMetrics.NONE, metrics);
-		final StaticListableBeanFactory beanFactory = new StaticListableBeanFactory();
-		beanFactory.addBean("serviceClientMetrics", metrics);
-		Assertions.assertNotNull(new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
-				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
-				beanFactory.getBeanProvider(ServiceClientMetrics.class)));
+		beanFactory.registerSingleton("serviceClientMetrics", metrics);
+		final List<String> attemptedUrls = new ArrayList<>();
+		ServiceClientFailoverExecutorTest.createExecutorBean(beanFactory).executeOverEndpoints(List.of("http://first"), "/path", HttpMethod.GET,
+				new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException(), attemptedUrls));
+		Assertions.assertEquals(1, attemptedUrls.size());
+	}
+
+	/**
+	 * A service's own metrics bean, ordered, wins over the library's (lowest
+	 * precedence): the failover executor records in it only.
+	 */
+	@Test
+	public void testServiceMetricsBeanWins() {
+		final SimpleMeterRegistry libraryRegistry = new SimpleMeterRegistry();
+		final List<String> recordedOutcomes = new ArrayList<>();
+		final DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+		beanFactory.registerSingleton("serviceClientMetrics", new MicrometerServiceClientMetrics(libraryRegistry));
+		beanFactory.registerSingleton("serviceMetrics", new OrderedRecordingMetrics(recordedOutcomes));
+		ServiceClientFailoverExecutorTest.createExecutorBean(beanFactory).executeOverEndpoints(List.of("http://first"), "/path", HttpMethod.GET,
+				new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException(), new ArrayList<>()));
+		Assertions.assertEquals(List.of("other"), recordedOutcomes);
+		Assertions.assertTrue(libraryRegistry.find(MicrometerServiceClientMetrics.ATTEMPTS).counters().isEmpty());
+	}
+
+	/**
+	 * Metrics that fail to record do not change the call: the failed attempt is
+	 * still retried on the other endpoint, and the outcome is returned.
+	 */
+	@Test
+	public void testFailingMetricsDoNotChangeTheCall() {
+		final ServiceClientMetrics failingMetrics = new ServiceClientMetrics() {
+
+			@Override
+			public void recordRequestStarted(
+					final String target) {
+				throw new IllegalStateException("Metrics down.");
+			}
+
+			@Override
+			public void recordAttempt(
+					final String target,
+					final String outcome) {
+				throw new IllegalStateException("Metrics down.");
+			}
+
+		};
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				failingMetrics);
+		final List<String> attemptedUrls = new ArrayList<>();
+		final RuntimeException failure = new ResourceAccessException("refused", new ConnectException());
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path",
+				HttpMethod.GET, new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(failure, attemptedUrls));
+		Assertions.assertSame(failure, outcome.failure());
+		Assertions.assertEquals(2, attemptedUrls.size());
+	}
+
+	/**
+	 * Metrics of a service, ordered first, that record the attempt outcomes.
+	 */
+	private static class OrderedRecordingMetrics implements ServiceClientMetrics, Ordered {
+
+		/**
+		 * Recorded attempt outcomes.
+		 */
+		private final List<String> recordedOutcomes;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param recordedOutcomes Where the attempt outcomes are recorded.
+		 */
+		OrderedRecordingMetrics(final List<String> recordedOutcomes) {
+			this.recordedOutcomes = recordedOutcomes;
+		}
+
+		/**
+		 * @see Ordered#getOrder()
+		 */
+		@Override
+		public int getOrder() {
+			return 0;
+		}
+
+		/**
+		 * @see ServiceClientMetrics#recordAttempt(String, String)
+		 */
+		@Override
+		public void recordAttempt(
+				final String target,
+				final String outcome) {
+			this.recordedOutcomes.add(outcome);
+		}
+
 	}
 
 	/**

@@ -477,6 +477,23 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Records metrics. A failure to record is logged and does not change the call
+	 * (its outcome, or the balancer's bookkeeping): the metrics only observe it.
+	 *
+	 * @param recording Metrics recording.
+	 */
+	private void recordMetrics(
+			final Runnable recording) {
+		try {
+			recording.run();
+		}
+		catch (final RuntimeException exception) {
+			ServiceClientFailoverExecutor.LOGGER.warn("Service client metrics not recorded ({}).", exception.getClass().getSimpleName());
+			ServiceClientFailoverExecutor.LOGGER.debug("Service client metrics not recorded.", exception);
+		}
+	}
+
+	/**
 	 * Records the outcome of an attempt for the balancing: an endpoint that could
 	 * not be connected to or answered a cooldown status starts its cooldown, an
 	 * endpoint that answered anything else ends it (if the request was sent after
@@ -503,9 +520,10 @@ public class ServiceClientFailoverExecutor {
 		}
 		if (shouldStartCooldown) {
 			this.balancer.startCooldown(inFlightRequest.getEndpoint());
-			this.metrics.recordCooldown(target);
+			this.recordMetrics(() -> this.metrics.recordCooldown(target));
 		}
-		this.metrics.recordAttempt(target, (failure == null ? ServiceClientFailoverExecutor.SUCCESS : ServiceClientFailoverExecutor.getFailureKind(failure).tagValue));
+		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : ServiceClientFailoverExecutor.getFailureKind(failure).tagValue);
+		this.recordMetrics(() -> this.metrics.recordAttempt(target, outcome));
 	}
 
 	/**
@@ -557,10 +575,10 @@ public class ServiceClientFailoverExecutor {
 			final String url = endpoint + path;
 			triedEndpoints.add(endpoint);
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(endpoint);
-			this.metrics.recordRequestStarted(target);
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
 			try {
+				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
 				response = this.readTimeoutScope.runWithReadTimeout(restTemplate, readTimeout, () -> (maxAttemptsForCall > 1
 						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
 						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters)));
@@ -570,7 +588,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			finally {
 				inFlightRequest.close();
-				this.metrics.recordRequestEnded(target);
+				this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest, attemptFailure);
@@ -581,7 +599,8 @@ public class ServiceClientFailoverExecutor {
 				outcome = new Outcome<>(url, null, attemptFailure);
 			}
 			else {
-				this.metrics.recordRetry(target, ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue);
+				final String retryReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				this.recordMetrics(() -> this.metrics.recordRetry(target, retryReason));
 				// Logs the endpoint's scheme, host and port only, not the URL nor the
 				// message (they may carry path parameters or credentials).
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), trying another endpoint.", method,
