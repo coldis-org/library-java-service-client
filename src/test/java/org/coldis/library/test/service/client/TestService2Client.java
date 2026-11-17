@@ -9,14 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.helper.ObjectHelper;
-import org.coldis.library.helper.RandomHelper;
 import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
@@ -171,7 +169,7 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 	}
 
 	/**
-	 * Gets all available endpoints.
+	 * Gets all available endpoints (the operation fails over them).
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
@@ -179,15 +177,6 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 
-	/**
-	 * Gets one endpoint (balanced).
-	 * @return One endpoint (balanced).
-	 */
-	private String getEndpoint() {
-		List<String> endpoints = this.getEndpoints();
-		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
-	}
-	
 	/**
 	 * Gets the service path.
 	 * @return The service path.
@@ -217,7 +206,7 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 		// Operation parameters.
 		String endpointPath = endpointPath1;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -228,10 +217,47 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 MediaType.APPLICATION_JSON_VALUE);
-		// Executes the operation and returns the response.
-this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType);
+				uriParameters, returnType, null);
+				
+	}
+	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("not-idempotent")
+	private String endpointPath2;
+
+	/**
+	 * Test service, not idempotent (a GET the client must not send twice).
+
+	 * @throws BusinessException Any expected errors.
+	 */
+	
+	public void test8(
+
+			) throws BusinessException {
+		// Operation parameters.
+		String endpointPath = endpointPath2;
+		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
+		final HttpMethod method = HttpMethod.GET;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<?> returnType =
+				new ParameterizedTypeReference<Void>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+MediaType.APPLICATION_JSON_VALUE);
+		// Executes the operation (failing over the endpoints) and returns the response.
+this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType, Boolean.FALSE);
 				
 	}
 	
@@ -240,7 +266,7 @@ this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("{code}")
-	private String endpointPath2;
+	private String endpointPath3;
 
 	/**
 	 * Test service.
@@ -252,9 +278,9 @@ this.serviceClient.executeOperation(url.toString(), method, headers,
 java.lang.String code
 			) throws BusinessException {
 		// Operation parameters.
-		String endpointPath = endpointPath2;
+		String endpointPath = endpointPath3;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -266,11 +292,11 @@ java.lang.String code
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 MediaType.APPLICATION_JSON_VALUE);
 		// Adds the path parameter to the map.
-		url = new StringBuilder(url.toString().replace("{code}", Objects.toString(code)));
-		// Executes the operation and returns the response.
-this.serviceClient.executeOperation(url.toString(), method, headers,
+		pathAndQuery = new StringBuilder(pathAndQuery.toString().replace("{code}", Objects.toString(code)));
+		// Executes the operation (failing over the endpoints) and returns the response.
+this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType);
+				uriParameters, returnType, null);
 				
 	}
 	
@@ -279,7 +305,7 @@ this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("")
-	private String endpointPath3;
+	private String endpointPath4;
 
 	/**
 	 * Test service.
@@ -305,9 +331,9 @@ int[] test5,
 java.util.List<java.lang.Integer> test7
 			) throws BusinessException {
 		// Operation parameters.
-		String endpointPath = endpointPath3;
+		String endpointPath = endpointPath4;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -333,7 +359,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test3s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.get(parameterItemIndex));
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -343,14 +369,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test3s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.next());
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
-			url.append("test3={test3}&");
+			pathAndQuery.append("test3={test3}&");
 		}
 		if (test4 != null) {
 			// Adds the header to the map.
@@ -365,7 +391,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test5s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.get(parameterItemIndex));
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -375,14 +401,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test5s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.next());
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test5 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test5", test5);
-			url.append("test5={test5}&");
+			pathAndQuery.append("test5={test5}&");
 		}
 		// If the parameter is an array.
 		if (test7 != null && test7.getClass().isArray()) {
@@ -391,7 +417,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test7s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test7" + parameterItemIndex, test7s.get(parameterItemIndex));
-				url.append("test7={test7" + parameterItemIndex + "}&");
+				pathAndQuery.append("test7={test7" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -401,19 +427,19 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test7s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test7" + parameterItemIndex, test7s.next());
-				url.append("test7={test7" + parameterItemIndex + "}&");
+				pathAndQuery.append("test7={test7" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test7 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test7", test7);
-			url.append("test7={test7}&");
+			pathAndQuery.append("test7={test7}&");
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, Boolean.TRUE).getBody();
 				
 	}
 	
@@ -422,7 +448,7 @@ return this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("22")
-	private String endpointPath4;
+	private String endpointPath5;
 
 	/**
 	 * Test service.
@@ -448,9 +474,9 @@ int[] test5,
 java.util.List<java.lang.Integer> test7
 			) throws BusinessException {
 		// Operation parameters.
-		String endpointPath = endpointPath4;
+		String endpointPath = endpointPath5;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -476,7 +502,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test3s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.get(parameterItemIndex));
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -486,14 +512,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test3s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.next());
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
-			url.append("test3={test3}&");
+			pathAndQuery.append("test3={test3}&");
 		}
 		if (test4 != null) {
 			// Adds the header to the map.
@@ -512,55 +538,10 @@ MediaType.APPLICATION_JSON_VALUE);
 			((java.util.Collection)(java.lang.Object)test7).stream().map(Objects::toString).toArray() :
 			List.of(test7.toString()).toArray(new String[] {}))));
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
-				
-	}
-	
-
-	/**
-	 * Endpoint for the operation.
-	 */
-	@Value("/test")
-	private String endpointPath5;
-
-	/**
-	 * Test service.
-
- @param  test Test argument.
- @return      Test object.
-
-	 * @throws BusinessException Any expected errors.
-	 */
-	
-	public org.springframework.core.io.Resource test3(
-org.coldis.library.service.model.FileResource test
-			) throws BusinessException {
-		// Operation parameters.
-		String endpointPath = endpointPath5;
-		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
-		final HttpMethod method = HttpMethod.PUT;
-		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-		Object body = null;
-		final Map<String, Object> uriParameters = new HashMap<>();
-		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
-		final ParameterizedTypeReference<org.springframework.core.io.Resource> returnType =
-				new ParameterizedTypeReference<org.springframework.core.io.Resource>() {};
-		// Adds the content type headers.
-		GenericRestServiceClient.addContentTypeHeaders(headers,
-"MULTIPART/FORM-DATA");
-		// Adds the part parameter to the map.
-		partParameters.put("teste",
-				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
-		new ArrayList((java.util.Collection)(java.lang.Object)test) :
-		List.of(test)))));
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
-				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -580,13 +561,58 @@ return this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * @throws BusinessException Any expected errors.
 	 */
 	
-	public java.lang.Integer test4(
-java.lang.Long test
+	public org.springframework.core.io.Resource test3(
+org.coldis.library.service.model.FileResource test
 			) throws BusinessException {
 		// Operation parameters.
 		String endpointPath = endpointPath6;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
+		final HttpMethod method = HttpMethod.PUT;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<org.springframework.core.io.Resource> returnType =
+				new ParameterizedTypeReference<org.springframework.core.io.Resource>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+"MULTIPART/FORM-DATA");
+		// Adds the part parameter to the map.
+		partParameters.put("teste",
+				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
+		new ArrayList((java.util.Collection)(java.lang.Object)test) :
+		List.of(test)))));
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType, null).getBody();
+				
+	}
+	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("/test")
+	private String endpointPath7;
+
+	/**
+	 * Test service.
+
+ @param  test Test argument.
+ @return      Test object.
+
+	 * @throws BusinessException Any expected errors.
+	 */
+	
+	public java.lang.Integer test4(
+java.lang.Long test
+			) throws BusinessException {
+		// Operation parameters.
+		String endpointPath = endpointPath7;
+		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -604,7 +630,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < tests.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test" + parameterItemIndex, tests.get(parameterItemIndex));
-				url.append("test={test" + parameterItemIndex + "}&");
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -614,19 +640,19 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; tests.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test" + parameterItemIndex, tests.next());
-				url.append("test={test" + parameterItemIndex + "}&");
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test", test);
-			url.append("test={test}&");
+			pathAndQuery.append("test={test}&");
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -635,7 +661,7 @@ return this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("")
-	private String endpointPath7;
+	private String endpointPath8;
 
 	/**
 	 * Test service.
@@ -671,7 +697,7 @@ return this.serviceClient.executeOperation(url.toString(), method, headers,
 	 * Endpoint for the operation.
 	 */
 	@Value("a/{test}")
-	private String endpointPath8;
+	private String endpointPath9;
 
 	/**
 	 * Test service.
@@ -686,9 +712,9 @@ return this.serviceClient.executeOperation(url.toString(), method, headers,
 java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
-		String endpointPath = endpointPath8;
+		String endpointPath = endpointPath9;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -700,11 +726,11 @@ java.lang.Long test
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 MediaType.APPLICATION_JSON_VALUE);
 		// Adds the path parameter to the map.
-		url = new StringBuilder(url.toString().replace("{test}", Objects.toString(test)));
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		pathAndQuery = new StringBuilder(pathAndQuery.toString().replace("{test}", Objects.toString(test)));
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	

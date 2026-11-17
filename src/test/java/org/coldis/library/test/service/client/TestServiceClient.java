@@ -9,14 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.helper.ObjectHelper;
-import org.coldis.library.helper.RandomHelper;
 import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
@@ -171,7 +169,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 	}
 
 	/**
-	 * Gets all available endpoints.
+	 * Gets all available endpoints (the operation fails over them).
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
@@ -179,15 +177,6 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 
-	/**
-	 * Gets one endpoint (balanced).
-	 * @return One endpoint (balanced).
-	 */
-	private String getEndpoint() {
-		List<String> endpoints = this.getEndpoints();
-		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
-	}
-	
 	/**
 	 * Gets the service path.
 	 * @return The service path.
@@ -217,7 +206,7 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		// Operation parameters.
 		String endpointPath = endpointPath1;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -228,10 +217,10 @@ public class TestServiceClient implements ApplicationContextAware, EmbeddedValue
 		// Adds the content type headers.
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 MediaType.APPLICATION_JSON_VALUE);
-		// Executes the operation and returns the response.
-this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType);
+				uriParameters, returnType, null);
 				
 	}
 	
@@ -267,7 +256,7 @@ java.util.List<java.lang.Integer> test6
 		// Operation parameters.
 		String endpointPath = endpointPath2;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -293,7 +282,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test3s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.get(parameterItemIndex));
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -303,14 +292,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test3s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.next());
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
-			url.append("test3={test3}&");
+			pathAndQuery.append("test3={test3}&");
 		}
 		if (test4 != null) {
 			// Adds the header to the map.
@@ -325,7 +314,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test5s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.get(parameterItemIndex));
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -335,14 +324,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test5s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.next());
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test5 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test5", test5);
-			url.append("test5={test5}&");
+			pathAndQuery.append("test5={test5}&");
 		}
 		// If the parameter is an array.
 		if (test6 != null && test6.getClass().isArray()) {
@@ -351,7 +340,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test6s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test6" + parameterItemIndex, test6s.get(parameterItemIndex));
-				url.append("test6={test6" + parameterItemIndex + "}&");
+				pathAndQuery.append("test6={test6" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -361,19 +350,19 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test6s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test6" + parameterItemIndex, test6s.next());
-				url.append("test6={test6" + parameterItemIndex + "}&");
+				pathAndQuery.append("test6={test6" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test6 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test6", test6);
-			url.append("test6={test6}&");
+			pathAndQuery.append("test6={test6}&");
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -409,7 +398,7 @@ java.util.List<java.lang.Integer> test6
 		// Operation parameters.
 		String endpointPath = endpointPath3;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -435,7 +424,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test3s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.get(parameterItemIndex));
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -445,14 +434,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test3s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test3" + parameterItemIndex, test3s.next());
-				url.append("test3={test3" + parameterItemIndex + "}&");
+				pathAndQuery.append("test3={test3" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test3 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test3", test3);
-			url.append("test3={test3}&");
+			pathAndQuery.append("test3={test3}&");
 		}
 		if (test4 != null) {
 			// Adds the header to the map.
@@ -467,7 +456,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test5s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.get(parameterItemIndex));
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -477,14 +466,14 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test5s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test5" + parameterItemIndex, test5s.next());
-				url.append("test5={test5" + parameterItemIndex + "}&");
+				pathAndQuery.append("test5={test5" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test5 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test5", test5);
-			url.append("test5={test5}&");
+			pathAndQuery.append("test5={test5}&");
 		}
 		// If the parameter is an array.
 		if (test6 != null && test6.getClass().isArray()) {
@@ -493,7 +482,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < test6s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test6" + parameterItemIndex, test6s.get(parameterItemIndex));
-				url.append("test6={test6" + parameterItemIndex + "}&");
+				pathAndQuery.append("test6={test6" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -503,19 +492,19 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; test6s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test6" + parameterItemIndex, test6s.next());
-				url.append("test6={test6" + parameterItemIndex + "}&");
+				pathAndQuery.append("test6={test6" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test6 != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test6", test6);
-			url.append("test6={test6}&");
+			pathAndQuery.append("test6={test6}&");
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -541,7 +530,7 @@ org.coldis.library.service.model.FileResource test
 		// Operation parameters.
 		String endpointPath = endpointPath4;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.PUT;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -557,10 +546,10 @@ org.coldis.library.service.model.FileResource test
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
 		new ArrayList((java.util.Collection)(java.lang.Object)test) :
 		List.of(test)))));
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -586,7 +575,7 @@ java.lang.Long test
 		// Operation parameters.
 		String endpointPath = endpointPath5;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -604,7 +593,7 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; parameterItemIndex < tests.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test" + parameterItemIndex, tests.get(parameterItemIndex));
-				url.append("test={test" + parameterItemIndex + "}&");
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -614,19 +603,19 @@ MediaType.APPLICATION_JSON_VALUE);
 			for (Integer parameterItemIndex = 0; tests.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("test" + parameterItemIndex, tests.next());
-				url.append("test={test" + parameterItemIndex + "}&");
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (test != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("test", test);
-			url.append("test={test}&");
+			pathAndQuery.append("test={test}&");
 		}
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -687,7 +676,7 @@ java.lang.Long test
 		// Operation parameters.
 		String endpointPath = endpointPath7;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -700,10 +689,10 @@ java.lang.Long test
 MediaType.APPLICATION_JSON_VALUE);
 		// Sets the operation body.
 		body = test;
-		// Executes the operation and returns the response.
-this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType);
+				uriParameters, returnType, null);
 				
 	}
 	
@@ -729,7 +718,7 @@ java.lang.Long test
 		// Operation parameters.
 		String endpointPath = endpointPath8;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -741,11 +730,11 @@ java.lang.Long test
 		GenericRestServiceClient.addContentTypeHeaders(headers,
 MediaType.APPLICATION_JSON_VALUE);
 		// Adds the path parameter to the map.
-		url = new StringBuilder(url.toString().replace("{test}", Objects.toString(test)));
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		pathAndQuery = new StringBuilder(pathAndQuery.toString().replace("{test}", Objects.toString(test)));
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	
@@ -772,7 +761,7 @@ java.util.List<org.springframework.core.io.Resource> test
 		// Operation parameters.
 		String endpointPath = endpointPath9;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.POST;
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -788,10 +777,10 @@ java.util.List<org.springframework.core.io.Resource> test
 				(test == null ? List.of() : ((java.util.Collection.class.isAssignableFrom(test.getClass()) ?
 		new ArrayList((java.util.Collection)(java.lang.Object)test) :
 		List.of(test)))));
-		// Executes the operation and returns the response.
-return this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType).getBody();
+				uriParameters, returnType, null).getBody();
 				
 	}
 	

@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.coldis.library.service.client.generator.ServiceClient;
 import org.coldis.library.service.client.generator.ServiceClientOperation;
+import org.coldis.library.service.client.generator.ServiceClientOperationIdempotency;
 import org.coldis.library.service.client.generator.ServiceClientOperationParameter;
 import org.coldis.library.service.client.generator.ServiceOperationParameterKind;
 import org.springframework.core.io.Resource;
@@ -60,6 +61,18 @@ public class TestService2 {
 	}
 
 	/**
+	 * Test service, not idempotent (a GET the client must not send twice).
+	 */
+	@ServiceClientOperation(idempotent = ServiceClientOperationIdempotency.NOT_IDEMPOTENT)
+	@RequestMapping(
+			path = "not-idempotent",
+			method = RequestMethod.GET
+	)
+	public void test8() {
+
+	}
+
+	/**
 	 * Test service.
 	 */
 	@RequestMapping(path = "{code}", method = RequestMethod.GET)
@@ -79,7 +92,10 @@ public class TestService2 {
 	 * @param  test7 Test parameter.
 	 * @return       Test object.
 	 */
-	@ServiceClientOperation(method = "PUT")
+	@ServiceClientOperation(
+			method = "PUT",
+			idempotent = ServiceClientOperationIdempotency.IDEMPOTENT
+	)
 	@RequestMapping(method = RequestMethod.PUT)
 	public DtoTestObject test2(
 			@RequestBody

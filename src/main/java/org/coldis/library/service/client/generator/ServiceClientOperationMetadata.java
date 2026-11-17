@@ -60,6 +60,11 @@ public class ServiceClientOperationMetadata implements Serializable {
 	private String asynchronousDestination;
 
 	/**
+	 * Operation idempotency.
+	 */
+	private ServiceClientOperationIdempotency idempotency = ServiceClientOperationIdempotency.BY_METHOD;
+
+	/**
 	 * Annotations to be added.
 	 */
 	private final String annotations;
@@ -255,6 +260,36 @@ public class ServiceClientOperationMetadata implements Serializable {
 	public void setAsynchronousDestination(
 			final String asynchronousDestination) {
 		this.asynchronousDestination = asynchronousDestination;
+	}
+
+	/**
+	 * Gets the idempotency.
+	 *
+	 * @return The idempotency.
+	 */
+	public ServiceClientOperationIdempotency getIdempotency() {
+		return this.idempotency;
+	}
+
+	/**
+	 * Sets the idempotency.
+	 *
+	 * @param idempotency New idempotency.
+	 */
+	public void setIdempotency(
+			final ServiceClientOperationIdempotency idempotency) {
+		this.idempotency = (idempotency == null ? ServiceClientOperationIdempotency.BY_METHOD : idempotency);
+	}
+
+	/**
+	 * Gets the idempotency as the Java expression written in the generated call
+	 * ({@code null} decides by the HTTP method at runtime).
+	 *
+	 * @return The idempotency as a Java expression.
+	 */
+	public String getIdempotentExpression() {
+		return (ServiceClientOperationIdempotency.IDEMPOTENT.equals(this.idempotency) ? "Boolean.TRUE"
+				: ServiceClientOperationIdempotency.NOT_IDEMPOTENT.equals(this.idempotency) ? "Boolean.FALSE" : "null");
 	}
 
 	/**

@@ -310,6 +310,7 @@ public class ServiceClientGenerator extends AbstractProcessor {
 										: serviceClientOperationAnno.returnTypeName())
 								: serviceClientOperationReturnTypeValue.toString());
 				serviceClientOperationMetadata.setAsynchronousDestination(serviceClientOperationAnno.asynchronousDestination());
+				serviceClientOperationMetadata.setIdempotency(serviceClientOperationAnno.idempotent());
 			}
 		}
 		// Returns the operation metadata.

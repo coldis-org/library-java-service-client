@@ -64,6 +64,13 @@ public @interface ServiceClientOperation {
 	public String asynchronousDestination() default "";
 
 	/**
+	 * If the operation is idempotent: idempotent operations are also sent to the
+	 * next endpoint after a dropped connection or a retry status (502, 503, 504 by
+	 * default). By default, decided by the HTTP method.
+	 */
+	public ServiceClientOperationIdempotency idempotent() default ServiceClientOperationIdempotency.BY_METHOD;
+
+	/**
 	 * Annotations to be copied.
 	 */
 	public Class<?>[] copiedAnnotations() default {

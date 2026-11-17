@@ -77,8 +77,8 @@ public class ServiceClientAutoConfiguration {
 			final PoolingHttpClientConnectionManager httpClientPoolingManager,
 			@Value("${org.coldis.library.service-client.close-idle}")
 			final Integer closeIdle) {
-		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(closeIdle))
-				.build();
+		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).setRetryStrategy(new ServiceClientRetryStrategy()).evictExpiredConnections()
+				.evictIdleConnections(TimeValue.ofSeconds(closeIdle)).build();
 	}
 
 	/**
@@ -170,6 +170,34 @@ public class ServiceClientAutoConfiguration {
 		ServiceClientAutoConfiguration.LOGGER.info("Default service client REST template timeouts: connect {}s, wait for a pooled connection {}s, read {}s.",
 				connectTimeoutSeconds, connectionRequestTimeoutSeconds, readTimeoutSeconds);
 		return restTemplate;
+	}
+
+	/**
+	 * Creates the service client failover executor (a service may declare its own).
+	 *
+	 * @param  isEnabled                If failover is enabled.
+	 * @param  maxAttempts              Maximum attempts per operation.
+	 * @param  idempotentMethods        Methods taken as idempotent by default.
+	 * @param  retryStatuses            Response statuses retried for idempotent
+	 *                                      operations.
+	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
+	 *                                      operations.
+	 * @return                          The service client failover executor.
+	 */
+	@Bean
+	@ConditionalOnMissingBean(value = ServiceClientFailoverExecutor.class)
+	public ServiceClientFailoverExecutor serviceClientFailoverExecutor(
+			@Value(value = "${org.coldis.library.service-client.failover.enabled:true}")
+			final Boolean isEnabled,
+			@Value(value = "${org.coldis.library.service-client.failover.max-attempts:3}")
+			final Integer maxAttempts,
+			@Value(value = "${org.coldis.library.service-client.failover.idempotent-methods:GET,HEAD,OPTIONS}")
+			final String[] idempotentMethods,
+			@Value(value = "${org.coldis.library.service-client.failover.retry-statuses:502,503,504}")
+			final String[] retryStatuses,
+			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
+			final Boolean shouldRetryOnReadTimeout) {
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, shouldRetryOnReadTimeout);
 	}
 
 	/**
