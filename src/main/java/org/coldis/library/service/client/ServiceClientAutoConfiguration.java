@@ -95,7 +95,7 @@ public class ServiceClientAutoConfiguration {
 	private static HttpComponentsClientHttpRequestFactory createRequestFactory(
 			final HttpClient httpClient,
 			final Duration connectionRequestTimeout) {
-		final HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+		final HttpComponentsClientHttpRequestFactory requestFactory = new ServiceClientRequestFactory(httpClient);
 		if (connectionRequestTimeout != null) {
 			requestFactory.setConnectionRequestTimeout(connectionRequestTimeout);
 		}
@@ -193,6 +193,20 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the scope that applies a generated client's own read timeout: the
+	 * one of {@link ServiceClientRequestFactory}, the default template's factory.
+	 * The scope and the template's request factory come as a pair: a replacement
+	 * scope needs a factory that reads the timeout it sets.
+	 *
+	 * @return The read timeout scope.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientReadTimeoutScope serviceClientReadTimeoutScope() {
+		return ServiceClientRequestFactory.READ_TIMEOUT_SCOPE;
+	}
+
+	/**
 	 * Creates the service client failover executor (a service may declare its own).
 	 *
 	 * @param  isEnabled                If failover is enabled.
@@ -203,6 +217,8 @@ public class ServiceClientAutoConfiguration {
 	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                      operations.
 	 * @param  balancer                 Endpoint balancer.
+	 * @param  readTimeoutScope         Scope that applies a call's own read
+	 *                                      timeout to its attempts.
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -218,8 +234,10 @@ public class ServiceClientAutoConfiguration {
 			final String[] retryStatuses,
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
 			final Boolean shouldRetryOnReadTimeout,
-			final ServiceClientEndpointBalancer balancer) {
-		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, shouldRetryOnReadTimeout, balancer);
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientReadTimeoutScope readTimeoutScope) {
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, shouldRetryOnReadTimeout, balancer,
+				readTimeoutScope);
 	}
 
 	/**

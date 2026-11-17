@@ -1,5 +1,6 @@
 package org.coldis.library.test.service;
 
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.test.StartTestWithContainerExtension;
@@ -73,12 +74,30 @@ public abstract class AbstractServiceTest extends TestHelper {
 	}
 
 	/**
+	 * Sets the read timeout of the second generated client (as its
+	 * {@code org.coldis.library.service-client.timeout.TestService2Client} property
+	 * would; none by default).
+	 *
+	 * @param readTimeoutSeconds Read timeout in seconds ({@code null} for none).
+	 */
+	protected void setService2ReadTimeoutSeconds(
+			final Long readTimeoutSeconds) {
+		try {
+			FieldUtils.writeField(this.testService2Client, "readTimeoutSeconds", readTimeoutSeconds, true);
+		}
+		catch (final IllegalAccessException exception) {
+			throw new IllegalStateException(exception);
+		}
+	}
+
+	/**
 	 * Puts the runtime test switches back to their defaults before each test, and
 	 * makes the balancer forget the requests and failures of earlier tests.
 	 */
 	@BeforeEach
 	public void beforeEach() {
 		this.setAlwaysSync(false);
+		this.setService2ReadTimeoutSeconds(null);
 		this.serviceClientEndpointBalancer.clear();
 	}
 

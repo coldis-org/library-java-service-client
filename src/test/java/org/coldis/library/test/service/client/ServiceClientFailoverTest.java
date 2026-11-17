@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
@@ -201,6 +203,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 * Starts an instance.
 	 * <ul>
 	 * <li>{@code /ok}: 200 with the instance name.</li>
+	 * <li>{@code /test2/slow}: 200 after 3 seconds.</li>
 	 * <li>{@code /unavailable}, {@code /test2/**} (the generated client's paths):
 	 * 503.</li>
 	 * <li>{@code /unavailable-on-first}: 503 on the first instance, 200 on the
@@ -229,7 +232,16 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 			ServiceClientFailoverTest.LAST_HOOK_HEADER.set(exchange.getRequestHeaders().getFirst("X-Hook"));
 			final String path = exchange.getRequestURI().getPath();
 			final byte[] requestBody = exchange.getRequestBody().readAllBytes();
-			if ("/unavailable".equals(path) || path.startsWith("/test2") || ("/unavailable-on-first".equals(path) && "first".equals(name))) {
+			if ("/test2/slow".equals(path)) {
+				try {
+					Thread.sleep(3000);
+				}
+				catch (final InterruptedException exception) {
+					Thread.currentThread().interrupt();
+				}
+				ServiceClientFailoverTest.respond(exchange, 200, "");
+			}
+			else if ("/unavailable".equals(path) || path.startsWith("/test2") || ("/unavailable-on-first".equals(path) && "first".equals(name))) {
 				ServiceClientFailoverTest.respond(exchange, 503, "");
 			}
 			else if ("/slow".equals(path)) {
@@ -369,7 +381,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 				}).build());
 		recordingClient.setFailoverExecutor(
 				new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" }, new String[] { "502", "503", "504" }, false,
-						balancer));
+						balancer, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE));
 		return recordingClient;
 	}
 
@@ -738,12 +750,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	@Test
 	public void testAttemptLimits() {
 		final List<String> endpoints = List.of("http://first", "http://second", "http://third", "http://fourth");
-		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO));
+		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints).size()));
 		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
 		Assertions.assertEquals(List.of(""), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
 		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" },
-				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO));
+				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(1, disabledExecutor.getMaxAttempts(endpoints.size()));
 	}
 
@@ -800,7 +812,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	@Test
 	public void testReadTimeoutRetriedWhenEnabled() throws Exception {
 		final GenericRestServiceClient retryingClient = this
-				.createShortTimeoutClient(new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, true, ServiceClientFailoverTest.createBalancer(Duration.ZERO)));
+				.createShortTimeoutClient(new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, true, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE));
 		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER),
 				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER));
 		Assertions.assertThrows(IntegrationException.class,
@@ -992,6 +1004,62 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(1, handledFailures.size());
 		Assertions.assertTrue(handledFailures.get(0) instanceof HttpServerErrorException, handledFailures.get(0)::toString);
 		Assertions.assertTrue(handledUrls.get(0).endsWith("/unavailable"), handledUrls.get(0));
+	}
+
+	/**
+	 * A generated client with its own read timeout times out at it, on every
+	 * failover attempt; without one (or with zero or a negative one) it keeps the
+	 * template's (9 seconds); a full-URL
+	 * call is not affected by a generated client's read timeout.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testGeneratedClientReadTimeout() throws Exception {
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		// Its own read timeout (1 second) against a 3 second answer.
+		this.setService2ReadTimeoutSeconds(1L);
+		long startNanos = System.nanoTime();
+		final IntegrationException timeoutException = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1("slow"));
+		Assertions.assertTrue(ExceptionUtils.indexOfThrowable(timeoutException, SocketTimeoutException.class) >= 0, ExceptionUtils.getStackTrace(timeoutException));
+		Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofMillis(2500)) < 0);
+		// A full-URL call in between keeps the template's read timeout: the answer
+		// arrives after 3 seconds.
+		startNanos = System.nanoTime();
+		this.serviceClient.executeOperation(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER) + "/test2/slow", HttpMethod.GET,
+				null, null, null, ServiceClientFailoverTest.STRING_RESPONSE);
+		Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofMillis(2900)) > 0);
+		// Across a failover attempt (a refused endpoint first), the attempt that
+		// reaches the instance still times out at 1 second.
+		this.testService2Properties.setEndpoint(
+				ServiceClientFailoverTest.REFUSED_ENDPOINT + "," + ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		for (Integer callIndex = 0; (callIndex < ServiceClientFailoverTest.REPEATED_CALLS)
+				&& !this.contextBalancer.isCoolingDown(ServiceClientFailoverTest.REFUSED_ENDPOINT); callIndex++) {
+			this.contextBalancer.clear();
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			final long attemptStartNanos = System.nanoTime();
+			final IntegrationException attemptException = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1("slow"));
+			Assertions.assertTrue(ExceptionUtils.indexOfThrowable(attemptException, SocketTimeoutException.class) >= 0,
+					ExceptionUtils.getStackTrace(attemptException));
+			Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - attemptStartNanos).compareTo(Duration.ofMillis(2500)) < 0);
+		}
+		// The last call failed over from the refused endpoint to the instance, which
+		// got the request and timed out.
+		Assertions.assertTrue(this.contextBalancer.isCoolingDown(ServiceClientFailoverTest.REFUSED_ENDPOINT));
+		Assertions.assertEquals(1, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
+		// Without its own read timeout, the template's applies (the answer arrives).
+		this.setService2ReadTimeoutSeconds(null);
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		startNanos = System.nanoTime();
+		this.testService2Client.test1("slow");
+		Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofMillis(2900)) > 0);
+		// Zero or negative is not a read timeout of its own either.
+		for (final Long ignoredReadTimeoutSeconds : List.of(0L, -1L)) {
+			this.setService2ReadTimeoutSeconds(ignoredReadTimeoutSeconds);
+			final long ignoredStartNanos = System.nanoTime();
+			this.testService2Client.test1("slow");
+			Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - ignoredStartNanos).compareTo(Duration.ofMillis(2900)) > 0);
+		}
 	}
 
 }

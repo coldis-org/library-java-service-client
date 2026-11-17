@@ -83,6 +83,15 @@ public class TestService2Client implements ApplicationContextAware, EmbeddedValu
 	private Boolean alwaysSync;
 
 	/**
+	 * Read timeout of this client's calls, in seconds:
+	 * org.coldis.library.service-client.timeout.TestService2Client (none, zero or negative: the template's).
+	 * Applies only to templates whose request factory is the library's (ServiceClientRequestFactory).
+	 * The key sits under the global timeout's, so in YAML it is written flat (quoted), not nested.
+	 */
+	@Value("${org.coldis.library.service-client.timeout.TestService2Client:#{null}}")
+	private Long readTimeoutSeconds;
+
+	/**
 	 * JMS template.
 	 */
 	@Autowired(required = false)
@@ -220,7 +229,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null);
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
 				
 	}
 	
@@ -257,7 +267,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, Boolean.FALSE);
+				uriParameters, returnType, Boolean.FALSE,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
 				
 	}
 	
@@ -296,7 +307,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null);
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
 				
 	}
 	
@@ -439,7 +451,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, Boolean.TRUE).getBody();
+				uriParameters, returnType, Boolean.TRUE,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
 				
 	}
 	
@@ -541,7 +554,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null).getBody();
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
 				
 	}
 	
@@ -586,7 +600,8 @@ org.coldis.library.service.model.FileResource test
 		// Executes the operation (failing over the endpoints) and returns the response.
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null).getBody();
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
 				
 	}
 	
@@ -652,7 +667,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null).getBody();
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
 				
 	}
 	
@@ -730,7 +746,8 @@ MediaType.APPLICATION_JSON_VALUE);
 		// Executes the operation (failing over the endpoints) and returns the response.
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, null).getBody();
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
 				
 	}
 	
