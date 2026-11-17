@@ -11,10 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
+import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
@@ -28,6 +31,7 @@ import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
 /**
@@ -46,7 +50,7 @@ public class ServiceClientFailoverExecutorTest {
 	 */
 	private static final ServiceClientFailoverExecutor EXECUTOR = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" },
 			new String[] { "502", "503", "504" }, new String[] { "502", "503", "504" }, false,
-			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 
 	/**
 	 * Creates a template whose every call fails with the given failure, recording
@@ -107,7 +111,7 @@ public class ServiceClientFailoverExecutorTest {
 			final RuntimeException failure,
 			final List<String> attemptedUrls) {
 		return ServiceClientFailoverExecutorTest.EXECUTOR.executeOverEndpoints(endpoints, "/path", method, new HttpEntity<>(body),
-				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, ServiceClientFailoverExecutorTest.createFailingTemplate(failure, attemptedUrls));
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, ServiceClientFailoverExecutorTest.createFailingTemplate(failure, attemptedUrls));
 	}
 
 	/**
@@ -172,7 +176,7 @@ public class ServiceClientFailoverExecutorTest {
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.EXECUTOR.executeOverEndpoints(List.of("http://first", "http://second"), "/path", HttpMethod.POST,
 				new HttpEntity<>(new InputStreamResource(new ByteArrayInputStream("content".getBytes(StandardCharsets.UTF_8)))),
-				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
 				ServiceClientFailoverExecutorTest.createFailingTemplate(new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory()),
 						new ResourceAccessException("Refused.", new ConnectException("Refused.")), attemptedUrls));
 		Assertions.assertEquals(1, attemptedUrls.size());
@@ -220,18 +224,18 @@ public class ServiceClientFailoverExecutorTest {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
 		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
-				balancer);
+				balancer, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		final List<String> endpoints = List.of("http://first", "http://second");
 		final List<String> poolWaitUrls = new CopyOnWriteArrayList<>();
 		final ServiceClientFailoverExecutor.Outcome<String> poolWaitOutcome = executor.executeOverEndpoints(endpoints, "/", HttpMethod.GET, HttpEntity.EMPTY,
-				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
 				ServiceClientFailoverExecutorTest.createFailingTemplate(new ResourceAccessException("Attempt failed.", new ConnectionRequestTimeoutException("Pool exhausted.")), poolWaitUrls));
 		Assertions.assertNotNull(poolWaitOutcome.failure());
 		Assertions.assertEquals(2, poolWaitUrls.size());
 		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
 		final List<String> readTimeoutUrls = new CopyOnWriteArrayList<>();
 		final ServiceClientFailoverExecutor.Outcome<String> readTimeoutOutcome = executor.executeOverEndpoints(endpoints, "/", HttpMethod.GET, HttpEntity.EMPTY,
-				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
 				ServiceClientFailoverExecutorTest.createFailingTemplate(new ResourceAccessException("Attempt failed.", new SocketTimeoutException("Read timed out.")), readTimeoutUrls));
 		Assertions.assertNotNull(readTimeoutOutcome.failure());
 		Assertions.assertEquals(1, readTimeoutUrls.size());
@@ -249,13 +253,46 @@ public class ServiceClientFailoverExecutorTest {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
 		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
-				balancer);
+				balancer, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		executor.executeOverEndpoints(List.of(), "http://host/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
-				Map.of(), null, ServiceClientFailoverExecutorTest
+				Map.of(), null, null, ServiceClientFailoverExecutorTest
 						.createFailingTemplate(new ResourceAccessException("Refused.", new ConnectException("Refused.")), attemptedUrls));
 		Assertions.assertEquals(List.of("http://host/path"), attemptedUrls);
 		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+	}
+
+	/**
+	 * The executor's read timeout scope wraps every attempt, failover attempts
+	 * included, with the call's template and read timeout.
+	 */
+	@Test
+	public void testReadTimeoutScopeWrapsEveryAttempt() {
+		final List<Duration> scopedReadTimeouts = new CopyOnWriteArrayList<>();
+		final List<RestOperations> scopedTemplates = new CopyOnWriteArrayList<>();
+		final ServiceClientReadTimeoutScope recordingScope = new ServiceClientReadTimeoutScope() {
+
+			@Override
+			public <ResultType> ResultType runWithReadTimeout(
+					final RestOperations template,
+					final Duration readTimeout,
+					final Supplier<ResultType> action) {
+				scopedTemplates.add(template);
+				scopedReadTimeouts.add(readTimeout);
+				return action.get();
+			}
+
+		};
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO), recordingScope);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final RestTemplate template = ServiceClientFailoverExecutorTest
+				.createFailingTemplate(new ResourceAccessException("Refused.", new ConnectException("Refused.")), attemptedUrls);
+		executor.executeOverEndpoints(List.of("http://first", "http://second"), "/", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, Duration.ofSeconds(2), template);
+		Assertions.assertEquals(2, attemptedUrls.size());
+		Assertions.assertEquals(List.of(Duration.ofSeconds(2), Duration.ofSeconds(2)), scopedReadTimeouts);
+		Assertions.assertEquals(List.of(template, template), scopedTemplates);
 	}
 
 }

@@ -82,6 +82,15 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	private Boolean alwaysSync;
 
 	/**
+	 * Read timeout of this client's calls, in seconds:
+	 * org.coldis.library.service-client.timeout.${serviceClient.name} (none, zero or negative: the template's).
+	 * Applies only to templates whose request factory is the library's (ServiceClientRequestFactory).
+	 * The key sits under the global timeout's, so in YAML it is written flat (quoted), not nested.
+	 */
+	@Value("#[[$]]#{org.coldis.library.service-client.timeout.${serviceClient.name}:#{null}}")
+	private Long readTimeoutSeconds;
+
+	/**
 	 * JMS template.
 	 */
 	@Autowired(required = false)
@@ -283,7 +292,8 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		// Executes the operation (failing over the endpoints) and returns the response.
 		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType, ${operation.idempotentExpression})#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
+				uriParameters, returnType, ${operation.idempotentExpression},
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)))#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
 #{else}
 		String syncMethodName = "${operation.name}".replaceAll("Async", "");

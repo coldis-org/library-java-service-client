@@ -53,10 +53,12 @@ public class ServiceClientFailoverExecutor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientFailoverExecutor.class);
 
 	/**
-	 * Executor used when none is configured: one attempt on a random endpoint.
+	 * Executor used when none is configured: one attempt on a random endpoint, with
+	 * the read timeout scope of {@link ServiceClientRequestFactory} (a scope bean
+	 * does not reach it).
 	 */
 	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false,
-			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO));
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 
 	/**
 	 * Failures that put the endpoint in its cooldown: the endpoint could not be
@@ -112,6 +114,11 @@ public class ServiceClientFailoverExecutor {
 	private final boolean shouldRetryOnReadTimeout;
 
 	/**
+	 * Scope that applies a call's own read timeout to its attempts.
+	 */
+	private final ServiceClientReadTimeoutScope readTimeoutScope;
+
+	/**
 	 * Endpoint balancer.
 	 */
 	private final ServiceClientEndpointBalancer balancer;
@@ -143,6 +150,8 @@ public class ServiceClientFailoverExecutor {
 	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                     operations.
 	 * @param balancer                 Endpoint balancer.
+	 * @param readTimeoutScope         Scope that applies a call's own read
+	 *                                     timeout to its attempts.
 	 */
 	public ServiceClientFailoverExecutor(
 			final boolean isEnabled,
@@ -151,9 +160,11 @@ public class ServiceClientFailoverExecutor {
 			final String[] retryStatuses,
 			final String[] cooldownStatuses,
 			final boolean shouldRetryOnReadTimeout,
-			final ServiceClientEndpointBalancer balancer) {
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientReadTimeoutScope readTimeoutScope) {
 		super();
 		this.balancer = Objects.requireNonNull(balancer, "balancer");
+		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
 		this.isEnabled = isEnabled;
 		this.maxAttempts = maxAttempts;
 		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
@@ -371,7 +382,6 @@ public class ServiceClientFailoverExecutor {
 		}
 	}
 
-
 	/**
 	 * Executes an operation over a list of endpoints, up to the maximum attempts,
 	 * each on an endpoint not tried yet. With more than one attempt, the HTTP client
@@ -388,6 +398,9 @@ public class ServiceClientFailoverExecutor {
 	 * @param  uriParameters  URI parameters.
 	 * @param  declaredIdempotent If the operation is idempotent, as declared
 	 *                                ({@code null} if not: decided by the method).
+	 * @param  readTimeout    Read timeout of the attempts ({@code null}, zero or
+	 *                            negative keeps the template's; applied by the
+	 *                            executor's {@link ServiceClientReadTimeoutScope}).
 	 * @param  restTemplate   Template.
 	 * @return                The outcome: the response, or the failure of the last
 	 *                        attempt.
@@ -400,6 +413,7 @@ public class ServiceClientFailoverExecutor {
 			final ParameterizedTypeReference<ResponseType> responseType,
 			final Map<String, Object> uriParameters,
 			final Boolean declaredIdempotent,
+			final Duration readTimeout,
 			final RestOperations restTemplate) {
 		final List<String> availableEndpoints = this.getAvailableEndpoints(endpoints);
 		final boolean isBodyRepeatable = ServiceClientFailoverExecutor.isRepeatableBody(requestEntity.getBody());
@@ -417,9 +431,9 @@ public class ServiceClientFailoverExecutor {
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
 			try {
-				response = (maxAttemptsForCall > 1
+				response = this.readTimeoutScope.runWithReadTimeout(restTemplate, readTimeout, () -> (maxAttemptsForCall > 1
 						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
-						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters));
+						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters)));
 			}
 			catch (final Exception exception) {
 				attemptFailure = exception;

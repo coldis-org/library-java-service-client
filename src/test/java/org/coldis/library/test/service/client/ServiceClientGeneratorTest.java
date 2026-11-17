@@ -223,4 +223,26 @@ public class ServiceClientGeneratorTest extends AbstractServiceTest {
 		}
 	}
 
+	/**
+	 * A generated client reads its own read timeout from
+	 * {@code org.coldis.library.service-client.timeout.<client class name>}, and
+	 * has none without it. The property is added to the shared context's
+	 * environment only while the bean is created.
+	 *
+	 * @throws IllegalAccessException If the setting cannot be read.
+	 */
+	@Test
+	public void testReadTimeoutProperty() throws IllegalAccessException {
+		final MutablePropertySources propertySources = this.applicationContext.getEnvironment().getPropertySources();
+		final AutowireCapableBeanFactory beanFactory = this.applicationContext.getAutowireCapableBeanFactory();
+		Assertions.assertNull(FieldUtils.readField(beanFactory.createBean(TestService2Client.class), "readTimeoutSeconds", true));
+		propertySources.addFirst(new MapPropertySource("readTimeoutTest", Map.of("org.coldis.library.service-client.timeout.TestService2Client", "2")));
+		try {
+			Assertions.assertEquals(2L, FieldUtils.readField(beanFactory.createBean(TestService2Client.class), "readTimeoutSeconds", true));
+		}
+		finally {
+			propertySources.remove("readTimeoutTest");
+		}
+	}
+
 }
