@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -173,15 +174,37 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the service client endpoint balancer (a service may declare its own).
+	 *
+	 * @param  strategy        Balancing strategy ({@code least-in-flight} or
+	 *                             {@code random}).
+	 * @param  failureCooldown How long an endpoint that failed is skipped (e.g.
+	 *                             {@code 10s}).
+	 * @return                 The service client endpoint balancer.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientEndpointBalancer serviceClientEndpointBalancer(
+			@Value(value = "${org.coldis.library.service-client.balancing.strategy:least-in-flight}")
+			final String strategy,
+			@Value(value = "${org.coldis.library.service-client.balancing.failure-cooldown:10s}")
+			final String failureCooldown) {
+		return new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.fromPropertyValue(strategy), DurationStyle.detectAndParse(failureCooldown));
+	}
+
+	/**
 	 * Creates the service client failover executor (a service may declare its own).
 	 *
 	 * @param  isEnabled                If failover is enabled.
 	 * @param  maxAttempts              Maximum attempts per operation.
 	 * @param  idempotentMethods        Methods taken as idempotent by default.
 	 * @param  retryStatuses            Response statuses retried for idempotent
-	 *                                      operations.
+	 *                                      operations (none by default).
+	 * @param  cooldownStatuses         Response statuses that put the endpoint in
+	 *                                      its cooldown (none by default).
 	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                      operations.
+	 * @param  balancer                 Endpoint balancer.
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -193,11 +216,14 @@ public class ServiceClientAutoConfiguration {
 			final Integer maxAttempts,
 			@Value(value = "${org.coldis.library.service-client.failover.idempotent-methods:GET,HEAD,OPTIONS}")
 			final String[] idempotentMethods,
-			@Value(value = "${org.coldis.library.service-client.failover.retry-statuses:502,503,504}")
+			@Value(value = "${org.coldis.library.service-client.failover.retry-statuses:}")
 			final String[] retryStatuses,
+			@Value(value = "${org.coldis.library.service-client.balancing.cooldown-statuses:}")
+			final String[] cooldownStatuses,
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
-			final Boolean shouldRetryOnReadTimeout) {
-		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, shouldRetryOnReadTimeout);
+			final Boolean shouldRetryOnReadTimeout,
+			final ServiceClientEndpointBalancer balancer) {
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer);
 	}
 
 	/**

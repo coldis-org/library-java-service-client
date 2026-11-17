@@ -1,6 +1,7 @@
 package org.coldis.library.test.service;
 
 import org.coldis.library.helper.ReflectionHelper;
+import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
@@ -41,6 +42,12 @@ public abstract class AbstractServiceTest extends TestHelper {
 	public static GenericContainer<?> ARTEMIS_CONTAINER = TestHelper.createArtemisContainer();
 
 	/**
+	 * Endpoint balancer of the generated clients.
+	 */
+	@Autowired
+	private ServiceClientEndpointBalancer serviceClientEndpointBalancer;
+
+	/**
 	 * Generated service client.
 	 */
 	@Autowired
@@ -66,11 +73,13 @@ public abstract class AbstractServiceTest extends TestHelper {
 	}
 
 	/**
-	 * Puts the runtime test switches back to their defaults before each test.
+	 * Puts the runtime test switches back to their defaults before each test, and
+	 * makes the balancer forget the requests and failures of earlier tests.
 	 */
 	@BeforeEach
 	public void beforeEach() {
 		this.setAlwaysSync(false);
+		this.serviceClientEndpointBalancer.clear();
 	}
 
 }

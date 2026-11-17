@@ -3,14 +3,17 @@ package org.coldis.library.test.service.client;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -42,7 +45,8 @@ public class ServiceClientFailoverExecutorTest {
 	 * Executor with the shipped defaults.
 	 */
 	private static final ServiceClientFailoverExecutor EXECUTOR = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" },
-			new String[] { "502", "503", "504" }, false);
+			new String[] { "502", "503", "504" }, new String[] { "502", "503", "504" }, false,
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
 
 	/**
 	 * Creates a template whose every call fails with the given failure, recording
@@ -203,6 +207,55 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertEquals("(endpoint not parsed)", ServiceClientFailoverExecutor.getLoggableEndpoint("host_name:8080"));
 		Assertions.assertEquals("(endpoint not parsed)", ServiceClientFailoverExecutor.getLoggableEndpoint("not an endpoint"));
 		Assertions.assertEquals("(endpoint not parsed)", ServiceClientFailoverExecutor.getLoggableEndpoint(null));
+	}
+
+	/**
+	 * Running out of local pooled connections is retried on another endpoint (no
+	 * request was sent) but puts no endpoint in its cooldown (it is not the
+	 * endpoint's failure); a read timeout, not retried by default, does not
+	 * either.
+	 */
+	@Test
+	public void testLocalFailuresStartNoCooldown() {
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
+				balancer);
+		final List<String> endpoints = List.of("http://first", "http://second");
+		final List<String> poolWaitUrls = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor.Outcome<String> poolWaitOutcome = executor.executeOverEndpoints(endpoints, "/", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new ResourceAccessException("Attempt failed.", new ConnectionRequestTimeoutException("Pool exhausted.")), poolWaitUrls));
+		Assertions.assertNotNull(poolWaitOutcome.failure());
+		Assertions.assertEquals(2, poolWaitUrls.size());
+		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+		final List<String> readTimeoutUrls = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor.Outcome<String> readTimeoutOutcome = executor.executeOverEndpoints(endpoints, "/", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new ResourceAccessException("Attempt failed.", new SocketTimeoutException("Read timed out.")), readTimeoutUrls));
+		Assertions.assertNotNull(readTimeoutOutcome.failure());
+		Assertions.assertEquals(1, readTimeoutUrls.size());
+		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
+		Assertions.assertEquals(0, balancer.getInFlightRequests("http://second"));
+	}
+
+	/**
+	 * A call with no endpoint list (the path is the whole URL) that fails to
+	 * connect puts nothing in cooldown.
+	 */
+	@Test
+	public void testBlankEndpointStartsNoCooldown() {
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
+				balancer);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		executor.executeOverEndpoints(List.of(), "http://host/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
+				Map.of(), null, ServiceClientFailoverExecutorTest
+						.createFailingTemplate(new ResourceAccessException("Refused.", new ConnectException("Refused.")), attemptedUrls));
+		Assertions.assertEquals(List.of("http://host/path"), attemptedUrls);
+		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
 	}
 
 }

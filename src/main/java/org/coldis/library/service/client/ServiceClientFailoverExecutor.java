@@ -7,6 +7,7 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -17,8 +18,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.client5.http.ConnectTimeoutException;
@@ -40,7 +41,9 @@ import org.springframework.web.client.RestOperations;
 
 /**
  * Executes a service client operation over its endpoint list (instances of the
- * same service), failing over to another endpoint when a failure allows it.
+ * same service), failing over to another endpoint when a failure allows it. The
+ * endpoint of each attempt is chosen by the {@link ServiceClientEndpointBalancer},
+ * which this executor keeps informed of requests in flight and failures.
  */
 public class ServiceClientFailoverExecutor {
 
@@ -52,13 +55,23 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Executor used when none is configured: one attempt on a random endpoint.
 	 */
-	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, false);
+	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false,
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO));
 
 	/**
-	 * Failures where the connection was never established (nothing was sent).
+	 * Failures that put the endpoint in its cooldown: the endpoint could not be
+	 * connected to.
 	 */
-	private static final List<Class<? extends Throwable>> NOT_CONNECTED_FAILURES = List.of(ConnectException.class, ConnectTimeoutException.class,
-			NoRouteToHostException.class, UnknownHostException.class, ConnectionRequestTimeoutException.class);
+	private static final List<Class<? extends Throwable>> COOLDOWN_FAILURES = List.of(ConnectException.class, ConnectTimeoutException.class,
+			NoRouteToHostException.class, UnknownHostException.class);
+
+	/**
+	 * Failures where the connection was never established (nothing was sent): the
+	 * cooldown failures, and running out of local pooled connections (retried, but
+	 * not the endpoint's failure, so no cooldown).
+	 */
+	private static final List<Class<? extends Throwable>> NOT_CONNECTED_FAILURES = Stream
+			.concat(ServiceClientFailoverExecutor.COOLDOWN_FAILURES.stream(), Stream.of(ConnectionRequestTimeoutException.class)).toList();
 
 	/**
 	 * Failures where the connection dropped before a response (the request may have
@@ -88,9 +101,20 @@ public class ServiceClientFailoverExecutor {
 	private final Set<Integer> retryStatuses;
 
 	/**
+	 * Response statuses that put the endpoint in its cooldown (apart from the
+	 * connection failures, which always do).
+	 */
+	private final Set<Integer> cooldownStatuses;
+
+	/**
 	 * If read timeouts are retried for idempotent operations.
 	 */
 	private final boolean shouldRetryOnReadTimeout;
+
+	/**
+	 * Endpoint balancer.
+	 */
+	private final ServiceClientEndpointBalancer balancer;
 
 	/**
 	 * Outcome of an operation: the response, or the failure of its last attempt.
@@ -114,23 +138,41 @@ public class ServiceClientFailoverExecutor {
 	 *                                     operation does not say.
 	 * @param retryStatuses            Response statuses retried for idempotent
 	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
 	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                     operations.
+	 * @param balancer                 Endpoint balancer.
 	 */
 	public ServiceClientFailoverExecutor(
 			final boolean isEnabled,
 			final int maxAttempts,
 			final String[] idempotentMethods,
 			final String[] retryStatuses,
-			final boolean shouldRetryOnReadTimeout) {
+			final String[] cooldownStatuses,
+			final boolean shouldRetryOnReadTimeout,
+			final ServiceClientEndpointBalancer balancer) {
 		super();
+		this.balancer = Objects.requireNonNull(balancer, "balancer");
 		this.isEnabled = isEnabled;
 		this.maxAttempts = maxAttempts;
 		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
 				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
-		this.retryStatuses = Arrays.stream(retryStatuses == null ? new String[] {} : retryStatuses).filter(StringUtils::isNotBlank)
-				.map(status -> Integer.valueOf(status.trim())).collect(Collectors.toSet());
+		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
+		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
 		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+	}
+
+	/**
+	 * Parses a list of response statuses (blank entries ignored).
+	 *
+	 * @param  statuses Statuses ({@code null} for none).
+	 * @return          The statuses.
+	 */
+	private static Set<Integer> parseStatuses(
+			final String[] statuses) {
+		return Arrays.stream(statuses == null ? new String[] {} : statuses).filter(StringUtils::isNotBlank).map(status -> Integer.valueOf(status.trim()))
+				.collect(Collectors.toSet());
 	}
 
 	/**
@@ -171,22 +213,17 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Chooses the endpoint of the next attempt: a random one first, then the next
-	 * one in the list not tried yet.
+	 * Chooses the endpoint of the next attempt, among the endpoints not tried yet
+	 * (see {@link ServiceClientEndpointBalancer}).
 	 *
 	 * @param  endpoints      Endpoints (not empty).
-	 * @param  triedEndpoints Endpoints already tried, in order.
+	 * @param  triedEndpoints Endpoints already tried.
 	 * @return                The endpoint of the next attempt.
 	 */
 	public String chooseEndpoint(
 			final List<String> endpoints,
 			final List<String> triedEndpoints) {
-		final int lastTriedIndex = (triedEndpoints.isEmpty() ? -1 : endpoints.indexOf(triedEndpoints.get(triedEndpoints.size() - 1)));
-		int endpointIndex = (lastTriedIndex < 0 ? ThreadLocalRandom.current().nextInt(endpoints.size()) : lastTriedIndex);
-		for (int skippedCount = 0; (skippedCount < endpoints.size()) && triedEndpoints.contains(endpoints.get(endpointIndex)); skippedCount++) {
-			endpointIndex = (endpointIndex + 1) % endpoints.size();
-		}
-		return endpoints.get(endpointIndex);
+		return this.balancer.choose(endpoints, triedEndpoints);
 	}
 
 	/**
@@ -312,6 +349,30 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Records the outcome of an attempt for the balancing: an endpoint that could
+	 * not be connected to or answered a cooldown status starts its cooldown, an
+	 * endpoint that answered anything else ends it (if the request was sent after
+	 * the cooldown started).
+	 *
+	 * @param inFlightRequest The attempt's request.
+	 * @param failure         Attempt failure ({@code null} if it succeeded).
+	 */
+	private void recordOutcome(
+			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest,
+			final Exception failure) {
+		if ((failure instanceof final RestClientResponseException responseFailure) && this.cooldownStatuses.contains(responseFailure.getStatusCode().value())) {
+			this.balancer.startCooldown(inFlightRequest.getEndpoint());
+		}
+		else if ((failure == null) || (failure instanceof RestClientResponseException)) {
+			this.balancer.endCooldown(inFlightRequest);
+		}
+		else if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.COOLDOWN_FAILURES)) {
+			this.balancer.startCooldown(inFlightRequest.getEndpoint());
+		}
+	}
+
+
+	/**
 	 * Executes an operation over a list of endpoints, up to the maximum attempts,
 	 * each on an endpoint not tried yet. With more than one attempt, the HTTP client
 	 * retries are suspended (see {@link ServiceClientRetryStrategy}), so attempts
@@ -352,22 +413,33 @@ public class ServiceClientFailoverExecutor {
 			final String endpoint = this.chooseEndpoint(availableEndpoints, triedEndpoints);
 			final String url = endpoint + path;
 			triedEndpoints.add(endpoint);
+			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(endpoint);
+			ResponseEntity<ResponseType> response = null;
+			Exception attemptFailure = null;
 			try {
-				final ResponseEntity<ResponseType> response = (maxAttemptsForCall > 1
+				response = (maxAttemptsForCall > 1
 						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
 						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters));
+			}
+			catch (final Exception exception) {
+				attemptFailure = exception;
+			}
+			finally {
+				inFlightRequest.close();
+			}
+			// Records the outcome after the attempt, so the bookkeeping cannot change it.
+			this.recordOutcome(inFlightRequest, attemptFailure);
+			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
-			catch (final Exception attemptFailure) {
-				if (((attemptIndex + 1) >= maxAttemptsForCall) || !this.shouldRetry(attemptFailure, isIdempotent, isBodyRepeatable)) {
-					outcome = new Outcome<>(url, null, attemptFailure);
-				}
-				else {
-					// Logs the endpoint's scheme, host and port only, not the URL nor the
-					// message (they may carry path parameters or credentials).
-					ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), trying another endpoint.", method,
-							ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall, attemptFailure.getClass().getSimpleName());
-				}
+			else if (((attemptIndex + 1) >= maxAttemptsForCall) || !this.shouldRetry(attemptFailure, isIdempotent, isBodyRepeatable)) {
+				outcome = new Outcome<>(url, null, attemptFailure);
+			}
+			else {
+				// Logs the endpoint's scheme, host and port only, not the URL nor the
+				// message (they may carry path parameters or credentials).
+				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), trying another endpoint.", method,
+						ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall, attemptFailure.getClass().getSimpleName());
 			}
 		}
 		return outcome;
