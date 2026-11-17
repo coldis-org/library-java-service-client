@@ -965,7 +965,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 * @throws Exception If the test fails.
 	 */
 	@Test
-	public void testFullUrlOverloadUnchanged() throws Exception {
+	public void testFullUrlOverloadResendsRateLimitedOnly() throws Exception {
 		final String endpoint = ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER);
 		for (final HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
 			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);

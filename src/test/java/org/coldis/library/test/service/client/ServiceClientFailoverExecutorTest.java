@@ -17,13 +17,16 @@ import java.util.function.Supplier;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.NoHttpResponseException;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientAutoConfiguration;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpEntity;
@@ -39,6 +42,7 @@ import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
@@ -331,6 +335,38 @@ public class ServiceClientFailoverExecutorTest {
 		});
 		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").counter().count());
 		Assertions.assertEquals(0, meterRegistry.get(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", "target").gauge().value());
+	}
+
+	/**
+	 * Without a meter registry, the metrics record nothing and the failover
+	 * executor is still created with them.
+	 */
+	@Test
+	public void testNoMeterRegistry() {
+		final ServiceClientMetrics metrics = new ServiceClientAutoConfiguration.ServiceClientMetricsConfiguration()
+				.serviceClientMetrics(new StaticListableBeanFactory().getBeanProvider(MeterRegistry.class));
+		Assertions.assertSame(ServiceClientMetrics.NONE, metrics);
+		final StaticListableBeanFactory beanFactory = new StaticListableBeanFactory();
+		beanFactory.addBean("serviceClientMetrics", metrics);
+		Assertions.assertNotNull(new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				beanFactory.getBeanProvider(ServiceClientMetrics.class)));
+	}
+
+	/**
+	 * A target set inside another one is the current one while its action runs,
+	 * then the outer one is back; a blank target, or none, is
+	 * {@value ServiceClientTarget#NONE}.
+	 */
+	@Test
+	public void testNestedTargets() {
+		Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.getCurrent());
+		Assertions.assertEquals("outer", ServiceClientTarget.runFor("outer", () -> {
+			Assertions.assertEquals("inner", ServiceClientTarget.runFor("inner", ServiceClientTarget::getCurrent));
+			Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.runFor(" ", ServiceClientTarget::getCurrent));
+			return ServiceClientTarget.getCurrent();
+		}));
+		Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.getCurrent());
 	}
 
 }
