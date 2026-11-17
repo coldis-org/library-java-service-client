@@ -3,14 +3,17 @@ package org.coldis.library.service.client;
 import java.time.Duration;
 
 import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.core5.util.TimeValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.convert.DurationStyle;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -23,6 +26,8 @@ import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
+
+import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Service client auto configuration.
@@ -41,9 +46,55 @@ public class ServiceClientAutoConfiguration {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
 
 	/**
+	 * Service client metrics configuration (only with Micrometer).
+	 */
+	@Configuration(proxyBeanMethods = false)
+	@ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+	public static class ServiceClientMetricsConfiguration {
+
+		/**
+		 * Creates the service client metrics (a service may declare its own):
+		 * recorded in the meter registry if there is one, none otherwise.
+		 *
+		 * @param  meterRegistry Meter registry.
+		 * @return               The service client metrics.
+		 */
+		@Bean
+		@ConditionalOnMissingBean
+		public ServiceClientMetrics serviceClientMetrics(
+				final ObjectProvider<MeterRegistry> meterRegistry) {
+			final MeterRegistry availableMeterRegistry = meterRegistry.getIfAvailable();
+			return (availableMeterRegistry == null ? ServiceClientMetrics.NONE : new MicrometerServiceClientMetrics(availableMeterRegistry));
+		}
+
+	}
+
+	/**
+	 * Converts a duration to a time value.
+	 *
+	 * @param  duration Duration (in the {@link DurationStyle} formats, e.g.
+	 *                      {@code 15s}).
+	 * @return          The time value.
+	 */
+	private static TimeValue toTimeValue(
+			final String duration) {
+		return TimeValue.ofMilliseconds(DurationStyle.detectAndParse(duration).toMillis());
+	}
+
+	/**
 	 * HTTP client pooling manager.
 	 *
-	 * @return HTTP client pooling manager.
+	 * @param  maxTotal                Maximum total connections.
+	 * @param  defaultMaxPerRoute      Maximum connections per host.
+	 * @param  closeIdle               Idle time (seconds) after which connections
+	 *                                     are closed.
+	 * @param  closeExpired            If expired connections are closed.
+	 * @param  timeToLive              How long a connection is kept, however used
+	 *                                     (e.g. {@code 60s}).
+	 * @param  validateAfterInactivity Idle time after which a pooled connection is
+	 *                                     checked before it is reused (e.g.
+	 *                                     {@code 1s}).
+	 * @return                         HTTP client pooling manager.
 	 */
 	@Bean
 	public PoolingHttpClientConnectionManager httpClientPoolingManager(
@@ -54,10 +105,16 @@ public class ServiceClientAutoConfiguration {
 			@Value("${org.coldis.library.service-client.close-idle}")
 			final Integer closeIdle,
 			@Value("${org.coldis.library.service-client.close-expired}")
-			final Boolean closeExpired) {
+			final Boolean closeExpired,
+			@Value("${org.coldis.library.service-client.connection-time-to-live:60s}")
+			final String timeToLive,
+			@Value("${org.coldis.library.service-client.connection-validate-after-inactivity:1s}")
+			final String validateAfterInactivity) {
 		final PoolingHttpClientConnectionManager httpClientPoolingManager = new PoolingHttpClientConnectionManager();
 		httpClientPoolingManager.setMaxTotal(maxTotal); // maximum total connections.
 		httpClientPoolingManager.setDefaultMaxPerRoute(defaultMaxPerRoute); // maximum connections per host.
+		httpClientPoolingManager.setDefaultConnectionConfig(ConnectionConfig.custom().setTimeToLive(ServiceClientAutoConfiguration.toTimeValue(timeToLive))
+				.setValidateAfterInactivity(ServiceClientAutoConfiguration.toTimeValue(validateAfterInactivity)).build());
 		if (closeIdle != null) {
 			httpClientPoolingManager.closeIdle(TimeValue.ofSeconds(closeIdle)); // close idle connections.
 		}
@@ -68,18 +125,36 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the keep-alive strategy of the HTTP client.
+	 *
+	 * @param  maxKeepAlive How long a pooled connection may stay idle and still be
+	 *                          reused, at most (e.g. {@code 15s}).
+	 * @return              The keep-alive strategy.
+	 */
+	@Bean
+	public ServiceClientKeepAliveStrategy serviceClientKeepAliveStrategy(
+			@Value("${org.coldis.library.service-client.connection-max-keep-alive:15s}")
+			final String maxKeepAlive) {
+		return new ServiceClientKeepAliveStrategy(DurationStyle.detectAndParse(maxKeepAlive));
+	}
+
+	/**
 	 * Creates the HTTP client.
 	 *
-	 * @param  pcm HTTP client pooling manager.
-	 * @return     The HTTP client.
+	 * @param  httpClientPoolingManager HTTP client pooling manager.
+	 * @param  keepAliveStrategy        Keep-alive strategy.
+	 * @param  closeIdle                Idle time (seconds) after which
+	 *                                      connections are closed.
+	 * @return                          The HTTP client.
 	 */
 	@Bean
 	public HttpClient httpClient(
 			final PoolingHttpClientConnectionManager httpClientPoolingManager,
+			final ServiceClientKeepAliveStrategy keepAliveStrategy,
 			@Value("${org.coldis.library.service-client.close-idle}")
 			final Integer closeIdle) {
-		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).setRetryStrategy(new ServiceClientRetryStrategy()).evictExpiredConnections()
-				.evictIdleConnections(TimeValue.ofSeconds(closeIdle)).build();
+		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).setKeepAliveStrategy(keepAliveStrategy)
+				.setRetryStrategy(new ServiceClientRetryStrategy()).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(closeIdle)).build();
 	}
 
 	/**
@@ -221,6 +296,7 @@ public class ServiceClientAutoConfiguration {
 	 * @param  balancer                 Endpoint balancer.
 	 * @param  readTimeoutScope         Scope that applies a call's own read
 	 *                                      timeout to its attempts.
+	 * @param  metrics                  Metrics (none without Micrometer).
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -239,9 +315,21 @@ public class ServiceClientAutoConfiguration {
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
 			final Boolean shouldRetryOnReadTimeout,
 			final ServiceClientEndpointBalancer balancer,
-			final ServiceClientReadTimeoutScope readTimeoutScope) {
+			final ServiceClientReadTimeoutScope readTimeoutScope,
+			final ObjectProvider<ServiceClientMetrics> metrics) {
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
-				readTimeoutScope);
+				readTimeoutScope, metrics.getIfAvailable(() -> ServiceClientMetrics.NONE));
+	}
+
+	/**
+	 * Creates the observation filter that tags the HTTP client request
+	 * observations ({@code http.client.requests}) with the target of the call.
+	 *
+	 * @return The observation filter.
+	 */
+	@Bean
+	public ServiceClientTargetObservationFilter serviceClientTargetObservationFilter() {
+		return new ServiceClientTargetObservationFilter();
 	}
 
 	/**

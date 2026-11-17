@@ -425,6 +425,54 @@ public class GenericRestServiceClient {
 	 *                                  method).
 	 * @param  readTimeout          Read timeout of this operation ({@code null},
 	 *                                  zero or negative keeps the template's).
+	 * @param  target               Target of the operation, its metrics tag
+	 *                                  (the generated client's name; see
+	 *                                  {@link ServiceClientTarget}, {@code null}
+	 *                                  for none).
+	 * @return                      The REST operation response.
+	 *
+	 * @throws IntegrationException If an unexpected exception is raised.
+	 * @throws BusinessException    If a business exception is raised.
+	 */
+	public <ResponseType> ResponseEntity<ResponseType> executeOperation(
+			final List<String> endpoints,
+			final String path,
+			final HttpMethod method,
+			final MultiValueMap<String, String> headers,
+			final Object body,
+			final Map<String, Object> uriParameters,
+			final ParameterizedTypeReference<ResponseType> responseType,
+			final Boolean declaredIdempotent,
+			final Duration readTimeout,
+			final String target) throws IntegrationException, BusinessException {
+		// Modifies the headers as for service client implementation.
+		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
+		// Makes sure parameters are not null.
+		final Map<String, Object> actualUriParameters = (uriParameters == null ? new HashMap<>() : uriParameters);
+		// Executes the attempts, then handles the failure of the last one (if any).
+		final ServiceClientFailoverExecutor.Outcome<ResponseType> outcome = ServiceClientTarget.runFor(target,
+				() -> this.getFailoverExecutor().executeOverEndpoints(endpoints, (path == null ? "" : path), method, new HttpEntity<>(body, actualHeaders),
+						responseType, actualUriParameters, declaredIdempotent, readTimeout, this.getRestTemplate()));
+		return (outcome.failure() == null ? outcome.response()
+				: this.handleExecutionException(outcome.url(), method, actualHeaders, body, actualUriParameters, responseType, outcome.failure()));
+	}
+
+	/**
+	 * Executes a REST operation over a list of endpoints, with no target (see the
+	 * overload with a target).
+	 *
+	 * @param  <ResponseType>       REST operation response type.
+	 * @param  endpoints            Endpoints (base URLs) to try.
+	 * @param  path                 REST operation path.
+	 * @param  method               REST operation method.
+	 * @param  headers              REST operation headers.
+	 * @param  body                 REST operation body.
+	 * @param  uriParameters        REST operation URI parameters.
+	 * @param  responseType         REST operation response type.
+	 * @param  declaredIdempotent   If the operation is idempotent, as declared
+	 *                                  ({@code null} if not).
+	 * @param  readTimeout          Read timeout of this operation ({@code null},
+	 *                                  zero or negative keeps the template's).
 	 * @return                      The REST operation response.
 	 *
 	 * @throws IntegrationException If an unexpected exception is raised.
@@ -440,15 +488,7 @@ public class GenericRestServiceClient {
 			final ParameterizedTypeReference<ResponseType> responseType,
 			final Boolean declaredIdempotent,
 			final Duration readTimeout) throws IntegrationException, BusinessException {
-		// Modifies the headers as for service client implementation.
-		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
-		// Makes sure parameters are not null.
-		final Map<String, Object> actualUriParameters = (uriParameters == null ? new HashMap<>() : uriParameters);
-		// Executes the attempts, then handles the failure of the last one (if any).
-		final ServiceClientFailoverExecutor.Outcome<ResponseType> outcome = this.getFailoverExecutor().executeOverEndpoints(endpoints, (path == null ? "" : path),
-				method, new HttpEntity<>(body, actualHeaders), responseType, actualUriParameters, declaredIdempotent, readTimeout, this.getRestTemplate());
-		return (outcome.failure() == null ? outcome.response()
-				: this.handleExecutionException(outcome.url(), method, actualHeaders, body, actualUriParameters, responseType, outcome.failure()));
+		return this.executeOperation(endpoints, path, method, headers, body, uriParameters, responseType, declaredIdempotent, readTimeout, null);
 	}
 
 

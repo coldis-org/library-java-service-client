@@ -293,7 +293,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, ${operation.idempotentExpression},
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)))#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "${serviceClient.name}")#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
 #{else}
 		String syncMethodName = "${operation.name}".replaceAll("Async", "");
