@@ -51,6 +51,13 @@ public class GenericRestServiceClient {
 	private RestOperations restTemplate;
 
 	/**
+	 * Failover executor (absent when the auto-configuration is not used: one
+	 * attempt only, see {@link ServiceClientFailoverExecutor#SINGLE_ATTEMPT}).
+	 */
+	@Autowired(required = false)
+	private ServiceClientFailoverExecutor failoverExecutor;
+
+	/**
 	 * Object mapper to be used on REST operations.
 	 */
 	@Autowired
@@ -73,6 +80,25 @@ public class GenericRestServiceClient {
 	public void setRestTemplate(
 			final RestOperations restTemplate) {
 		this.restTemplate = restTemplate;
+	}
+
+	/**
+	 * Gets the failover executor (a single attempt if none is configured).
+	 *
+	 * @return The failover executor.
+	 */
+	public ServiceClientFailoverExecutor getFailoverExecutor() {
+		return (this.failoverExecutor == null ? ServiceClientFailoverExecutor.SINGLE_ATTEMPT : this.failoverExecutor);
+	}
+
+	/**
+	 * Sets the failover executor.
+	 *
+	 * @param failoverExecutor New failover executor.
+	 */
+	public void setFailoverExecutor(
+			final ServiceClientFailoverExecutor failoverExecutor) {
+		this.failoverExecutor = failoverExecutor;
 	}
 
 	/**
@@ -247,7 +273,97 @@ public class GenericRestServiceClient {
 	}
 
 	/**
-	 * Executes a REST operation.
+	 * Handles a failed REST operation: runs the extension point
+	 * {@link #autoHandleExecutionExceptions} and maps what it does not handle to a
+	 * business or integration exception.
+	 *
+	 * @param  <ResponseType>       REST operation response type.
+	 * @param  path                 REST operation path.
+	 * @param  method               REST operation method.
+	 * @param  headers              REST operation headers.
+	 * @param  body                 REST operation body.
+	 * @param  uriParameters        REST operation URI parameters.
+	 * @param  responseType         REST operation response type.
+	 * @param  originalException    REST operation exception.
+	 * @return                      The REST operation response (if nicely handled).
+	 *
+	 * @throws IntegrationException If an unexpected exception is raised.
+	 * @throws BusinessException    If a business exception is raised.
+	 */
+	private <ResponseType> ResponseEntity<ResponseType> handleExecutionException(
+			final String path,
+			final HttpMethod method,
+			final MultiValueMap<String, String> headers,
+			final Object body,
+			final Map<String, Object> uriParameters,
+			final ParameterizedTypeReference<ResponseType> responseType,
+			final Exception originalException) throws IntegrationException, BusinessException {
+		// Actual REST operation exception is the current one.
+		Exception actualException = originalException;
+		// Tries to handle the operation exception.
+		try {
+			return this.autoHandleExecutionExceptions(path, method, headers, body, uriParameters, responseType, actualException);
+		}
+		// If the REST operation exception cannot be handled.
+		catch (final Exception newException) {
+			// Actual REST operation exception is the new one.
+			actualException = newException;
+		}
+		// Exception response.
+		String exceptionResponse = null;
+		// If the exception is a HTTP exception.
+		if (actualException instanceof HttpStatusCodeException) {
+			// Gets the HTTP exception and its response.
+			final HttpStatusCodeException httpException = ((HttpStatusCodeException) actualException);
+			exceptionResponse = httpException.getResponseBodyAsString();
+			final HttpHeaders responseHeaders = httpException.getResponseHeaders();
+			final List<String> retryAfterHeaders = (responseHeaders != null ? responseHeaders.get(HttpHeaders.RETRY_AFTER) : null);
+			final Duration retryIn = (CollectionUtils.isEmpty(retryAfterHeaders) ? BusinessException.DEFAULT_RETRY_IN
+					: (NumberUtils.isDigits(retryAfterHeaders.get(0)) ? Duration.ofSeconds(Long.parseLong(retryAfterHeaders.get(0))) : null));
+			// Exception messages.
+			SimpleMessage[] exceptionMessages = null;
+			// If there is an exception response.
+			if (StringUtils.isNotBlank(exceptionResponse)) {
+				// Tries to get the exception messages.
+				exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse, SimpleMessage[].class, true);
+			}
+			// If no messages are available.
+			if (ArrayUtils.isEmpty(exceptionMessages) || Arrays.stream(exceptionMessages)
+					.allMatch(message -> (message == null) || (StringUtils.isBlank(message.getCode()) && StringUtils.isBlank(message.getContent())))) {
+				// Creates a default message.
+				exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error",
+						StringUtils.isBlank(exceptionResponse) ? "No error message. HTTP status: " + httpException.getStatusCode().value() : exceptionResponse) };
+			}
+			// If the exception status code is for a client error.
+			if (this.isBusinessExceptionStatusCodes(httpException)) {
+				// Throws a business exception with the exception messages.
+				throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(), retryIn, httpException);
+			}
+			// If the exception status code is not for bad request.
+			else {
+				// Throws an integration exception with the exception messages.
+				throw new IntegrationException(new SimpleMessage(exceptionMessages[0].getCode(), exceptionMessages[0].getContent()),
+						httpException.getStatusCode().value(), retryIn, httpException);
+			}
+		}
+		// For every other exception.
+		else {
+			// Logs the exception.
+			// Logs the endpoint's scheme, host and port only, not the URL nor the message
+			// (they may carry path parameters or credentials; the debug log keeps them).
+			GenericRestServiceClient.LOGGER.error("REST operation {} on {} failed ({}).", method, ServiceClientFailoverExecutor.getLoggableEndpoint(path),
+					actualException.getClass().getSimpleName());
+			GenericRestServiceClient.LOGGER.debug("REST operation execution failed.", actualException);
+			// Throws an integration exception with a generic exception message.
+			throw new IntegrationException(new SimpleMessage("rest.operation.execution.error", exceptionResponse), actualException);
+		}
+	}
+
+	/**
+	 * Executes a REST operation on a full URL, with a single attempt (no failover;
+	 * the endpoint-list overload may send the request several times). Generated
+	 * clients call the endpoint-list overload: overriding this method does not
+	 * change them.
 	 *
 	 * @param  <ResponseType>       REST operation response type.
 	 * @param  path                 REST operation path.
@@ -279,63 +395,58 @@ public class GenericRestServiceClient {
 		}
 		// If the REST operation raises an exception.
 		catch (final Exception originalException) {
-			// Actual REST operation exception is the current one.
-			Exception actualException = originalException;
-			// Tries to handle the operation exception.
-			try {
-				return this.autoHandleExecutionExceptions(path, method, actualHeaders, body, actualUriParameters, responseType, actualException);
-			}
-			// If the REST operation exception cannot be handled.
-			catch (final Exception newException) {
-				// Actual REST operation exception is the new one.
-				actualException = newException;
-			}
-			// Exception response.
-			String exceptionResponse = null;
-			// If the exception is a HTTP exception.
-			if (actualException instanceof HttpStatusCodeException) {
-				// Gets the HTTP exception and its response.
-				final HttpStatusCodeException httpException = ((HttpStatusCodeException) actualException);
-				exceptionResponse = httpException.getResponseBodyAsString();
-				final HttpHeaders responseHeaders = httpException.getResponseHeaders();
-				final List<String> retryAfterHeaders = (responseHeaders != null ? responseHeaders.get(HttpHeaders.RETRY_AFTER) : null);
-				final Duration retryIn = (CollectionUtils.isEmpty(retryAfterHeaders) ? BusinessException.DEFAULT_RETRY_IN
-						: (NumberUtils.isDigits(retryAfterHeaders.get(0)) ? Duration.ofSeconds(Long.parseLong(retryAfterHeaders.get(0))) : null));
-				// Exception messages.
-				SimpleMessage[] exceptionMessages = null;
-				// If there is an exception response.
-				if (StringUtils.isNotBlank(exceptionResponse)) {
-					// Tries to get the exception messages.
-					exceptionMessages = ObjectMapperHelper.deserialize(this.objectMapper, exceptionResponse, SimpleMessage[].class, true);
-				}
-				// If no messages are available.
-				if (ArrayUtils.isEmpty(exceptionMessages) || Arrays.stream(exceptionMessages)
-						.allMatch(message -> (message == null) || (StringUtils.isBlank(message.getCode()) && StringUtils.isBlank(message.getContent())))) {
-					// Creates a default message.
-					exceptionMessages = new SimpleMessage[] { new SimpleMessage("rest.operation.execution.error",
-							StringUtils.isBlank(exceptionResponse) ? "No error message. HTTP status: " + httpException.getStatusCode().value() : exceptionResponse) };
-				}
-				// If the exception status code is for a client error.
-				if (this.isBusinessExceptionStatusCodes(httpException)) {
-					// Throws a business exception with the exception messages.
-					throw new BusinessException(Arrays.asList(exceptionMessages), httpException.getStatusCode().value(), retryIn, httpException);
-				}
-				// If the exception status code is not for bad request.
-				else {
-					// Throws an integration exception with the exception messages.
-					throw new IntegrationException(new SimpleMessage(exceptionMessages[0].getCode(), exceptionMessages[0].getContent()),
-							httpException.getStatusCode().value(), retryIn, httpException);
-				}
-			}
-			// For every other exception.
-			else {
-				// Logs the exception.
-				GenericRestServiceClient.LOGGER.error("REST operation execution failed: " + actualException.getLocalizedMessage());
-				GenericRestServiceClient.LOGGER.debug("REST operation execution failed.", actualException);
-				// Throws an integration exception with a generic exception message.
-				throw new IntegrationException(new SimpleMessage("rest.operation.execution.error", exceptionResponse), actualException);
-			}
+			return this.handleExecutionException(path, method, actualHeaders, body, actualUriParameters, responseType, originalException);
 		}
 	}
+
+	/**
+	 * Executes a REST operation over a list of endpoints (instances of the same
+	 * service) through the {@link ServiceClientFailoverExecutor}: unlike the
+	 * full-URL overload, it may send the request several times, failing over to
+	 * another endpoint (the first one random, the next ones in list order, up to
+	 * the configured maximum attempts). A failure where the connection was never
+	 * established is retried for any method; a dropped connection or a retry
+	 * status (502, 503, 504 by default) only for idempotent operations; anything
+	 * else is not retried. Exception
+	 * handling ({@link #autoHandleExecutionExceptions} and the mapping to business
+	 * and integration exceptions) runs once, after the last attempt.
+	 *
+	 * @param  <ResponseType>       REST operation response type.
+	 * @param  endpoints            Endpoints (base URLs) to try.
+	 * @param  path                 REST operation path (appended to the
+	 *                                  endpoint).
+	 * @param  method               REST operation method.
+	 * @param  headers              REST operation headers.
+	 * @param  body                 REST operation body.
+	 * @param  uriParameters        REST operation URI parameters.
+	 * @param  responseType         REST operation response type.
+	 * @param  declaredIdempotent   If the operation is idempotent, as declared
+	 *                                  ({@code null} if not: decided by the HTTP
+	 *                                  method).
+	 * @return                      The REST operation response.
+	 *
+	 * @throws IntegrationException If an unexpected exception is raised.
+	 * @throws BusinessException    If a business exception is raised.
+	 */
+	public <ResponseType> ResponseEntity<ResponseType> executeOperation(
+			final List<String> endpoints,
+			final String path,
+			final HttpMethod method,
+			final MultiValueMap<String, String> headers,
+			final Object body,
+			final Map<String, Object> uriParameters,
+			final ParameterizedTypeReference<ResponseType> responseType,
+			final Boolean declaredIdempotent) throws IntegrationException, BusinessException {
+		// Modifies the headers as for service client implementation.
+		final MultiValueMap<String, String> actualHeaders = this.autoModifyHeaders(headers);
+		// Makes sure parameters are not null.
+		final Map<String, Object> actualUriParameters = (uriParameters == null ? new HashMap<>() : uriParameters);
+		// Executes the attempts, then handles the failure of the last one (if any).
+		final ServiceClientFailoverExecutor.Outcome<ResponseType> outcome = this.getFailoverExecutor().executeOverEndpoints(endpoints, (path == null ? "" : path),
+				method, new HttpEntity<>(body, actualHeaders), responseType, actualUriParameters, declaredIdempotent, this.getRestTemplate());
+		return (outcome.failure() == null ? outcome.response()
+				: this.handleExecutionException(outcome.url(), method, actualHeaders, body, actualUriParameters, responseType, outcome.failure()));
+	}
+
 
 }

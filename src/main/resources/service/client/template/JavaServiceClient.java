@@ -9,14 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.helper.ObjectHelper;
-import org.coldis.library.helper.RandomHelper;
 import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.model.SimpleMessage;
 import org.coldis.library.service.client.GenericRestServiceClient;
@@ -175,7 +173,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 	}
 
 	/**
-	 * Gets all available endpoints.
+	 * Gets all available endpoints (the operation fails over them).
 	 * @return All available endpoints.
 	 */
 	private List<String> getEndpoints() {
@@ -183,15 +181,6 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		return (endpoints == null ? null : List.of(endpoints.split(",")));
 	}
 
-	/**
-	 * Gets one endpoint (balanced).
-	 * @return One endpoint (balanced).
-	 */
-	private String getEndpoint() {
-		List<String> endpoints = this.getEndpoints();
-		return (CollectionUtils.isEmpty(endpoints) ? "" : endpoints.get(RandomHelper.getPositiveRandomLong((long) (endpoints.size())).intValue()));
-	}
-	
 	/**
 	 * Gets the service path.
 	 * @return The service path.
@@ -227,7 +216,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		// Operation parameters.
 		String endpointPath = endpointPath${foreach.count};
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
-		StringBuilder url = new StringBuilder(this.getEndpoint() + this.getPath() + endpointPath + "?");
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.#{if}(${operation.method.isEmpty()})GET#{else}${operation.method.toUpperCase()}#{end};
 		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
 		Object body = null;
@@ -244,7 +233,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		body = ${parameter.originalName};
 #{elseif}(${parameter.kind.name().equals("PATH_VARIABLE")})
 		// Adds the path parameter to the map.
-		url = new StringBuilder(url.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
+		pathAndQuery = new StringBuilder(pathAndQuery.toString().replace("{${parameter.originalName}}", Objects.toString(${parameter.originalName})));
 #{elseif}(${parameter.kind.name().equals("REQUEST_PARAMETER")})
 		// If the parameter is an array.
 		if (${parameter.originalName} != null && ${parameter.originalName}.getClass().isArray()) {
@@ -253,7 +242,7 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			for (Integer parameterItemIndex = 0; parameterItemIndex < ${parameter.originalName}s.size(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.get(parameterItemIndex));
-				url.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+				pathAndQuery.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is a collection.
@@ -263,14 +252,14 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 			for (Integer parameterItemIndex = 0; ${parameter.originalName}s.hasNext(); parameterItemIndex++) {
 				// Adds the URI parameter to the map.
 				uriParameters.put("${parameter.originalName}" + parameterItemIndex, ${parameter.originalName}s.next());
-				url.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
+				pathAndQuery.append("${parameter.name}={${parameter.originalName}" + parameterItemIndex + "}&");
 			}
 		}
 		// If the parameter is not a collection nor an array.
 		else if (${parameter.originalName} != null) {
 			// Adds the URI parameter to the map.
 			uriParameters.put("${parameter.originalName}", ${parameter.originalName});
-			url.append("${parameter.name}={${parameter.originalName}}&");
+			pathAndQuery.append("${parameter.name}={${parameter.originalName}}&");
 		}
 #{elseif}(${parameter.kind.name().equals("REQUEST_HEADER")})
 		if (${parameter.originalName} != null) {
@@ -291,10 +280,10 @@ public class ${serviceClient.name}#{if}(!${serviceClient.superclass.isEmpty()}) 
 		List.of(${parameter.originalName}))#{end})));
 #{end}
 #{end}
-		// Executes the operation and returns the response.
-		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(url.toString(), method, headers,
+		// Executes the operation (failing over the endpoints) and returns the response.
+		#{if}(!${operation.returnType.equals("void")})return #{end}this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
-				uriParameters, returnType)#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
+				uriParameters, returnType, ${operation.idempotentExpression})#{if}(!${operation.returnType.equals("void")}).getBody()#{end};
 				
 #{else}
 		String syncMethodName = "${operation.name}".replaceAll("Async", "");
