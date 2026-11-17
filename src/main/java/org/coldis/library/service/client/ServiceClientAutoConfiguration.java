@@ -82,8 +82,6 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
-
-	/**
 	 * Creates an HTTP request factory over an HTTP client (every request factory of
 	 * the library is created here).
 	 *
