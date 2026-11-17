@@ -213,7 +213,9 @@ public class ServiceClientAutoConfiguration {
 	 * @param  maxAttempts              Maximum attempts per operation.
 	 * @param  idempotentMethods        Methods taken as idempotent by default.
 	 * @param  retryStatuses            Response statuses retried for idempotent
-	 *                                      operations.
+	 *                                      operations (none by default).
+	 * @param  cooldownStatuses         Response statuses that put the endpoint in
+	 *                                      its cooldown (none by default).
 	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                      operations.
 	 * @param  balancer                 Endpoint balancer.
@@ -230,13 +232,15 @@ public class ServiceClientAutoConfiguration {
 			final Integer maxAttempts,
 			@Value(value = "${org.coldis.library.service-client.failover.idempotent-methods:GET,HEAD,OPTIONS}")
 			final String[] idempotentMethods,
-			@Value(value = "${org.coldis.library.service-client.failover.retry-statuses:502,503,504}")
+			@Value(value = "${org.coldis.library.service-client.failover.retry-statuses:}")
 			final String[] retryStatuses,
+			@Value(value = "${org.coldis.library.service-client.balancing.cooldown-statuses:}")
+			final String[] cooldownStatuses,
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
 			final Boolean shouldRetryOnReadTimeout,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope) {
-		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, shouldRetryOnReadTimeout, balancer,
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
 				readTimeoutScope);
 	}
 
