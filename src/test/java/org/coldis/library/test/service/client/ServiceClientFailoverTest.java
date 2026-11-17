@@ -368,7 +368,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 					return execution.execute(request, body);
 				}).build());
 		recordingClient.setFailoverExecutor(
-				new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" }, new String[] { "502", "503", "504" }, false,
+				new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" }, new String[] { "502", "503", "504" }, new String[] { "502", "503", "504" }, false,
 						balancer));
 		return recordingClient;
 	}
@@ -738,13 +738,49 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	@Test
 	public void testAttemptLimits() {
 		final List<String> endpoints = List.of("http://first", "http://second", "http://third", "http://fourth");
-		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO));
+		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO));
 		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints).size()));
 		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
 		Assertions.assertEquals(List.of(""), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
-		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" },
+		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" },
 				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO));
 		Assertions.assertEquals(1, disabledExecutor.getMaxAttempts(endpoints.size()));
+	}
+
+	/**
+	 * With the shipped defaults (no retry status, no cooldown status), a 5xx is
+	 * neither retried on another endpoint nor puts the endpoint in its cooldown:
+	 * between services it comes from the application, not from the instance.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testStatusesNeitherRetriedNorCooledDownByDefault() throws Exception {
+		// The shipped properties retry no status and cool down on no status.
+		final java.util.Properties shipped = new java.util.Properties();
+		try (java.io.InputStream input = ServiceClientFailoverTest.class.getResourceAsStream("/service-client.properties")) {
+			shipped.load(input);
+		}
+		Assertions.assertEquals("", shipped.getProperty("org.coldis.library.service-client.failover.retry-statuses"));
+		Assertions.assertEquals("", shipped.getProperty("org.coldis.library.service-client.balancing.cooldown-statuses"));
+		// An executor built with those defaults.
+		final ServiceClientEndpointBalancer balancer = ServiceClientFailoverTest.createBalancer(Duration.ofSeconds(30));
+		final GenericRestServiceClient defaultClient = this.createRecordingClient(balancer, null);
+		defaultClient.setFailoverExecutor(new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" }, null, null, false, balancer));
+		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER),
+				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER));
+		// A GET answered 503 reaches one instance only, once, and cools nothing down.
+		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class,
+				() -> ServiceClientFailoverTest.execute(defaultClient, endpoints, "/unavailable", HttpMethod.GET, null));
+		Assertions.assertEquals(Integer.valueOf(503), exception.getStatusCode());
+		Assertions.assertEquals(1, ServiceClientFailoverTest.getTotalRequests());
+		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+		// A refused connection still fails over and still starts the cooldown.
+		final List<String> withRefused = List.of(ServiceClientFailoverTest.REFUSED_ENDPOINT, ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		for (Integer callIndex = 0; (callIndex < ServiceClientFailoverTest.REPEATED_CALLS) && !balancer.isCoolingDown(ServiceClientFailoverTest.REFUSED_ENDPOINT); callIndex++) {
+			Assertions.assertEquals("first", ServiceClientFailoverTest.execute(defaultClient, withRefused, "/ok", HttpMethod.GET, null));
+		}
+		Assertions.assertTrue(balancer.isCoolingDown(ServiceClientFailoverTest.REFUSED_ENDPOINT));
 	}
 
 	/**
@@ -800,7 +836,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	@Test
 	public void testReadTimeoutRetriedWhenEnabled() throws Exception {
 		final GenericRestServiceClient retryingClient = this
-				.createShortTimeoutClient(new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, true, ServiceClientFailoverTest.createBalancer(Duration.ZERO)));
+				.createShortTimeoutClient(new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, true, ServiceClientFailoverTest.createBalancer(Duration.ZERO)));
 		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER),
 				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER));
 		Assertions.assertThrows(IntegrationException.class,

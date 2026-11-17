@@ -55,7 +55,7 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Executor used when none is configured: one attempt on a random endpoint.
 	 */
-	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, false,
+	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false,
 			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO));
 
 	/**
@@ -101,6 +101,12 @@ public class ServiceClientFailoverExecutor {
 	private final Set<Integer> retryStatuses;
 
 	/**
+	 * Response statuses that put the endpoint in its cooldown (apart from the
+	 * connection failures, which always do).
+	 */
+	private final Set<Integer> cooldownStatuses;
+
+	/**
 	 * If read timeouts are retried for idempotent operations.
 	 */
 	private final boolean shouldRetryOnReadTimeout;
@@ -132,6 +138,8 @@ public class ServiceClientFailoverExecutor {
 	 *                                     operation does not say.
 	 * @param retryStatuses            Response statuses retried for idempotent
 	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
 	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                     operations.
 	 * @param balancer                 Endpoint balancer.
@@ -141,6 +149,7 @@ public class ServiceClientFailoverExecutor {
 			final int maxAttempts,
 			final String[] idempotentMethods,
 			final String[] retryStatuses,
+			final String[] cooldownStatuses,
 			final boolean shouldRetryOnReadTimeout,
 			final ServiceClientEndpointBalancer balancer) {
 		super();
@@ -149,9 +158,21 @@ public class ServiceClientFailoverExecutor {
 		this.maxAttempts = maxAttempts;
 		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
 				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
-		this.retryStatuses = Arrays.stream(retryStatuses == null ? new String[] {} : retryStatuses).filter(StringUtils::isNotBlank)
-				.map(status -> Integer.valueOf(status.trim())).collect(Collectors.toSet());
+		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
+		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
 		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+	}
+
+	/**
+	 * Parses a list of response statuses (blank entries ignored).
+	 *
+	 * @param  statuses Statuses ({@code null} for none).
+	 * @return          The statuses.
+	 */
+	private static Set<Integer> parseStatuses(
+			final String[] statuses) {
+		return Arrays.stream(statuses == null ? new String[] {} : statuses).filter(StringUtils::isNotBlank).map(status -> Integer.valueOf(status.trim()))
+				.collect(Collectors.toSet());
 	}
 
 	/**
@@ -329,7 +350,7 @@ public class ServiceClientFailoverExecutor {
 
 	/**
 	 * Records the outcome of an attempt for the balancing: an endpoint that could
-	 * not be connected to or answered a retry status starts its cooldown, an
+	 * not be connected to or answered a cooldown status starts its cooldown, an
 	 * endpoint that answered anything else ends it (if the request was sent after
 	 * the cooldown started).
 	 *
@@ -339,7 +360,7 @@ public class ServiceClientFailoverExecutor {
 	private void recordOutcome(
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest,
 			final Exception failure) {
-		if ((failure instanceof final RestClientResponseException responseFailure) && this.retryStatuses.contains(responseFailure.getStatusCode().value())) {
+		if ((failure instanceof final RestClientResponseException responseFailure) && this.cooldownStatuses.contains(responseFailure.getStatusCode().value())) {
 			this.balancer.startCooldown(inFlightRequest.getEndpoint());
 		}
 		else if ((failure == null) || (failure instanceof RestClientResponseException)) {

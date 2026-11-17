@@ -45,7 +45,7 @@ public class ServiceClientFailoverExecutorTest {
 	 * Executor with the shipped defaults.
 	 */
 	private static final ServiceClientFailoverExecutor EXECUTOR = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET", "HEAD", "OPTIONS" },
-			new String[] { "502", "503", "504" }, false,
+			new String[] { "502", "503", "504" }, new String[] { "502", "503", "504" }, false,
 			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
 
 	/**
@@ -219,7 +219,7 @@ public class ServiceClientFailoverExecutorTest {
 	public void testLocalFailuresStartNoCooldown() {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
-		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, false,
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
 				balancer);
 		final List<String> endpoints = List.of("http://first", "http://second");
 		final List<String> poolWaitUrls = new CopyOnWriteArrayList<>();
@@ -248,7 +248,7 @@ public class ServiceClientFailoverExecutorTest {
 	public void testBlankEndpointStartsNoCooldown() {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
-		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, false,
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
 				balancer);
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		executor.executeOverEndpoints(List.of(), "http://host/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
