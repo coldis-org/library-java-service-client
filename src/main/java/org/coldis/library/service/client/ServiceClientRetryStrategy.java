@@ -15,7 +15,9 @@ import org.apache.hc.core5.http.protocol.HttpContext;
  * except that a response is re-sent on a 429 (too many requests) only, not on a
  * 503: the HTTP client's default re-sends a 503 for any method, POST included,
  * and between services a 503 usually comes from the application, so the re-send
- * may repeat work the server already did. An I/O failure is re-sent for
+ * may repeat work the server already did. The 503 re-send can be brought back
+ * ({@code org.coldis.library.service-client.retry-service-unavailable}); like an
+ * I/O re-send, it is then suspended during failover. An I/O failure is re-sent for
  * idempotent methods, as by default, unless a failover attempt runs on the
  * current thread (the failover executor already retries on another endpoint, so
  * attempts are not doubled). The library HTTP client uses it; a service whose
@@ -30,11 +32,37 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 	private static final ThreadLocal<Boolean> ARE_RETRIES_SUSPENDED = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
 	/**
+	 * If a 503 (service unavailable) is re-sent.
+	 */
+	private final boolean shouldRetryServiceUnavailable;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param shouldRetryServiceUnavailable If a 503 (service unavailable) is
+	 *                                          re-sent once (outside failover), as
+	 *                                          the HTTP client's default does.
+	 */
+	public ServiceClientRetryStrategy(final boolean shouldRetryServiceUnavailable) {
+		super();
+		this.shouldRetryServiceUnavailable = shouldRetryServiceUnavailable;
+	}
+
+	/**
 	 * Default constructor (the HTTP client's default strategy: one retry, after one
 	 * second or the {@code Retry-After} header; a response re-sent on a 429 only).
 	 */
 	public ServiceClientRetryStrategy() {
-		super();
+		this(false);
+	}
+
+	/**
+	 * Gets if a 503 (service unavailable) is re-sent.
+	 *
+	 * @return If a 503 (service unavailable) is re-sent.
+	 */
+	public boolean isRetryingServiceUnavailable() {
+		return this.shouldRetryServiceUnavailable;
 	}
 
 	/**
@@ -76,8 +104,8 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 	}
 
 	/**
-	 * Re-sends a response on a 429 only (the HTTP client's default also re-sends a
-	 * 503).
+	 * Re-sends a response on a 429, and on a 503 only if enabled and no failover
+	 * attempt runs on the current thread (the HTTP client's default re-sends both).
 	 *
 	 * @see DefaultHttpRequestRetryStrategy#retryRequest(HttpResponse, int,
 	 *      HttpContext)
@@ -87,7 +115,10 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 			final HttpResponse response,
 			final int execCount,
 			final HttpContext context) {
-		return (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS) && super.retryRequest(response, execCount, context);
+		final boolean isRetriableStatus = (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS)
+				|| (this.shouldRetryServiceUnavailable && (response.getCode() == HttpStatus.SC_SERVICE_UNAVAILABLE)
+						&& !ServiceClientRetryStrategy.ARE_RETRIES_SUSPENDED.get());
+		return isRetriableStatus && super.retryRequest(response, execCount, context);
 	}
 
 }

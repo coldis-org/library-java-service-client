@@ -21,12 +21,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
+import org.coldis.library.service.client.ServiceClientRetryStrategy;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.coldis.library.test.service.client.dto.DtoTestObjectDto;
@@ -980,6 +984,34 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
 		Assertions.assertEquals("first",
 				this.serviceClient.executeOperation(endpoint + "/ok", HttpMethod.GET, null, null, null, ServiceClientFailoverTest.STRING_RESPONSE).getBody());
+	}
+
+	/**
+	 * With the 503 re-send switched on, the HTTP client re-sends a 503 once again,
+	 * for a GET and for a POST, on a full-URL call; during a call with several
+	 * attempts it is suspended (a POST answered 503 then reaches one instance,
+	 * once).
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testServiceUnavailableResendSwitch() throws Exception {
+		try (CloseableHttpClient resendingHttpClient = HttpClients.custom().setConnectionManager(new PoolingHttpClientConnectionManager())
+				.setRetryStrategy(new ServiceClientRetryStrategy(true)).build()) {
+			final GenericRestServiceClient resendingClient = this.createRecordingClient(ServiceClientFailoverTest.createBalancer(Duration.ZERO), null);
+			resendingClient.setRestTemplate(this.restTemplateBuilder.requestFactory(() -> new HttpComponentsClientHttpRequestFactory(resendingHttpClient)).build());
+			final String endpoint = ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER);
+			for (final HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
+				ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+				Assertions.assertThrows(IntegrationException.class,
+						() -> resendingClient.executeOperation(endpoint + "/unavailable", method, null, "body", null, ServiceClientFailoverTest.STRING_RESPONSE));
+				Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get(), method::name);
+			}
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(resendingClient,
+					List.of(endpoint, ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER)), "/unavailable", HttpMethod.POST, "body"));
+			Assertions.assertEquals(1, ServiceClientFailoverTest.getTotalRequests());
+		}
 	}
 
 	/**

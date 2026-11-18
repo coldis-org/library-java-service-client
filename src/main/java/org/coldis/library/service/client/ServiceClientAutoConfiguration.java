@@ -145,10 +145,26 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the retry strategy of the HTTP client.
+	 *
+	 * @param  shouldRetryServiceUnavailable If a 503 (service unavailable) is
+	 *                                           re-sent once, as before (off by
+	 *                                           default).
+	 * @return                               The retry strategy.
+	 */
+	@Bean
+	public ServiceClientRetryStrategy serviceClientRetryStrategy(
+			@Value("${org.coldis.library.service-client.retry-service-unavailable:false}")
+			final Boolean shouldRetryServiceUnavailable) {
+		return new ServiceClientRetryStrategy(shouldRetryServiceUnavailable);
+	}
+
+	/**
 	 * Creates the HTTP client.
 	 *
 	 * @param  httpClientPoolingManager HTTP client pooling manager.
 	 * @param  keepAliveStrategy        Keep-alive strategy.
+	 * @param  retryStrategy            Retry strategy.
 	 * @param  closeIdle                Idle time (seconds) after which
 	 *                                      connections are closed.
 	 * @return                          The HTTP client.
@@ -157,10 +173,11 @@ public class ServiceClientAutoConfiguration {
 	public HttpClient httpClient(
 			final PoolingHttpClientConnectionManager httpClientPoolingManager,
 			final ServiceClientKeepAliveStrategy keepAliveStrategy,
+			final ServiceClientRetryStrategy retryStrategy,
 			@Value("${org.coldis.library.service-client.close-idle}")
 			final Integer closeIdle) {
 		return HttpClients.custom().setConnectionManager(httpClientPoolingManager).setKeepAliveStrategy(keepAliveStrategy)
-				.setRetryStrategy(new ServiceClientRetryStrategy()).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(closeIdle)).build();
+				.setRetryStrategy(retryStrategy).evictExpiredConnections().evictIdleConnections(TimeValue.ofSeconds(closeIdle)).build();
 	}
 
 	/**
