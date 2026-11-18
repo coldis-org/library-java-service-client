@@ -28,6 +28,8 @@ import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.NoType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.ElementFilter;
+import javax.lang.model.util.Elements;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -67,6 +69,13 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	 * Logger.
 	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientGenerator.class);
+
+	/**
+	 * Name of the generic REST service client, whose methods are the client
+	 * infrastructure, never operations (a name, not the class, so the processor
+	 * does not load the client's dependencies).
+	 */
+	private static final String GENERIC_REST_SERVICE_CLIENT_NAME = "org.coldis.library.service.client.GenericRestServiceClient";
 
 	/**
 	 * Gets the service client operation metadata from an operation getter and a
@@ -318,6 +327,32 @@ public class ServiceClientGenerator extends AbstractProcessor {
 	}
 
 	/**
+	 * If a method is part of the generic REST service client infrastructure: a
+	 * method declared by {@code GenericRestServiceClient} or one overriding it,
+	 * in a service client source that extends it (as the integrations with
+	 * third-party services do). Such a method is never an operation of the
+	 * generated client: copied into it, a generic one does not compile (the type
+	 * variable is not declared, its parameters clash with the template's
+	 * locals).
+	 *
+	 * @param  method The method.
+	 * @return        If the method is part of the generic REST service client
+	 *                infrastructure.
+	 */
+	private boolean isGenericRestServiceClientMethod(
+			final ExecutableElement method) {
+		// Gets the generic REST service client (none if it is not in the classpath).
+		final Elements elementUtils = this.processingEnv.getElementUtils();
+		final TypeElement genericRestServiceClient = elementUtils.getTypeElement(ServiceClientGenerator.GENERIC_REST_SERVICE_CLIENT_NAME);
+		// The method is part of the infrastructure if it is declared by the generic
+		// client or overrides one of its methods.
+		final TypeElement declaringType = (TypeElement) method.getEnclosingElement();
+		return (genericRestServiceClient != null) && (genericRestServiceClient.equals(declaringType)
+				|| ElementFilter.methodsIn(genericRestServiceClient.getEnclosedElements()).stream()
+						.anyMatch(genericRestServiceClientMethod -> elementUtils.overrides(method, genericRestServiceClientMethod, declaringType)));
+	}
+
+	/**
 	 * Gets the service client type metadata.
 	 *
 	 * @param  originalService           The original type.
@@ -355,7 +390,9 @@ public class ServiceClientGenerator extends AbstractProcessor {
 						// Gets the default operation name.
 						final String operationName = currentOperation.getSimpleName().toString();
 						// If the operation has not been added yet (for override operations).
-						if (!alreadyAddedOperations.contains(currentOperation.toString()) && (!"class".equals(operationName))) {
+						// Neither are the generic REST service client methods.
+						if (!alreadyAddedOperations.contains(currentOperation.toString()) && (!"class".equals(operationName))
+								&& !this.isGenericRestServiceClientMethod((ExecutableElement) currentOperation)) {
 							// Gets the operation metadata.
 							final ServiceClientOperationMetadata serviceClientOperationMetadata = this.getServiceClientOperationMetadata(
 									serviceClientTypeMetadata.getContext(), (ExecutableElement) currentOperation, operationName);
