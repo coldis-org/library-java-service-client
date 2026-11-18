@@ -8,6 +8,8 @@ import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.protocol.HttpContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * HTTP client retry strategy of the service client: the HTTP client's default
@@ -16,8 +18,11 @@ import org.apache.hc.core5.http.protocol.HttpContext;
  * 503: the HTTP client's default re-sends a 503 for any method, POST included,
  * and between services a 503 usually comes from the application, so the re-send
  * may repeat work the server already did. The 503 re-send can be brought back
- * ({@code org.coldis.library.service-client.retry-service-unavailable}); like an
- * I/O re-send, it is then suspended during failover. An I/O failure is re-sent for
+ * ({@code org.coldis.library.service-client.retry-service-unavailable}), for
+ * every call made through the HTTP client using this strategy (not per client
+ * or operation); each such re-send is logged with the call's
+ * {@link ServiceClientTarget}, and, like an I/O re-send, it is suspended during
+ * failover. An I/O failure is re-sent for
  * idempotent methods, as by default, unless a failover attempt runs on the
  * current thread (the failover executor already retries on another endpoint, so
  * attempts are not doubled). The library HTTP client uses it; a service whose
@@ -25,6 +30,11 @@ import org.apache.hc.core5.http.protocol.HttpContext;
  * too, or each failover attempt may be retried by the HTTP client as well.
  */
 public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy {
+
+	/**
+	 * Logger.
+	 */
+	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientRetryStrategy.class);
 
 	/**
 	 * If retries are suspended on the current thread.
@@ -115,10 +125,14 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 			final HttpResponse response,
 			final int execCount,
 			final HttpContext context) {
-		final boolean isRetriableStatus = (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS)
-				|| (this.shouldRetryServiceUnavailable && (response.getCode() == HttpStatus.SC_SERVICE_UNAVAILABLE)
-						&& !ServiceClientRetryStrategy.ARE_RETRIES_SUSPENDED.get());
-		return isRetriableStatus && super.retryRequest(response, execCount, context);
+		final boolean isServiceUnavailableRetriable = this.shouldRetryServiceUnavailable && (response.getCode() == HttpStatus.SC_SERVICE_UNAVAILABLE)
+				&& !ServiceClientRetryStrategy.ARE_RETRIES_SUSPENDED.get();
+		final boolean shouldRetry = ((response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS) || isServiceUnavailableRetriable)
+				&& super.retryRequest(response, execCount, context);
+		if (shouldRetry && isServiceUnavailableRetriable) {
+			ServiceClientRetryStrategy.LOGGER.warn("Re-sending a request to {} answered 503 (service unavailable).", ServiceClientTarget.getCurrent());
+		}
+		return shouldRetry;
 	}
 
 }

@@ -148,15 +148,16 @@ public class ServiceClientAutoConfiguration {
 	 * Creates the retry strategy of the HTTP client.
 	 *
 	 * @param  shouldRetryServiceUnavailable If a 503 (service unavailable) is
-	 *                                           re-sent once, as before (off by
-	 *                                           default).
+	 *                                           re-sent once, as before, for every
+	 *                                           call through the HTTP client (off
+	 *                                           by default, or if empty).
 	 * @return                               The retry strategy.
 	 */
 	@Bean
 	public ServiceClientRetryStrategy serviceClientRetryStrategy(
 			@Value("${org.coldis.library.service-client.retry-service-unavailable:false}")
 			final Boolean shouldRetryServiceUnavailable) {
-		return new ServiceClientRetryStrategy(shouldRetryServiceUnavailable);
+		return new ServiceClientRetryStrategy(Boolean.TRUE.equals(shouldRetryServiceUnavailable));
 	}
 
 	/**

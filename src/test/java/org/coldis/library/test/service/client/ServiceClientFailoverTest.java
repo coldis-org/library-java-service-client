@@ -1001,12 +1001,14 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 			final GenericRestServiceClient resendingClient = this.createRecordingClient(ServiceClientFailoverTest.createBalancer(Duration.ZERO), null);
 			resendingClient.setRestTemplate(this.restTemplateBuilder.requestFactory(() -> new HttpComponentsClientHttpRequestFactory(resendingHttpClient)).build());
 			final String endpoint = ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER);
+			// A full-URL GET and POST answered 503 are re-sent once.
 			for (final HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
 				ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
 				Assertions.assertThrows(IntegrationException.class,
 						() -> resendingClient.executeOperation(endpoint + "/unavailable", method, null, "body", null, ServiceClientFailoverTest.STRING_RESPONSE));
 				Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get(), method::name);
 			}
+			// A call with several attempts suspends the re-send.
 			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
 			Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(resendingClient,
 					List.of(endpoint, ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER)), "/unavailable", HttpMethod.POST, "body"));

@@ -22,6 +22,7 @@ import org.apache.hc.core5.function.Resolver;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.message.BasicHttpResponse;
 import org.apache.hc.core5.util.TimeValue;
+import org.coldis.library.service.client.ServiceClientAutoConfiguration;
 import org.coldis.library.service.client.ServiceClientKeepAliveStrategy;
 import org.coldis.library.service.client.ServiceClientRetryStrategy;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -31,7 +32,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 
 /**
@@ -171,6 +175,23 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 			chainElement = FieldUtils.readField(chainElement, "next", true);
 		}
 		return fieldValue;
+	}
+
+	/**
+	 * The 503 re-send switch, set by its property, reaches the library HTTP client
+	 * (in a context of its own, built and closed here, so the shared test context
+	 * keeps the shipped default).
+	 */
+	@Test
+	public void testServiceUnavailableResendPropertyReachesTheClient() {
+		new ApplicationContextRunner().withUserConfiguration(ServiceClientAutoConfiguration.class)
+				.withBean(RestTemplateBuilder.class, RestTemplateBuilder::new).withBean(ObjectMapper.class, ObjectMapper::new)
+				.withPropertyValues("org.coldis.library.service-client.retry-service-unavailable=true").run(context -> {
+					final ServiceClientRetryStrategy contextRetryStrategy = context.getBean(ServiceClientRetryStrategy.class);
+					Assertions.assertTrue(contextRetryStrategy.isRetryingServiceUnavailable());
+					Assertions.assertSame(contextRetryStrategy,
+							ServiceClientConnectionTest.getChainStepField(context.getBean(HttpClient.class), HttpRequestRetryExec.class, "retryStrategy"));
+				});
 	}
 
 	/**
