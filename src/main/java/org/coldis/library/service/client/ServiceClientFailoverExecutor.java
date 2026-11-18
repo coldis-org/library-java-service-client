@@ -83,6 +83,57 @@ public class ServiceClientFailoverExecutor {
 			ConnectionClosedException.class, SocketException.class);
 
 	/**
+	 * Kind of an attempt failure (its metrics tag value).
+	 */
+	private enum FailureKind {
+
+		/**
+		 * The connection was never established.
+		 */
+		NOT_CONNECTED("not-connected"),
+
+		/**
+		 * The endpoint answered an error status.
+		 */
+		STATUS("status"),
+
+		/**
+		 * No response in the read timeout.
+		 */
+		READ_TIMEOUT("read-timeout"),
+
+		/**
+		 * The connection dropped before a response.
+		 */
+		DROPPED("dropped"),
+
+		/**
+		 * Any other failure.
+		 */
+		OTHER("other");
+
+		/**
+		 * Metrics tag value.
+		 */
+		private final String tagValue;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param tagValue Metrics tag value.
+		 */
+		FailureKind(final String tagValue) {
+			this.tagValue = tagValue;
+		}
+
+	}
+
+	/**
+	 * Outcome of a successful attempt (its metrics tag value).
+	 */
+	private static final String SUCCESS = "success";
+
+	/**
 	 * If failover is enabled.
 	 */
 	private final boolean isEnabled;
@@ -124,6 +175,11 @@ public class ServiceClientFailoverExecutor {
 	private final ServiceClientEndpointBalancer balancer;
 
 	/**
+	 * Metrics.
+	 */
+	private final ServiceClientMetrics metrics;
+
+	/**
 	 * Outcome of an operation: the response, or the failure of its last attempt.
 	 *
 	 * @param <ResponseType> Response type.
@@ -152,6 +208,47 @@ public class ServiceClientFailoverExecutor {
 	 * @param balancer                 Endpoint balancer.
 	 * @param readTimeoutScope         Scope that applies a call's own read
 	 *                                     timeout to its attempts.
+	 * @param metrics                  Metrics.
+	 */
+	public ServiceClientFailoverExecutor(
+			final boolean isEnabled,
+			final int maxAttempts,
+			final String[] idempotentMethods,
+			final String[] retryStatuses,
+			final String[] cooldownStatuses,
+			final boolean shouldRetryOnReadTimeout,
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientReadTimeoutScope readTimeoutScope,
+			final ServiceClientMetrics metrics) {
+		super();
+		this.balancer = Objects.requireNonNull(balancer, "balancer");
+		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
+		this.metrics = Objects.requireNonNull(metrics, "metrics");
+		this.isEnabled = isEnabled;
+		this.maxAttempts = maxAttempts;
+		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
+				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
+		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
+		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
+		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+	}
+
+	/**
+	 * Constructor without metrics.
+	 *
+	 * @param isEnabled                If failover is enabled.
+	 * @param maxAttempts              Maximum attempts per operation.
+	 * @param idempotentMethods        Methods taken as idempotent when the
+	 *                                     operation does not say.
+	 * @param retryStatuses            Response statuses retried for idempotent
+	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
+	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
+	 *                                     operations.
+	 * @param balancer                 Endpoint balancer.
+	 * @param readTimeoutScope         Scope that applies a call's own read
+	 *                                     timeout to its attempts.
 	 */
 	public ServiceClientFailoverExecutor(
 			final boolean isEnabled,
@@ -162,16 +259,8 @@ public class ServiceClientFailoverExecutor {
 			final boolean shouldRetryOnReadTimeout,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope) {
-		super();
-		this.balancer = Objects.requireNonNull(balancer, "balancer");
-		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
-		this.isEnabled = isEnabled;
-		this.maxAttempts = maxAttempts;
-		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
-				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
-		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
-		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
-		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer, readTimeoutScope,
+				ServiceClientMetrics.NONE);
 	}
 
 	/**
@@ -294,6 +383,33 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Gets the kind of an attempt failure.
+	 *
+	 * @param  failure Attempt failure.
+	 * @return         The kind of the failure.
+	 */
+	private static FailureKind getFailureKind(
+			final Exception failure) {
+		final FailureKind failureKind;
+		if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)) {
+			failureKind = FailureKind.NOT_CONNECTED;
+		}
+		else if (failure instanceof RestClientResponseException) {
+			failureKind = FailureKind.STATUS;
+		}
+		else if (ServiceClientFailoverExecutor.isCausedBy(failure, List.of(SocketTimeoutException.class))) {
+			failureKind = FailureKind.READ_TIMEOUT;
+		}
+		else if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.DROPPED_CONNECTION_FAILURES)) {
+			failureKind = FailureKind.DROPPED;
+		}
+		else {
+			failureKind = FailureKind.OTHER;
+		}
+		return failureKind;
+	}
+
+	/**
 	 * Gets if a failed attempt should be retried on another endpoint.
 	 * <ul>
 	 * <li>Connection never established (refused, connect timeout, no route,
@@ -315,21 +431,22 @@ public class ServiceClientFailoverExecutor {
 			final Exception failure,
 			final boolean isIdempotent,
 			final boolean isBodyRepeatable) {
+		final FailureKind failureKind = ServiceClientFailoverExecutor.getFailureKind(failure);
 		final boolean isRetriable;
-		if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)) {
+		if (failureKind == FailureKind.NOT_CONNECTED) {
 			isRetriable = true;
 		}
 		else if (!isIdempotent || !isBodyRepeatable) {
 			isRetriable = false;
 		}
-		else if (failure instanceof final RestClientResponseException responseFailure) {
-			isRetriable = this.retryStatuses.contains(responseFailure.getStatusCode().value());
+		else if (failureKind == FailureKind.STATUS) {
+			isRetriable = this.retryStatuses.contains(((RestClientResponseException) failure).getStatusCode().value());
 		}
-		else if (ServiceClientFailoverExecutor.isCausedBy(failure, List.of(SocketTimeoutException.class))) {
+		else if (failureKind == FailureKind.READ_TIMEOUT) {
 			isRetriable = this.shouldRetryOnReadTimeout;
 		}
 		else {
-			isRetriable = ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.DROPPED_CONNECTION_FAILURES);
+			isRetriable = (failureKind == FailureKind.DROPPED);
 		}
 		return isRetriable;
 	}
@@ -360,26 +477,53 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Records metrics. A failure to record is logged and does not change the call
+	 * (its outcome, or the balancer's bookkeeping): the metrics only observe it.
+	 *
+	 * @param recording Metrics recording.
+	 */
+	private void recordMetrics(
+			final Runnable recording) {
+		try {
+			recording.run();
+		}
+		catch (final RuntimeException exception) {
+			ServiceClientFailoverExecutor.LOGGER.warn("Service client metrics not recorded ({}).", exception.getClass().getSimpleName());
+			ServiceClientFailoverExecutor.LOGGER.debug("Service client metrics not recorded.", exception);
+		}
+	}
+
+	/**
 	 * Records the outcome of an attempt for the balancing: an endpoint that could
 	 * not be connected to or answered a cooldown status starts its cooldown, an
 	 * endpoint that answered anything else ends it (if the request was sent after
 	 * the cooldown started).
 	 *
+	 * @param target          Target of the call (for the metrics).
 	 * @param inFlightRequest The attempt's request.
 	 * @param failure         Attempt failure ({@code null} if it succeeded).
 	 */
 	private void recordOutcome(
+			final String target,
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest,
 			final Exception failure) {
+		final boolean shouldStartCooldown;
 		if ((failure instanceof final RestClientResponseException responseFailure) && this.cooldownStatuses.contains(responseFailure.getStatusCode().value())) {
-			this.balancer.startCooldown(inFlightRequest.getEndpoint());
+			shouldStartCooldown = true;
 		}
 		else if ((failure == null) || (failure instanceof RestClientResponseException)) {
+			shouldStartCooldown = false;
 			this.balancer.endCooldown(inFlightRequest);
 		}
-		else if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.COOLDOWN_FAILURES)) {
-			this.balancer.startCooldown(inFlightRequest.getEndpoint());
+		else {
+			shouldStartCooldown = ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.COOLDOWN_FAILURES);
 		}
+		if (shouldStartCooldown) {
+			this.balancer.startCooldown(inFlightRequest.getEndpoint());
+			this.recordMetrics(() -> this.metrics.recordCooldown(target));
+		}
+		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : ServiceClientFailoverExecutor.getFailureKind(failure).tagValue);
+		this.recordMetrics(() -> this.metrics.recordAttempt(target, outcome));
 	}
 
 	/**
@@ -387,7 +531,9 @@ public class ServiceClientFailoverExecutor {
 	 * each on an endpoint not tried yet. With more than one attempt, the HTTP client
 	 * retries are suspended (see {@link ServiceClientRetryStrategy}), so attempts
 	 * are not doubled; a single attempt keeps them. A stream body gets a single
-	 * attempt when the template buffers it.
+	 * attempt when the template buffers it. Attempts, retries, cooldowns and
+	 * requests in flight are recorded in the {@link ServiceClientMetrics}, under the
+	 * current thread's {@link ServiceClientTarget}.
 	 *
 	 * @param  <ResponseType> Response type.
 	 * @param  endpoints      Endpoints (base URLs).
@@ -422,6 +568,7 @@ public class ServiceClientFailoverExecutor {
 				: 1);
 		final boolean isIdempotent = (declaredIdempotent == null ? this.isIdempotentMethod(method) : declaredIdempotent);
 		final List<String> triedEndpoints = new ArrayList<>();
+		final String target = ServiceClientTarget.getCurrent();
 		Outcome<ResponseType> outcome = null;
 		for (int attemptIndex = 0; outcome == null; attemptIndex++) {
 			final String endpoint = this.chooseEndpoint(availableEndpoints, triedEndpoints);
@@ -431,6 +578,7 @@ public class ServiceClientFailoverExecutor {
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
 			try {
+				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
 				response = this.readTimeoutScope.runWithReadTimeout(restTemplate, readTimeout, () -> (maxAttemptsForCall > 1
 						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
 						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters)));
@@ -440,9 +588,10 @@ public class ServiceClientFailoverExecutor {
 			}
 			finally {
 				inFlightRequest.close();
+				this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
-			this.recordOutcome(inFlightRequest, attemptFailure);
+			this.recordOutcome(target, inFlightRequest, attemptFailure);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
@@ -450,6 +599,8 @@ public class ServiceClientFailoverExecutor {
 				outcome = new Outcome<>(url, null, attemptFailure);
 			}
 			else {
+				final String retryReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				this.recordMetrics(() -> this.metrics.recordRetry(target, retryReason));
 				// Logs the endpoint's scheme, host and port only, not the URL nor the
 				// message (they may carry path parameters or credentials).
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), trying another endpoint.", method,

@@ -230,7 +230,7 @@ MediaType.APPLICATION_JSON_VALUE);
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client");
 				
 	}
 	
@@ -268,7 +268,7 @@ MediaType.APPLICATION_JSON_VALUE);
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, Boolean.FALSE,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client");
 				
 	}
 	
@@ -308,7 +308,7 @@ MediaType.APPLICATION_JSON_VALUE);
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client");
 				
 	}
 	
@@ -452,7 +452,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, Boolean.TRUE,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client").getBody();
 				
 	}
 	
@@ -555,7 +555,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client").getBody();
 				
 	}
 	
@@ -601,7 +601,7 @@ org.coldis.library.service.model.FileResource test
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client").getBody();
 				
 	}
 	
@@ -668,7 +668,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client").getBody();
 				
 	}
 	
@@ -747,7 +747,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestService2Client").getBody();
 				
 	}
 	

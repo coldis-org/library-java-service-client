@@ -11,12 +11,16 @@ import org.apache.hc.core5.http.protocol.HttpContext;
 
 /**
  * HTTP client retry strategy of the service client: the HTTP client's default
- * strategy, suspended while a failover attempt runs on the current thread (the
- * failover executor already retries on another endpoint, so attempts are not
- * doubled), except for a 429 (too many requests), which is still retried once on
- * the same endpoint after its {@code Retry-After}. The library HTTP client uses it; a service whose generated clients
- * run on its own template and HTTP client installs it there too, or each
- * failover attempt may be retried by the HTTP client as well.
+ * strategy (one re-send, after one second or the {@code Retry-After} header),
+ * except that a response is re-sent on a 429 (too many requests) only, not on a
+ * 503: the HTTP client's default re-sends a 503 for any method, POST included,
+ * and between services a 503 usually comes from the application, so the re-send
+ * may repeat work the server already did. An I/O failure is re-sent for
+ * idempotent methods, as by default, unless a failover attempt runs on the
+ * current thread (the failover executor already retries on another endpoint, so
+ * attempts are not doubled). The library HTTP client uses it; a service whose
+ * generated clients run on its own template and HTTP client installs it there
+ * too, or each failover attempt may be retried by the HTTP client as well.
  */
 public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy {
 
@@ -27,7 +31,7 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 
 	/**
 	 * Default constructor (the HTTP client's default strategy: one retry, after one
-	 * second or the {@code Retry-After} header).
+	 * second or the {@code Retry-After} header; a response re-sent on a 429 only).
 	 */
 	public ServiceClientRetryStrategy() {
 		super();
@@ -72,6 +76,9 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 	}
 
 	/**
+	 * Re-sends a response on a 429 only (the HTTP client's default also re-sends a
+	 * 503).
+	 *
 	 * @see DefaultHttpRequestRetryStrategy#retryRequest(HttpResponse, int,
 	 *      HttpContext)
 	 */
@@ -80,8 +87,7 @@ public class ServiceClientRetryStrategy extends DefaultHttpRequestRetryStrategy 
 			final HttpResponse response,
 			final int execCount,
 			final HttpContext context) {
-		return (!ServiceClientRetryStrategy.ARE_RETRIES_SUSPENDED.get() || (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS))
-				&& super.retryRequest(response, execCount, context);
+		return (response.getCode() == HttpStatus.SC_TOO_MANY_REQUESTS) && super.retryRequest(response, execCount, context);
 	}
 
 }

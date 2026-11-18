@@ -230,7 +230,7 @@ MediaType.APPLICATION_JSON_VALUE);
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient");
 				
 	}
 	
@@ -373,7 +373,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	
@@ -516,7 +516,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	
@@ -562,7 +562,7 @@ org.coldis.library.service.model.FileResource test
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	
@@ -629,7 +629,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	
@@ -707,7 +707,7 @@ MediaType.APPLICATION_JSON_VALUE);
 this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)));
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient");
 				
 	}
 	
@@ -750,7 +750,7 @@ MediaType.APPLICATION_JSON_VALUE);
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	
@@ -797,7 +797,7 @@ java.util.List<org.springframework.core.io.Resource> test
 return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
 				partParameters.isEmpty() ? body : partParameters,
 				uriParameters, returnType, null,
-				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds))).getBody();
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestServiceClient").getBody();
 				
 	}
 	

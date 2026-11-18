@@ -587,18 +587,28 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * A single endpoint gets one attempt, through the client's own template: the
-	 * HTTP client's automatic retry stays as it was before failover (one re-send on
-	 * a 503), so the request reaches the instance twice, not three times.
+	 * A single endpoint gets one attempt, through the client's own template, which
+	 * keeps the HTTP client's automatic retry: a GET whose connection dropped is
+	 * re-sent once (it reaches the instance twice), a 429 is re-sent once for any
+	 * method, but a 503 is not re-sent, for a GET nor for a POST.
 	 *
 	 * @throws Exception If the test fails.
 	 */
 	@Test
 	public void testSingleEndpointKeepsHttpClientRetry() throws Exception {
 		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
-		Assertions.assertThrows(IntegrationException.class,
-				() -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/unavailable", HttpMethod.GET, null));
+		Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/drop", HttpMethod.GET, null));
 		Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
+		for (final HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class,
+					() -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/unavailable", method, "body"));
+			Assertions.assertEquals(Integer.valueOf(503), exception.getStatusCode());
+			Assertions.assertEquals(1, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get(), method::name);
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			Assertions.assertThrows(BusinessException.class, () -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/rate-limited", method, "body"));
+			Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get(), method::name);
+		}
 	}
 
 	/**
@@ -865,7 +875,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 
 	/**
 	 * A client without a failover executor makes one attempt on one endpoint of the
-	 * list (and keeps the HTTP client's own retry: two requests on a 503).
+	 * list (the HTTP client does not re-send a 503: one request).
 	 *
 	 * @throws Exception If the test fails.
 	 */
@@ -876,8 +886,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER));
 		Assertions.assertThrows(IntegrationException.class,
 				() -> ServiceClientFailoverTest.execute(singleAttemptClient, endpoints, "/unavailable", HttpMethod.GET, null));
-		Assertions.assertEquals(2, ServiceClientFailoverTest.getTotalRequests());
-		Assertions.assertTrue((ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get() == 0) || (ServiceClientFailoverTest.SECOND_SERVER_REQUESTS.get() == 0));
+		Assertions.assertEquals(1, ServiceClientFailoverTest.getTotalRequests());
 	}
 
 	/**
@@ -948,18 +957,26 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * The full-URL overload is unchanged: one attempt on the given URL, with the
-	 * HTTP client's own re-send on a 503, the 503 mapped to an integration
-	 * exception, and the body of a 200 returned.
+	 * The full-URL overload is unchanged apart from the HTTP client's retry: one
+	 * attempt on the given URL, a 503 not re-sent (for a GET nor for a POST) and
+	 * mapped to an integration exception, a 429 still re-sent once, and the body of
+	 * a 200 returned.
 	 *
 	 * @throws Exception If the test fails.
 	 */
 	@Test
-	public void testFullUrlOverloadUnchanged() throws Exception {
+	public void testFullUrlOverloadResendsRateLimitedOnly() throws Exception {
 		final String endpoint = ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER);
-		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class,
-				() -> this.serviceClient.executeOperation(endpoint + "/unavailable", HttpMethod.GET, null, null, null, ServiceClientFailoverTest.STRING_RESPONSE));
-		Assertions.assertEquals(Integer.valueOf(503), exception.getStatusCode());
+		for (final HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class,
+					() -> this.serviceClient.executeOperation(endpoint + "/unavailable", method, null, "body", null, ServiceClientFailoverTest.STRING_RESPONSE));
+			Assertions.assertEquals(Integer.valueOf(503), exception.getStatusCode());
+			Assertions.assertEquals(1, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get(), method::name);
+		}
+		ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+		Assertions.assertThrows(BusinessException.class,
+				() -> this.serviceClient.executeOperation(endpoint + "/rate-limited", HttpMethod.POST, null, "body", null, ServiceClientFailoverTest.STRING_RESPONSE));
 		Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
 		Assertions.assertEquals("first",
 				this.serviceClient.executeOperation(endpoint + "/ok", HttpMethod.GET, null, null, null, ServiceClientFailoverTest.STRING_RESPONSE).getBody());
@@ -981,13 +998,13 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(2, ServiceClientFailoverTest.getTotalRequests());
 		Assertions.assertTrue((ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get() == 0) || (ServiceClientFailoverTest.SECOND_SERVER_REQUESTS.get() == 0));
 		// After a failed call with several attempts, a single-attempt call gets the
-		// HTTP client re-send again.
+		// HTTP client re-send again (of a GET whose connection dropped).
 		ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
 		ServiceClientFailoverTest.SECOND_SERVER_REQUESTS.set(0);
-		Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/unavailable", HttpMethod.GET, null));
+		Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(this.serviceClient, endpoints, "/drop", HttpMethod.GET, null));
 		ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
 		Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverTest.execute(this.serviceClient,
-				List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER)), "/unavailable", HttpMethod.GET, null));
+				List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER)), "/drop", HttpMethod.GET, null));
 		Assertions.assertEquals(2, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
 	}
 

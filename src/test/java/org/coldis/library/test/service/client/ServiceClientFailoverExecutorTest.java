@@ -7,6 +7,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,12 +15,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.NoHttpResponseException;
+import org.coldis.library.service.client.MicrometerServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientAutoConfiguration;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
+import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.core.Ordered;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpEntity;
@@ -33,6 +41,10 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
  * Failover executor test (plain objects): the retry decision and the attempt
@@ -293,6 +305,175 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertEquals(2, attemptedUrls.size());
 		Assertions.assertEquals(List.of(Duration.ofSeconds(2), Duration.ofSeconds(2)), scopedReadTimeouts);
 		Assertions.assertEquals(List.of(template, template), scopedTemplates);
+	}
+
+	/**
+	 * Every kind of attempt failure is recorded under the call's target: as the
+	 * attempt outcome, and as the retry reason when it is retried on the other
+	 * endpoint (a GET, with a retry status and read timeouts retried).
+	 */
+	@Test
+	public void testFailureKindsRecorded() {
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, new String[] { "503" }, null, true,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				new MicrometerServiceClientMetrics(meterRegistry));
+		final Map<String, RuntimeException> failures = Map.of("not-connected", new ResourceAccessException("refused", new ConnectException()), "status",
+				HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "", null, null, null), "read-timeout",
+				new ResourceAccessException("timeout", new SocketTimeoutException()), "dropped", new ResourceAccessException("dropped", new NoHttpResponseException("")),
+				"other", new IllegalStateException());
+		failures.forEach((kind, failure) -> {
+			final List<String> attemptedUrls = new ArrayList<>();
+			ServiceClientTarget.runFor("target", () -> executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path", HttpMethod.GET,
+					new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+					ServiceClientFailoverExecutorTest.createFailingTemplate(failure, attemptedUrls)));
+			final int retries = ("other".equals(kind) ? 0 : 1);
+			Assertions.assertEquals(retries + 1, attemptedUrls.size(), kind);
+			Assertions.assertEquals(retries + 1,
+					meterRegistry.get(MicrometerServiceClientMetrics.ATTEMPTS).tag("target", "target").tag("outcome", kind).counter().count(), kind);
+			Assertions.assertEquals(retries, meterRegistry.find(MicrometerServiceClientMetrics.RETRIES).tag("target", "target").tag("reason", kind).counters()
+					.stream().mapToDouble(Counter::count).sum(), kind);
+		});
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").counter().count());
+		Assertions.assertEquals(0, meterRegistry.get(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", "target").gauge().value());
+	}
+
+	/**
+	 * Creates the failover executor bean over the metrics beans of a bean factory.
+	 *
+	 * @param  beanFactory Bean factory.
+	 * @return             The failover executor.
+	 */
+	private static ServiceClientFailoverExecutor createExecutorBean(
+			final DefaultListableBeanFactory beanFactory) {
+		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				beanFactory.getBeanProvider(ServiceClientMetrics.class));
+	}
+
+	/**
+	 * Without a meter registry, the metrics bean records nothing, and the failover
+	 * executor built over it still makes its attempts.
+	 */
+	@Test
+	public void testNoMeterRegistry() {
+		final DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+		final ServiceClientMetrics metrics = new ServiceClientAutoConfiguration.ServiceClientMetricsConfiguration()
+				.serviceClientMetrics(beanFactory.getBeanProvider(MeterRegistry.class));
+		Assertions.assertSame(ServiceClientMetrics.NONE, metrics);
+		beanFactory.registerSingleton("serviceClientMetrics", metrics);
+		final List<String> attemptedUrls = new ArrayList<>();
+		ServiceClientFailoverExecutorTest.createExecutorBean(beanFactory).executeOverEndpoints(List.of("http://first"), "/path", HttpMethod.GET,
+				new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException(), attemptedUrls));
+		Assertions.assertEquals(1, attemptedUrls.size());
+	}
+
+	/**
+	 * A service's own metrics bean, ordered, wins over the library's (lowest
+	 * precedence): the failover executor records in it only.
+	 */
+	@Test
+	public void testServiceMetricsBeanWins() {
+		final SimpleMeterRegistry libraryRegistry = new SimpleMeterRegistry();
+		final List<String> recordedOutcomes = new ArrayList<>();
+		final DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+		beanFactory.registerSingleton("serviceClientMetrics", new MicrometerServiceClientMetrics(libraryRegistry));
+		beanFactory.registerSingleton("serviceMetrics", new OrderedRecordingMetrics(recordedOutcomes));
+		ServiceClientFailoverExecutorTest.createExecutorBean(beanFactory).executeOverEndpoints(List.of("http://first"), "/path", HttpMethod.GET,
+				new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException(), new ArrayList<>()));
+		Assertions.assertEquals(List.of("other"), recordedOutcomes);
+		Assertions.assertTrue(libraryRegistry.find(MicrometerServiceClientMetrics.ATTEMPTS).counters().isEmpty());
+	}
+
+	/**
+	 * Metrics that fail to record do not change the call: the failed attempt is
+	 * still retried on the other endpoint, and the outcome is returned.
+	 */
+	@Test
+	public void testFailingMetricsDoNotChangeTheCall() {
+		final ServiceClientMetrics failingMetrics = new ServiceClientMetrics() {
+
+			@Override
+			public void recordRequestStarted(
+					final String target) {
+				throw new IllegalStateException("Metrics down.");
+			}
+
+			@Override
+			public void recordAttempt(
+					final String target,
+					final String outcome) {
+				throw new IllegalStateException("Metrics down.");
+			}
+
+		};
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				failingMetrics);
+		final List<String> attemptedUrls = new ArrayList<>();
+		final RuntimeException failure = new ResourceAccessException("refused", new ConnectException());
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path",
+				HttpMethod.GET, new HttpEntity<>(null), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(failure, attemptedUrls));
+		Assertions.assertSame(failure, outcome.failure());
+		Assertions.assertEquals(2, attemptedUrls.size());
+	}
+
+	/**
+	 * Metrics of a service, ordered first, that record the attempt outcomes.
+	 */
+	private static class OrderedRecordingMetrics implements ServiceClientMetrics, Ordered {
+
+		/**
+		 * Recorded attempt outcomes.
+		 */
+		private final List<String> recordedOutcomes;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param recordedOutcomes Where the attempt outcomes are recorded.
+		 */
+		OrderedRecordingMetrics(final List<String> recordedOutcomes) {
+			this.recordedOutcomes = recordedOutcomes;
+		}
+
+		/**
+		 * @see Ordered#getOrder()
+		 */
+		@Override
+		public int getOrder() {
+			return 0;
+		}
+
+		/**
+		 * @see ServiceClientMetrics#recordAttempt(String, String)
+		 */
+		@Override
+		public void recordAttempt(
+				final String target,
+				final String outcome) {
+			this.recordedOutcomes.add(outcome);
+		}
+
+	}
+
+	/**
+	 * A target set inside another one is the current one while its action runs,
+	 * then the outer one is back; a blank target, or none, is
+	 * {@value ServiceClientTarget#NONE}.
+	 */
+	@Test
+	public void testNestedTargets() {
+		Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.getCurrent());
+		Assertions.assertEquals("outer", ServiceClientTarget.runFor("outer", () -> {
+			Assertions.assertEquals("inner", ServiceClientTarget.runFor("inner", ServiceClientTarget::getCurrent));
+			Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.runFor(" ", ServiceClientTarget::getCurrent));
+			return ServiceClientTarget.getCurrent();
+		}));
+		Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.getCurrent());
 	}
 
 }
