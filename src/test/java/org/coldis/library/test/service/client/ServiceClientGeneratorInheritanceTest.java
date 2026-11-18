@@ -33,25 +33,27 @@ public class ServiceClientGeneratorInheritanceTest extends AbstractServiceTest {
 	private TestRestIntegrationClient testRestIntegrationClient;
 
 	/**
-	 * Tests that the generated client exposes the source's own operation and none
-	 * of the generic REST service client methods.
+	 * Tests that the generated client exposes the source's own operations (an
+	 * overload of a generic client method name included) and none of the generic
+	 * REST service client methods.
 	 */
 	@Test
 	public void testGeneratedClientExposesOnlyOwnOperations() {
 		final Set<String> operations = Arrays.stream(TestRestIntegrationClient.class.getDeclaredMethods())
 				.filter(method -> Modifier.isPublic(method.getModifiers()) && !method.isSynthetic()).map(Method::getName)
 				.filter(methodName -> !ServiceClientGeneratorInheritanceTest.TEMPLATE_METHODS.contains(methodName)).collect(Collectors.toSet());
-		Assertions.assertEquals(Set.of("test4"), operations);
+		Assertions.assertEquals(Set.of("test4", "executeOperation"), operations);
 	}
 
 	/**
-	 * Tests that the generated client's operation calls the service.
+	 * Tests that the generated client's operations call the service.
 	 *
 	 * @throws Exception If the test fails.
 	 */
 	@Test
 	public void testGeneratedClientOperationCallsService() throws Exception {
 		Assertions.assertEquals(Long.valueOf(42L), this.testRestIntegrationClient.test4(42L));
+		Assertions.assertEquals(Long.valueOf(43L), this.testRestIntegrationClient.executeOperation(43L));
 	}
 
 }

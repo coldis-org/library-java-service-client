@@ -10,9 +10,11 @@ import org.springframework.web.client.RestOperations;
 /**
  * Test integration: a service client source that extends
  * {@link GenericRestServiceClient} (as the integrations with third-party
- * services do) and declares one operation, {@link TestService#test4(Long)}.
- * Its generated client must expose that operation only, none of the methods
- * inherited from {@link GenericRestServiceClient} nor the ones overriding them
+ * services do) and declares two operations calling
+ * {@link TestService#test4(Long)}, one of them an overload (not an override) of
+ * a generic client method name. Its generated client must expose those
+ * operations only, none of the methods inherited from
+ * {@link GenericRestServiceClient} nor the ones overriding them
  * ({@link #getRestTemplate()}, not marked as ignored on purpose).
  */
 @ServiceClient(
@@ -44,6 +46,23 @@ public class TestRestIntegration extends GenericRestServiceClient {
 			method = RequestMethod.GET
 	)
 	public Long test4(
+			@RequestParam
+			final Long test) {
+		return test;
+	}
+
+	/**
+	 * Test operation named as a generic client method, but overloading it (a
+	 * different signature), so still an operation: echoes the argument.
+	 *
+	 * @param  test Test argument.
+	 * @return      The test argument.
+	 */
+	@RequestMapping(
+			path = "test",
+			method = RequestMethod.GET
+	)
+	public Long executeOperation(
 			@RequestParam
 			final Long test) {
 		return test;

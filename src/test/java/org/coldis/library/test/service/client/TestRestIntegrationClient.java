@@ -45,9 +45,11 @@ import org.springframework.util.StringValueResolver;
 /**
  * Test integration: a service client source that extends
  {@link GenericRestServiceClient} (as the integrations with third-party
- services do) and declares one operation, {@link TestService#test4(Long)}.
- Its generated client must expose that operation only, none of the methods
- inherited from {@link GenericRestServiceClient} nor the ones overriding them
+ services do) and declares two operations calling
+ {@link TestService#test4(Long)}, one of them an overload (not an override) of
+ a generic client method name. Its generated client must expose those
+ operations only, none of the methods inherited from
+ {@link GenericRestServiceClient} nor the ones overriding them
  ({@link #getRestTemplate()}, not marked as ignored on purpose).
   */
 @Service
@@ -222,6 +224,74 @@ java.lang.Long test
 			) throws BusinessException {
 		// Operation parameters.
 		String endpointPath = endpointPath1;
+		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
+		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
+		final HttpMethod method = HttpMethod.GET;
+		final MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+		Object body = null;
+		final Map<String, Object> uriParameters = new HashMap<>();
+		final MultiValueMap<String, Object> partParameters = new LinkedMultiValueMap<>();
+		final ParameterizedTypeReference<java.lang.Long> returnType =
+				new ParameterizedTypeReference<java.lang.Long>() {};
+		// Adds the content type headers.
+		GenericRestServiceClient.addContentTypeHeaders(headers,
+MediaType.APPLICATION_JSON_VALUE);
+		// If the parameter is an array.
+		if (test != null && test.getClass().isArray()) {
+			// For each item.
+			java.util.List tests = java.util.Arrays.asList(test);
+			for (Integer parameterItemIndex = 0; parameterItemIndex < tests.size(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test" + parameterItemIndex, tests.get(parameterItemIndex));
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is a collection.
+		else if (test != null && java.lang.Iterable.class.isAssignableFrom(test.getClass())) {
+			// For each item.
+			java.util.Iterator tests = ((java.lang.Iterable)(java.lang.Object) test).iterator();
+			for (Integer parameterItemIndex = 0; tests.hasNext(); parameterItemIndex++) {
+				// Adds the URI parameter to the map.
+				uriParameters.put("test" + parameterItemIndex, tests.next());
+				pathAndQuery.append("test={test" + parameterItemIndex + "}&");
+			}
+		}
+		// If the parameter is not a collection nor an array.
+		else if (test != null) {
+			// Adds the URI parameter to the map.
+			uriParameters.put("test", test);
+			pathAndQuery.append("test={test}&");
+		}
+		// Executes the operation (failing over the endpoints) and returns the response.
+return this.serviceClient.executeOperation(this.getEndpoints(), pathAndQuery.toString(), method, headers,
+				partParameters.isEmpty() ? body : partParameters,
+				uriParameters, returnType, null,
+				(this.readTimeoutSeconds == null ? null : java.time.Duration.ofSeconds(this.readTimeoutSeconds)), "TestRestIntegrationClient").getBody();
+				
+	}
+	
+
+	/**
+	 * Endpoint for the operation.
+	 */
+	@Value("test")
+	private String endpointPath2;
+
+	/**
+	 * Test operation named as a generic client method, but overloading it (a
+ different signature), so still an operation: echoes the argument.
+
+ @param  test Test argument.
+ @return      The test argument.
+
+	 * @throws BusinessException Any expected errors.
+	 */
+	
+	public java.lang.Long executeOperation(
+java.lang.Long test
+			) throws BusinessException {
+		// Operation parameters.
+		String endpointPath = endpointPath2;
 		endpointPath = (StringUtils.isBlank(endpointPath) || endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath);
 		StringBuilder pathAndQuery = new StringBuilder(this.getPath() + endpointPath + "?");
 		final HttpMethod method = HttpMethod.GET;
