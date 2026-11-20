@@ -1,7 +1,10 @@
 package org.coldis.library.service.client;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Objects;
+
+import org.apache.commons.lang3.StringUtils;
 
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -24,6 +27,7 @@ import org.springframework.context.annotation.PropertySource;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestOperations;
@@ -316,6 +320,73 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the service client concurrency limiter (a service may declare its
+	 * own). Per-target mode, minimum and maximum
+	 * ({@code org.coldis.library.service-client.concurrency-limit.mode.<target>},
+	 * {@code min.<target>}, {@code max.<target>}) are read from the environment
+	 * once, when the target's first operation creates its limit.
+	 *
+	 * @param  mode                  Mode ({@code off}, {@code observe} or
+	 *                                   {@code enforce}).
+	 * @param  min                   Minimum limit (always passes).
+	 * @param  max                   Maximum limit.
+	 * @param  initial               Initial limit.
+	 * @param  window                Duration of a window (e.g. {@code 1s}).
+	 * @param  minSamples            Samples a window needs to close.
+	 * @param  latencyTolerance      Times the baseline latency a window's
+	 *                                   latency may reach and still be healthy.
+	 * @param  baselineRiseTime      Time constant of the rise of the baseline
+	 *                                   latency (e.g. {@code 10m}).
+	 * @param  overloadStatuses      Response statuses that are overload
+	 *                                   outcomes.
+	 * @param  suggestionMargin      Margin of the suggested fixed limit over the
+	 *                                   peak demand.
+	 * @param  suggestionLogInterval Interval of the suggestion log line (e.g.
+	 *                                   {@code 15m}; {@code 0} for none).
+	 * @param  environment           Environment (per-target settings).
+	 * @param  metricsProvider       Metrics provider (the first by order; none
+	 *                                   without Micrometer).
+	 * @return                       The service client concurrency limiter.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientConcurrencyLimiter serviceClientConcurrencyLimiter(
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.mode:observe}")
+			final String mode,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.min:10}")
+			final Integer min,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.max:256}")
+			final Integer max,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.initial:20}")
+			final Integer initial,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.window:1s}")
+			final String window,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.min-samples:10}")
+			final Integer minSamples,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.latency-tolerance:3.0}")
+			final Double latencyTolerance,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.baseline-rise-time:10m}")
+			final String baselineRiseTime,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.overload-statuses:429,503}")
+			final String[] overloadStatuses,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.suggestion.margin:2.0}")
+			final Double suggestionMargin,
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.suggestion.log-interval:15m}")
+			final String suggestionLogInterval,
+			final Environment environment,
+			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
+		final ServiceClientConcurrencyLimiter.Settings settings = new ServiceClientConcurrencyLimiter.Settings(
+				ServiceClientConcurrencyLimiter.Mode.fromPropertyValue(mode), min, max, initial, DurationStyle.detectAndParse(window), minSamples,
+				latencyTolerance, DurationStyle.detectAndParse(baselineRiseTime),
+				Arrays.stream(overloadStatuses == null ? new String[] {} : overloadStatuses).filter(StringUtils::isNotBlank)
+						.map(status -> Integer.valueOf(status.trim())).toList(),
+				suggestionMargin, DurationStyle.detectAndParse(suggestionLogInterval));
+		ServiceClientAutoConfiguration.LOGGER.info("Service client concurrency limit: mode {}, min {}, max {}, initial {}.", settings.mode(), settings.min(),
+				settings.max(), settings.initial());
+		return new ServiceClientConcurrencyLimiter(settings, environment, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+	}
+
+	/**
 	 * Creates the service client failover executor (a service may declare its own).
 	 *
 	 * @param  isEnabled                If failover is enabled.
@@ -344,6 +415,7 @@ public class ServiceClientAutoConfiguration {
 	 *                                      to its attempts.
 	 * @param  metricsProvider          Metrics provider (the first by order; none
 	 *                                      without Micrometer).
+	 * @param  concurrencyLimiter       Concurrency limiter.
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -372,7 +444,8 @@ public class ServiceClientAutoConfiguration {
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
-			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
+			final ObjectProvider<ServiceClientMetrics> metricsProvider,
+			final ServiceClientConcurrencyLimiter concurrencyLimiter) {
 		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
 		// The per-attempt cap of the budget needs a scope that applies the limit.
 		if (actualMaxTotalTime.isPositive() && !readTimeoutScope.appliesConnectionWaitLimit()) {
@@ -398,7 +471,8 @@ public class ServiceClientAutoConfiguration {
 					maxTotalTime, readTimeoutSeconds);
 		}
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
-				actualMaxTotalTime, balancer, endpointResolver, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+				actualMaxTotalTime, balancer, endpointResolver, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE),
+				concurrencyLimiter);
 	}
 
 	/**

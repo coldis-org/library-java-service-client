@@ -58,6 +58,13 @@ import org.springframework.web.client.RestOperations;
  * connection of every attempt are each capped to what is left of it when the
  * attempt starts (the read timeout is not). The waits before a request is sent
  * so stay under the budget plus one connect timeout.
+ * <p>
+ * Each operation holds one permit of its target's
+ * {@link ServiceClientConcurrencyLimiter} across its attempts (taken before the
+ * first attempt, using none of the budget), and each attempt's latency and
+ * outcome feed it. A failure inside the limiter is counted and the operation
+ * proceeds (deliberate fail-open: the limit protects the target, and must never
+ * fail or slow a call by itself).
  */
 public class ServiceClientFailoverExecutor {
 
@@ -95,6 +102,12 @@ public class ServiceClientFailoverExecutor {
 	 */
 	private static final List<Class<? extends Throwable>> NOT_CONNECTED_FAILURES = Stream
 			.concat(ServiceClientFailoverExecutor.COOLDOWN_FAILURES.stream(), Stream.of(ConnectionRequestTimeoutException.class)).toList();
+
+	/**
+	 * Failures waiting for a local pooled connection (an overload signal of the
+	 * concurrency limit).
+	 */
+	private static final List<Class<? extends Throwable>> POOL_WAIT_FAILURES = List.of(ConnectionRequestTimeoutException.class);
 
 	/**
 	 * Failures where the connection dropped before a response (the request may have
@@ -212,6 +225,11 @@ public class ServiceClientFailoverExecutor {
 	private final ServiceClientEndpointResolver endpointResolver;
 
 	/**
+	 * Concurrency limiter.
+	 */
+	private final ServiceClientConcurrencyLimiter concurrencyLimiter;
+
+	/**
 	 * Outcome of an operation: the response, or the failure of its last attempt.
 	 *
 	 * @param <ResponseType> Response type.
@@ -245,6 +263,59 @@ public class ServiceClientFailoverExecutor {
 	 * @param readTimeoutScope         Scope that applies a call's own timeouts to
 	 *                                     its attempts.
 	 * @param metrics                  Metrics.
+	 * @param concurrencyLimiter       Concurrency limiter.
+	 */
+	public ServiceClientFailoverExecutor(
+			final boolean isEnabled,
+			final int maxAttempts,
+			final String[] idempotentMethods,
+			final String[] retryStatuses,
+			final String[] cooldownStatuses,
+			final boolean shouldRetryOnReadTimeout,
+			final Duration maxTotalTime,
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientEndpointResolver endpointResolver,
+			final ServiceClientReadTimeoutScope readTimeoutScope,
+			final ServiceClientMetrics metrics,
+			final ServiceClientConcurrencyLimiter concurrencyLimiter) {
+		super();
+		this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
+		this.balancer = Objects.requireNonNull(balancer, "balancer");
+		this.endpointResolver = Objects.requireNonNull(endpointResolver, "endpointResolver");
+		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
+		this.metrics = Objects.requireNonNull(metrics, "metrics");
+		this.maxTotalTime = (maxTotalTime == null ? Duration.ZERO : maxTotalTime);
+		this.isEnabled = isEnabled;
+		this.maxAttempts = maxAttempts;
+		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
+				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
+		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
+		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
+		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+	}
+
+	/**
+	 * Constructor with no concurrency limit
+	 * ({@link ServiceClientConcurrencyLimiter#NONE}).
+	 *
+	 * @param isEnabled                If failover is enabled.
+	 * @param maxAttempts              Maximum attempts per operation.
+	 * @param idempotentMethods        Methods taken as idempotent when the
+	 *                                     operation does not say.
+	 * @param retryStatuses            Response statuses retried for idempotent
+	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
+	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
+	 *                                     operations.
+	 * @param maxTotalTime             Time budget of an operation, over all its
+	 *                                     attempts ({@code null}, zero or
+	 *                                     negative for none).
+	 * @param balancer                 Endpoint balancer.
+	 * @param endpointResolver         Endpoint resolver.
+	 * @param readTimeoutScope         Scope that applies a call's own timeouts to
+	 *                                     its attempts.
+	 * @param metrics                  Metrics.
 	 */
 	public ServiceClientFailoverExecutor(
 			final boolean isEnabled,
@@ -258,19 +329,8 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics) {
-		super();
-		this.balancer = Objects.requireNonNull(balancer, "balancer");
-		this.endpointResolver = Objects.requireNonNull(endpointResolver, "endpointResolver");
-		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
-		this.metrics = Objects.requireNonNull(metrics, "metrics");
-		this.maxTotalTime = (maxTotalTime == null ? Duration.ZERO : maxTotalTime);
-		this.isEnabled = isEnabled;
-		this.maxAttempts = maxAttempts;
-		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
-				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
-		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
-		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
-		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, maxTotalTime, balancer, endpointResolver,
+				readTimeoutScope, metrics, ServiceClientConcurrencyLimiter.NONE);
 	}
 
 	/**
@@ -377,6 +437,15 @@ public class ServiceClientFailoverExecutor {
 	 */
 	public ServiceClientEndpointResolver getEndpointResolver() {
 		return this.endpointResolver;
+	}
+
+	/**
+	 * Gets the concurrency limiter.
+	 *
+	 * @return The concurrency limiter.
+	 */
+	public ServiceClientConcurrencyLimiter getConcurrencyLimiter() {
+		return this.concurrencyLimiter;
 	}
 
 	/**
@@ -678,41 +747,118 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Executes an operation over a list of endpoints, up to the maximum attempts,
-	 * each on an endpoint not tried yet. With more than one attempt, the HTTP client
-	 * retries are suspended (see {@link ServiceClientRetryStrategy}), so attempts
-	 * are not doubled; a single attempt keeps them. A stream body gets a single
-	 * attempt when the template buffers it. Attempts, retries, cooldowns and
-	 * requests in flight are recorded in the {@link ServiceClientMetrics}, under the
-	 * current thread's {@link ServiceClientTarget}. The endpoints come from
-	 * the {@link ServiceClientEndpointResolver} (no request when there are none),
-	 * except that a path that is an absolute URL, with no endpoint in the list, is
-	 * called as is (its host is then not put in cooldown: it is no listed
-	 * instance).
-	 * With a time budget, no further attempt starts once it is spent, and every
-	 * attempt waits for a pooled connection and for its connection no longer than
-	 * what is left of it (through the executor's
-	 * {@link ServiceClientReadTimeoutScope}).
+	 * Takes the concurrency limit permit of an operation. A failure inside the
+	 * limiter is counted and the operation proceeds without a permit (deliberate
+	 * fail-open); only the limiter's rejection propagates.
 	 *
-	 * @param  <ResponseType> Response type.
-	 * @param  endpoints      Endpoints (base URLs).
-	 * @param  path           Path (appended to the endpoint).
-	 * @param  method         Method.
-	 * @param  requestEntity  Request headers and body.
-	 * @param  responseType   Response type.
-	 * @param  uriParameters  URI parameters.
-	 * @param  declaredIdempotent If the operation is idempotent, as declared
-	 *                                ({@code null} if not: decided by the method).
-	 * @param  readTimeout    Read timeout of the attempts ({@code null}, zero or
-	 *                            negative keeps the template's; applied by the
-	 *                            executor's {@link ServiceClientReadTimeoutScope}).
-	 * @param  restTemplate   Template.
-	 * @return                The outcome: the response, or the failure of the last
-	 *                        attempt.
-	 * @throws IntegrationException If there is no endpoint to go to (see
-	 *                                  {@link ServiceClientEndpointResolver}).
+	 * @param  target               Target of the operation.
+	 * @return                      The limit of the target ({@code null} for none).
+	 * @throws IntegrationException If the limiter rejects the operation.
 	 */
-	public <ResponseType> Outcome<ResponseType> executeOverEndpoints(
+	private ServiceClientConcurrencyLimiter.TargetLimit acquireConcurrencyLimit(
+			final String target) throws IntegrationException {
+		ServiceClientConcurrencyLimiter.TargetLimit targetLimit = null;
+		try {
+			targetLimit = this.concurrencyLimiter.acquire(target);
+		}
+		catch (final RuntimeException exception) {
+			if (ServiceClientConcurrencyLimiter.isRejection(exception)) {
+				throw exception;
+			}
+			this.concurrencyLimiter.recordFailure(target, exception);
+		}
+		return targetLimit;
+	}
+
+	/**
+	 * Records an attempt in the concurrency limit. A latency sample: the target
+	 * answered (any status), or did not in the read timeout. An overload outcome: a
+	 * read timeout, no pooled connection in time, or an overload status. Anything
+	 * else (connect failures, a dropped connection, a connect cut by the budget)
+	 * records nothing. A failure inside the limiter is counted and ignored.
+	 *
+	 * @param target            Target of the operation.
+	 * @param targetLimit       Limit of the target ({@code null} for none).
+	 * @param failure           Attempt failure ({@code null} if it succeeded).
+	 * @param attemptStartNanos When the attempt started
+	 *                              ({@link System#nanoTime()}).
+	 */
+	private void recordConcurrencyLimitAttempt(
+			final String target,
+			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit,
+			final Exception failure,
+			final long attemptStartNanos) {
+		if (targetLimit != null) {
+			try {
+				final boolean isLatencySample;
+				final boolean isOverload;
+				if (failure == null) {
+					isLatencySample = true;
+					isOverload = false;
+				}
+				else if (failure instanceof final RestClientResponseException responseFailure) {
+					isLatencySample = true;
+					isOverload = this.concurrencyLimiter.isOverloadStatus(responseFailure.getStatusCode().value());
+				}
+				else if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.POOL_WAIT_FAILURES)) {
+					isLatencySample = false;
+					isOverload = true;
+				}
+				else {
+					isLatencySample = (ServiceClientFailoverExecutor.getFailureKind(failure) == FailureKind.READ_TIMEOUT);
+					isOverload = isLatencySample;
+				}
+				this.concurrencyLimiter.recordAttempt(targetLimit, System.nanoTime() - attemptStartNanos, isLatencySample, isOverload);
+			}
+			catch (final RuntimeException exception) {
+				this.concurrencyLimiter.recordFailure(target, exception);
+			}
+		}
+	}
+
+	/**
+	 * Gives the concurrency limit permit of an operation back. A failure inside
+	 * the limiter is counted and ignored.
+	 *
+	 * @param target      Target of the operation.
+	 * @param targetLimit Limit of the target ({@code null} for none).
+	 */
+	private void releaseConcurrencyLimit(
+			final String target,
+			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) {
+		if (targetLimit != null) {
+			try {
+				this.concurrencyLimiter.release(targetLimit);
+			}
+			catch (final RuntimeException exception) {
+				this.concurrencyLimiter.recordFailure(target, exception);
+			}
+		}
+	}
+
+	/**
+	 * Executes the attempts of an operation (see {@link #executeOverEndpoints}).
+	 *
+	 * @param  <ResponseType>       Response type.
+	 * @param  endpoints            Endpoints (base URLs).
+	 * @param  path                 Path (appended to the endpoint).
+	 * @param  method               Method.
+	 * @param  requestEntity        Request headers and body.
+	 * @param  responseType         Response type.
+	 * @param  uriParameters        URI parameters.
+	 * @param  declaredIdempotent   If the operation is idempotent, as declared
+	 *                                  ({@code null} if not: decided by the
+	 *                                  method).
+	 * @param  readTimeout          Read timeout of the attempts ({@code null},
+	 *                                  zero or negative keeps the template's).
+	 * @param  restTemplate         Template.
+	 * @param  targetLimit          Concurrency limit of the target ({@code null}
+	 *                                  for none).
+	 * @return                      The outcome: the response, or the failure of
+	 *                              the last attempt.
+	 * @throws IntegrationException If there is no endpoint to go to.
+	 */
+	private <ResponseType> Outcome<ResponseType> executeAttempts(
 			final List<String> endpoints,
 			final String path,
 			final HttpMethod method,
@@ -721,7 +867,8 @@ public class ServiceClientFailoverExecutor {
 			final Map<String, Object> uriParameters,
 			final Boolean declaredIdempotent,
 			final Duration readTimeout,
-			final RestOperations restTemplate) throws IntegrationException {
+			final RestOperations restTemplate,
+			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) throws IntegrationException {
 		final long startNanos = System.nanoTime();
 		final String target = ServiceClientTarget.getCurrent();
 		// With no endpoint in the list, a path that is an absolute URL is called as
@@ -761,6 +908,7 @@ public class ServiceClientFailoverExecutor {
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
 					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
+			this.recordConcurrencyLimitAttempt(target, targetLimit, attemptFailure, attemptStartNanos);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
@@ -785,6 +933,68 @@ public class ServiceClientFailoverExecutor {
 			}
 		}
 		return outcome;
+	}
+
+	/**
+	 * Executes an operation over a list of endpoints, up to the maximum attempts,
+	 * each on an endpoint not tried yet. With more than one attempt, the HTTP client
+	 * retries are suspended (see {@link ServiceClientRetryStrategy}), so attempts
+	 * are not doubled; a single attempt keeps them. A stream body gets a single
+	 * attempt when the template buffers it. Attempts, retries, cooldowns and
+	 * requests in flight are recorded in the {@link ServiceClientMetrics}, under the
+	 * current thread's {@link ServiceClientTarget}. The endpoints come from
+	 * the {@link ServiceClientEndpointResolver} (no request when there are none),
+	 * except that a path that is an absolute URL, with no endpoint in the list, is
+	 * called as is (its host is then not put in cooldown: it is no listed
+	 * instance).
+	 * With a time budget, no further attempt starts once it is spent, and every
+	 * attempt waits for a pooled connection and for its connection no longer than
+	 * what is left of it (through the executor's
+	 * {@link ServiceClientReadTimeoutScope}).
+	 * The operation holds one permit of its target's
+	 * {@link ServiceClientConcurrencyLimiter} across its attempts; a rejection
+	 * (enforce mode only) fails it before any request, with no attempt.
+	 *
+	 * @param  <ResponseType> Response type.
+	 * @param  endpoints      Endpoints (base URLs).
+	 * @param  path           Path (appended to the endpoint).
+	 * @param  method         Method.
+	 * @param  requestEntity  Request headers and body.
+	 * @param  responseType   Response type.
+	 * @param  uriParameters  URI parameters.
+	 * @param  declaredIdempotent If the operation is idempotent, as declared
+	 *                                ({@code null} if not: decided by the method).
+	 * @param  readTimeout    Read timeout of the attempts ({@code null}, zero or
+	 *                            negative keeps the template's; applied by the
+	 *                            executor's {@link ServiceClientReadTimeoutScope}).
+	 * @param  restTemplate   Template.
+	 * @return                The outcome: the response, or the failure of the last
+	 *                        attempt.
+	 * @throws IntegrationException If there is no endpoint to go to (see
+	 *                                  {@link ServiceClientEndpointResolver}), or
+	 *                                  the concurrency limiter rejects the
+	 *                                  operation
+	 *                                  ({@value ServiceClientConcurrencyLimiter#REJECTED_CODE}).
+	 */
+	public <ResponseType> Outcome<ResponseType> executeOverEndpoints(
+			final List<String> endpoints,
+			final String path,
+			final HttpMethod method,
+			final HttpEntity<?> requestEntity,
+			final ParameterizedTypeReference<ResponseType> responseType,
+			final Map<String, Object> uriParameters,
+			final Boolean declaredIdempotent,
+			final Duration readTimeout,
+			final RestOperations restTemplate) throws IntegrationException {
+		final String target = ServiceClientTarget.getCurrent();
+		final ServiceClientConcurrencyLimiter.TargetLimit targetLimit = this.acquireConcurrencyLimit(target);
+		try {
+			return this.executeAttempts(endpoints, path, method, requestEntity, responseType, uriParameters, declaredIdempotent, readTimeout, restTemplate,
+					targetLimit);
+		}
+		finally {
+			this.releaseConcurrencyLimit(target, targetLimit);
+		}
 	}
 
 }

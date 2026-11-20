@@ -1,10 +1,14 @@
 package org.coldis.library.test.service.client;
 
 import java.net.ServerSocket;
+import java.util.List;
+import java.util.Set;
 
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.coldis.library.service.client.ServiceClientTargetObservationFilter;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -21,6 +25,7 @@ import org.springframework.http.HttpMethod;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Timer;
 
 /**
@@ -58,6 +63,18 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private ServiceClientEndpointBalancer contextBalancer;
+
+	/**
+	 * Concurrency limiter of the context.
+	 */
+	@Autowired
+	private ServiceClientConcurrencyLimiter concurrencyLimiter;
+
+	/**
+	 * Failover executor of the context.
+	 */
+	@Autowired
+	private ServiceClientFailoverExecutor failoverExecutor;
 
 	/**
 	 * Generated client endpoints.
@@ -182,6 +199,42 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		final Gauge inFlight = this.meterRegistry.find(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(inFlight);
 		Assertions.assertEquals(0, inFlight.value());
+	}
+
+	/**
+	 * The concurrency limit of the context observes by default: a generated
+	 * client's calls get its meters (tagged with the target only, and the result),
+	 * not enforced, nothing left in flight. A target with its own mode in the
+	 * environment enforces it.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testConcurrencyLimitMeters() throws Exception {
+		Assertions.assertSame(this.concurrencyLimiter, this.failoverExecutor.getConcurrencyLimiter());
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, this.concurrencyLimiter.getSettings().mode());
+		this.testService2Client.test1();
+		final Gauge limit = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
+		Assertions.assertNotNull(limit);
+		Assertions.assertTrue(limit.value() >= this.concurrencyLimiter.getSettings().min());
+		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", ServiceClientMetricsTest.TARGET)
+				.gauge().value());
+		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET)
+				.gauge().value());
+		for (final String name : List.of(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT_PEAK, MicrometerServiceClientMetrics.LIMIT_OVERLOADED_SECONDS,
+				MicrometerServiceClientMetrics.LIMIT_LATENCY_BASELINE, MicrometerServiceClientMetrics.LIMIT_LATENCY_CURRENT,
+				MicrometerServiceClientMetrics.LIMIT_SUGGESTED, MicrometerServiceClientMetrics.LIMIT_ERRORS)) {
+			Assertions.assertNotNull(this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).meter(), name);
+		}
+		Assertions.assertEquals(2, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_CALLS).tag("target", ServiceClientMetricsTest.TARGET)
+				.meters().size());
+		this.meterRegistry.getMeters().stream().filter(meter -> meter.getId().getName().startsWith(MicrometerServiceClientMetrics.LIMIT))
+				.forEach(meter -> Assertions.assertTrue(Set.of("target", "result").containsAll(
+						meter.getId().getTags().stream().map(Tag::getKey).toList()), meter.getId()::toString));
+		final String enforcedTarget = "ConcurrencyLimitEnforcedTestClient";
+		this.concurrencyLimiter.release(this.concurrencyLimiter.acquire(enforcedTarget));
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.ENFORCE, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().mode());
+		Assertions.assertEquals(1, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", enforcedTarget).gauge().value());
 	}
 
 }
