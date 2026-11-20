@@ -220,9 +220,13 @@ public class ServiceClientFailoverExecutorTest {
 	 * endpoints.
 	 */
 	@Test
+	@SuppressWarnings("deprecation")
 	public void testRepeatedEndpoints() {
 		Assertions.assertEquals(List.of("http://first", "http://second"),
 				ServiceClientEndpointResolver.getAvailableEndpoints(List.of("http://first", " http://first ", "http://second", "")));
+		// The deprecated executor method keeps its old result until it is removed.
+		Assertions.assertEquals(List.of("http://first"), ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of(" http://first ")));
+		Assertions.assertEquals(List.of(""), ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of(" ", "")));
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.execute(List.of("http://first", " http://first ", "http://second"), HttpMethod.GET, null,
 				new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE), attemptedUrls);

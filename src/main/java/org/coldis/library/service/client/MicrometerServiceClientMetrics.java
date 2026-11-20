@@ -39,14 +39,16 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	public static final String COOLDOWNS = "service.client.cooldowns";
 
 	/**
-	 * Counter of operations not retried because their time budget was spent.
+	 * Counter of operations whose further attempts were stopped because their total
+	 * time limit (budget) was spent.
 	 */
-	public static final String BUDGET_SPENT = "service.client.budget.spent";
+	public static final String BUDGET_SPENT = "service.client.attempts.stopped.by.time.limit";
 
 	/**
-	 * Counter of calls that went to their target's last good endpoint list.
+	 * Counter of calls that went to their target's previous (last non-empty)
+	 * endpoint list, as its current one was empty.
 	 */
-	public static final String LAST_ENDPOINTS_CALLS = "service.client.endpoints.last";
+	public static final String LAST_ENDPOINTS_CALLS = "service.client.calls.on.previous.endpoints";
 
 	/**
 	 * Requests in flight gauge.

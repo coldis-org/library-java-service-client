@@ -27,6 +27,7 @@ import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
@@ -701,6 +702,45 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertTrue(isRefused, exception::toString);
 		this.testService2Properties.setEndpoint(" , http://localhost:${local.server.port} ,");
 		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
+	}
+
+	/**
+	 * Through a client over the library's own template (its request factory and
+	 * timeout scope), the time budget stops the attempts: read timeouts retried on
+	 * three slow instances stop after two attempts once a 500 ms budget is spent
+	 * (300 ms reads), and the operation cut short is counted.
+	 */
+	@Test
+	public void testBudgetStopsClientAttempts() {
+		final List<String> spentReasons = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor budgetExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true,
+				Duration.ofMillis(500), ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientEndpointResolver.NO_MEMORY,
+				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
+
+					@Override
+					public void recordBudgetSpent(
+							final String target,
+							final String reason) {
+						spentReasons.add(reason);
+					}
+
+				});
+		final GenericRestServiceClient budgetClient = new GenericRestServiceClient() {
+			{
+				this.setObjectMapper(ServiceClientFailoverTest.this.objectMapper);
+			}
+		};
+		budgetClient.setRestTemplate(this.serviceClient.getRestTemplate());
+		budgetClient.setFailoverExecutor(budgetExecutor);
+		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER),
+				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER),
+				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.THIRD_SERVER));
+		final long startNanos = System.nanoTime();
+		Assertions.assertThrows(IntegrationException.class, () -> budgetClient.executeOperation(endpoints, "/slow", HttpMethod.GET, null, null, null,
+				ServiceClientFailoverTest.STRING_RESPONSE, null, Duration.ofMillis(300), "BudgetClient"));
+		Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofSeconds(2)) < 0);
+		Assertions.assertEquals(2, ServiceClientFailoverTest.getTotalRequests() + ServiceClientFailoverTest.THIRD_SERVER_REQUESTS.get());
+		Assertions.assertEquals(1, spentReasons.size(), spentReasons::toString);
 	}
 
 	/**

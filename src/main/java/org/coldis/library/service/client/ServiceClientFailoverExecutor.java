@@ -380,20 +380,21 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Gets the endpoints of a list: trimmed, without blank or repeated ones. When
-	 * none is left, the list is now empty (it used to hold one blank endpoint, the
-	 * path then being the whole URL).
+	 * Gets the endpoints of a list: trimmed, without blank or repeated ones, and a
+	 * single blank endpoint when none is left (the path is then the whole URL), as
+	 * before; the executor no longer uses it.
 	 *
 	 * @param      endpoints Endpoints of the list ({@code null} for none).
 	 * @return               The endpoints of the list.
 	 * @deprecated           Use
-	 *                           {@link ServiceClientEndpointResolver#getAvailableEndpoints(List)}
-	 *                           (same result).
+	 *                           {@link ServiceClientEndpointResolver#getAvailableEndpoints(List)},
+	 *                           which returns an empty list when none is left.
 	 */
 	@Deprecated
 	public List<String> getAvailableEndpoints(
 			final List<String> endpoints) {
-		return ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
+		final List<String> availableEndpoints = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
+		return (availableEndpoints.isEmpty() ? List.of("") : availableEndpoints);
 	}
 
 	/**
