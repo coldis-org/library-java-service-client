@@ -650,6 +650,23 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
+	 * A generated client whose endpoint list has been empty since it started (as
+	 * when its target had no healthy instance when the service booted) fails at
+	 * once with the clear error naming its target, before any request, instead of
+	 * calling a URL with no host.
+	 */
+	@Test
+	public void testGeneratedClientNeverConfiguredFailsFast() {
+		for (final String emptyEndpoints : List.of("", " , ", ",")) {
+			this.testService2Properties.setEndpoint(emptyEndpoints);
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1(), emptyEndpoints);
+			Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode(), emptyEndpoints);
+			Assertions.assertTrue(exception.getInternalMessage().getContent().startsWith("No endpoints configured for "), exception.getInternalMessage()::getContent);
+			Assertions.assertFalse(exception.getInternalMessage().getContent().contains("no target client"), exception.getInternalMessage()::getContent);
+		}
+	}
+
+	/**
 	 * A generated client whose endpoint list gets empty (as when its target has no
 	 * healthy instance left) keeps calling its last non-empty list, then takes the
 	 * new list when it is back: a refusing instance as the last list makes the

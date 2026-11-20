@@ -290,8 +290,14 @@ public class ServiceClientAutoConfiguration {
 			@Value(value = "${org.coldis.library.service-client.failover.last-endpoints-max-age:10m}")
 			final String lastEndpointsMaxAge,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
-		return new ServiceClientEndpointResolver(DurationStyle.detectAndParse(lastEndpointsMaxAge),
-				metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+		final Duration actualLastEndpointsMaxAge = DurationStyle.detectAndParse(lastEndpointsMaxAge);
+		// With no limit, an emptied list never stops the calls to its last addresses.
+		if (!actualLastEndpointsMaxAge.isPositive()) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client last endpoint lists have no maximum age ({}): a target whose list gets empty keeps being called on its last addresses, which service discovery no longer lists, until its list is back or the service restarts.",
+					lastEndpointsMaxAge);
+		}
+		return new ServiceClientEndpointResolver(actualLastEndpointsMaxAge, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**
@@ -358,10 +364,10 @@ public class ServiceClientAutoConfiguration {
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
 		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
-		// The per-attempt cap of the budget needs the library's scope.
-		if (actualMaxTotalTime.isPositive() && (readTimeoutScope != ServiceClientRequestFactory.READ_TIMEOUT_SCOPE)) {
+		// The per-attempt cap of the budget needs a scope that applies the limit.
+		if (actualMaxTotalTime.isPositive() && !readTimeoutScope.appliesConnectionWaitLimit()) {
 			ServiceClientAutoConfiguration.LOGGER.warn(
-					"Service client failover uses its own timeout scope ({}): its time budget ({}) stops further attempts, but caps an attempt's connection waits only if the scope applies the limit (runWithTimeouts).",
+					"Service client failover uses its own timeout scope ({}), which does not apply the connection wait limit: its time budget ({}) stops further attempts, but does not cap an attempt's connection waits (override runWithTimeouts and appliesConnectionWaitLimit).",
 					readTimeoutScope.getClass().getName(), maxTotalTime);
 		}
 		// A read timeout retry needs room for two reads in the budget (only the

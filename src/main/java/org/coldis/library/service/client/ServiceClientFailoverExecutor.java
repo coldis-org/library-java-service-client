@@ -76,12 +76,6 @@ public class ServiceClientFailoverExecutor {
 			ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
 
 	/**
-	 * How long a target's last good endpoint list stands in for an empty one, for
-	 * the constructors that take no endpoint resolver.
-	 */
-	public static final Duration DEFAULT_LAST_ENDPOINTS_MAX_AGE = Duration.ofMinutes(10);
-
-	/**
 	 * An absolute URL: its base (scheme, user information, host and port) and the
 	 * rest (path, query, fragment).
 	 */
@@ -280,8 +274,10 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Constructor with no time budget and an endpoint resolver of its own (last
-	 * lists kept {@link #DEFAULT_LAST_ENDPOINTS_MAX_AGE}).
+	 * Constructor with no time budget and an endpoint resolver that keeps no last
+	 * list ({@link ServiceClientEndpointResolver#NO_MEMORY}: a call with an empty
+	 * list fails at once, with no request), so an executor a service builds itself
+	 * does not start calling a last list unless it passes a resolver.
 	 *
 	 * @param isEnabled                If failover is enabled.
 	 * @param maxAttempts              Maximum attempts per operation.
@@ -309,7 +305,7 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics) {
 		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, Duration.ZERO, balancer,
-				new ServiceClientEndpointResolver(ServiceClientFailoverExecutor.DEFAULT_LAST_ENDPOINTS_MAX_AGE, metrics), readTimeoutScope, metrics);
+				ServiceClientEndpointResolver.NO_MEMORY, readTimeoutScope, metrics);
 	}
 
 	/**
@@ -638,31 +634,23 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Margin under an attempt's connection wait limit within which a connect
-	 * timeout is taken as the limit's (the budget's), not the endpoint's.
-	 */
-	private static final Duration BUDGET_CUT_MARGIN = Duration.ofMillis(50);
-
-	/**
 	 * Gets if an attempt failed on a connect timeout cut short by the time budget:
-	 * it took (about) the whole connection wait limit it was given, so the limit,
-	 * not the endpoint's configured connect timeout, ended it.
+	 * the executor's {@link ServiceClientReadTimeoutScope} says the budget's limit
+	 * cut the attempt's connect timeout below the endpoint's own, so the limit, not
+	 * the endpoint, ended it. A scope that applies no limit never cuts it.
 	 *
-	 * @param  failure           Attempt failure ({@code null} if it succeeded).
-	 * @param  remainingTime     Connection wait limit of the attempt ({@code null}
-	 *                               with no budget).
-	 * @param  attemptStartNanos When the attempt started
-	 *                               ({@link System#nanoTime()}).
-	 * @return                   If the attempt failed on a connect timeout cut
-	 *                           short by the budget.
+	 * @param  failure       Attempt failure ({@code null} if it succeeded).
+	 * @param  remainingTime Connection wait limit of the attempt ({@code null}
+	 *                           with no budget).
+	 * @return               If the attempt failed on a connect timeout cut short by
+	 *                       the budget.
 	 */
-	private static boolean isConnectCutByBudget(
+	private boolean isConnectCutByBudget(
 			final Exception failure,
-			final Duration remainingTime,
-			final long attemptStartNanos) {
+			final Duration remainingTime) {
 		return (failure != null) && (remainingTime != null)
 				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class))
-				&& ((System.nanoTime() - attemptStartNanos) >= remainingTime.minus(ServiceClientFailoverExecutor.BUDGET_CUT_MARGIN).toNanos());
+				&& this.readTimeoutScope.isLastConnectTimeoutCut();
 	}
 
 	/**
@@ -745,7 +733,6 @@ public class ServiceClientFailoverExecutor {
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
 			final Duration remainingTime = this.getRemainingTime(startNanos);
-			final long attemptStartNanos = System.nanoTime();
 			try {
 				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
 				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, remainingTime, () -> (maxAttemptsForCall > 1
@@ -761,7 +748,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !ServiceClientFailoverExecutor.isConnectCutByBudget(attemptFailure, remainingTime, attemptStartNanos), attemptFailure);
+					!isAbsolutePathCall && !this.isConnectCutByBudget(attemptFailure, remainingTime), attemptFailure);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}

@@ -42,6 +42,13 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 	private static final ThreadLocal<Duration> CONNECTION_WAIT_LIMIT = new ThreadLocal<>();
 
 	/**
+	 * If the connection wait limit cut the connect timeout of the last request made
+	 * by the current thread under {@link #runWithConnectionWaitLimit(Duration,
+	 * Supplier)} (reset when it starts).
+	 */
+	private static final ThreadLocal<Boolean> CONNECT_TIMEOUT_CUT = ThreadLocal.withInitial(() -> false);
+
+	/**
 	 * Read timeout scope of this kind of factory: warns when the template visibly
 	 * ignores the read timeout, and applies it (and the connection wait limit) to
 	 * the requests the current thread makes while the action runs.
@@ -72,6 +79,22 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 				final Supplier<ResultType> action) {
 			return ServiceClientRequestFactory.runWithConnectionWaitLimit(connectionWaitLimit,
 					() -> ServiceClientRequestFactory.runWithReadTimeout(template, readTimeout, action));
+		}
+
+		/**
+		 * @see ServiceClientReadTimeoutScope#isLastConnectTimeoutCut()
+		 */
+		@Override
+		public boolean isLastConnectTimeoutCut() {
+			return ServiceClientRequestFactory.isLastConnectTimeoutCut();
+		}
+
+		/**
+		 * @see ServiceClientReadTimeoutScope#appliesConnectionWaitLimit()
+		 */
+		@Override
+		public boolean appliesConnectionWaitLimit() {
+			return true;
 		}
 
 	};
@@ -168,6 +191,7 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 			final Supplier<ResultType> action) {
 		final Duration previousLimit = ServiceClientRequestFactory.CONNECTION_WAIT_LIMIT.get();
 		ServiceClientRequestFactory.CONNECTION_WAIT_LIMIT.set(connectionWaitLimit);
+		ServiceClientRequestFactory.CONNECT_TIMEOUT_CUT.remove();
 		try {
 			return action.get();
 		}
@@ -179,6 +203,19 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 				ServiceClientRequestFactory.CONNECTION_WAIT_LIMIT.set(previousLimit);
 			}
 		}
+	}
+
+	/**
+	 * Gets if the connection wait limit cut the connect timeout of the last
+	 * request the current thread made under
+	 * {@link #runWithConnectionWaitLimit(Duration, Supplier)}: the request then
+	 * did not get the factory's own connect timeout, so a connect timeout of it
+	 * says nothing about the endpoint.
+	 *
+	 * @return If the limit cut the last request's connect timeout.
+	 */
+	public static boolean isLastConnectTimeoutCut() {
+		return ServiceClientRequestFactory.CONNECT_TIMEOUT_CUT.get();
 	}
 
 	/**
@@ -265,7 +302,10 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 			if (connectionWaitLimit != null) {
 				final long limitMillis = Math.max(1L, connectionWaitLimit.toMillis());
 				requestConfigBuilder.setConnectionRequestTimeout(ServiceClientRequestFactory.capTimeout(baseRequestConfig.getConnectionRequestTimeout(), limitMillis));
-				requestConfigBuilder.setConnectTimeout(ServiceClientRequestFactory.capTimeout(baseRequestConfig.getConnectTimeout(), limitMillis));
+				final Timeout ownConnectTimeout = baseRequestConfig.getConnectTimeout();
+				requestConfigBuilder.setConnectTimeout(ServiceClientRequestFactory.capTimeout(ownConnectTimeout, limitMillis));
+				ServiceClientRequestFactory.CONNECT_TIMEOUT_CUT.set((ownConnectTimeout == null) || ownConnectTimeout.isDisabled()
+						|| (ownConnectTimeout.toMilliseconds() > limitMillis));
 			}
 			actualRequestConfig = requestConfigBuilder.build();
 		}
