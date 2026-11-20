@@ -25,6 +25,7 @@ import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
@@ -148,6 +149,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private ServiceClientFailoverExecutor failoverExecutor;
+
+	/**
+	 * Endpoint resolver of the context (used by the generated clients).
+	 */
+	@Autowired
+	private ServiceClientEndpointResolver contextEndpointResolver;
 
 	/**
 	 * Object mapper.
@@ -673,11 +680,15 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * The context's failover executor has the shipped time budget.
+	 * The context's failover executor has the shipped time budget, and goes through
+	 * the context's endpoint resolver, which keeps a last list for the shipped 10
+	 * minutes.
 	 */
 	@Test
 	public void testShippedBudget() {
 		Assertions.assertEquals(Duration.ofSeconds(10), this.failoverExecutor.getMaxTotalTime());
+		Assertions.assertSame(this.contextEndpointResolver, this.failoverExecutor.getEndpointResolver());
+		Assertions.assertEquals(Duration.ofMinutes(10), this.contextEndpointResolver.getLastEndpointsMaxAge());
 	}
 
 	/**

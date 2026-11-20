@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -363,6 +364,23 @@ public class ServiceClientFailoverExecutorTest {
 	}
 
 	/**
+	 * A maximum age of zero, negative or none keeps a last list with no limit: it
+	 * still stands in for an empty list after a while.
+	 *
+	 * @throws InterruptedException If the wait is interrupted.
+	 */
+	@Test
+	public void testLastEndpointsNoMaxAge() throws InterruptedException {
+		for (final Duration maxAge : Arrays.asList(Duration.ZERO, Duration.ofSeconds(-1), null)) {
+			final ServiceClientEndpointResolver resolver = new ServiceClientEndpointResolver(maxAge, ServiceClientMetrics.NONE);
+			Assertions.assertFalse(resolver.getLastEndpointsMaxAge().isPositive());
+			resolver.resolve("UnlimitedClient", List.of("http://first"));
+			Thread.sleep(50);
+			Assertions.assertEquals(List.of("http://first"), resolver.resolve("UnlimitedClient", List.of()), Objects.toString(maxAge));
+		}
+	}
+
+	/**
 	 * A last list stands in for an empty one for at most its maximum age, then the
 	 * call fails at once; each call on a last list is counted.
 	 *
@@ -646,6 +664,33 @@ public class ServiceClientFailoverExecutorTest {
 		}
 		Assertions.assertEquals(List.of("10s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
 				.map(event -> event.getFormattedMessage().contains("time budget (10s)") ? "10s" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * A budget with a timeout scope of the service's own (not the library's) is
+	 * warned about when the executor is created, as the scope may not cap the
+	 * connection waits; with no budget it is not.
+	 */
+	@Test
+	public void testOwnScopeBudgetWarning() {
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxTotalTime : List.of("10s", "0")) {
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L,
+						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE),
+						ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("10s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("its own timeout scope") ? "10s" : event.getFormattedMessage()).toList());
 	}
 
 	/**
