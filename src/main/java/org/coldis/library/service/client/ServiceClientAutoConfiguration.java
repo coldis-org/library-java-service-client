@@ -1,6 +1,7 @@
 package org.coldis.library.service.client;
 
 import java.time.Duration;
+import java.util.Objects;
 
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -332,6 +333,11 @@ public class ServiceClientAutoConfiguration {
 	 * @param  readTimeoutSeconds       Read timeout of the default template
 	 *                                      (seconds; to warn when the budget leaves
 	 *                                      no room for a read timeout retry).
+	 * @param  connectTimeoutSeconds    Connect timeout of the default template
+	 *                                      (seconds; to warn when the budget can
+	 *                                      cut a first attempt's waits).
+	 * @param  connectionRequestTimeoutSeconds Wait for a pooled connection of the
+	 *                                      default template (seconds; same).
 	 * @param  balancer                 Endpoint balancer.
 	 * @param  endpointResolver         Endpoint resolver.
 	 * @param  readTimeoutScope         Scope that applies a call's own timeouts
@@ -359,6 +365,10 @@ public class ServiceClientAutoConfiguration {
 			final String maxTotalTime,
 			@Value(value = "${org.coldis.library.service-client.timeout}")
 			final Long readTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connect-timeout}")
+			final Long connectTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connection-request-timeout}")
+			final Long connectionRequestTimeoutSeconds,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
@@ -369,6 +379,15 @@ public class ServiceClientAutoConfiguration {
 			ServiceClientAutoConfiguration.LOGGER.warn(
 					"Service client failover uses its own timeout scope ({}), which does not apply the connection wait limit: its time budget ({}) stops further attempts, but does not cap an attempt's connection waits (override runWithTimeouts and appliesConnectionWaitLimit).",
 					readTimeoutScope.getClass().getName(), maxTotalTime);
+		}
+		// A first attempt's waits are taken as never cut by the budget (only its
+		// connect timeout starts a cooldown): the budget must cover them.
+		final Duration firstAttemptWaits = Duration.ofSeconds(Objects.requireNonNullElse(connectTimeoutSeconds, 0L))
+				.plusSeconds(Objects.requireNonNullElse(connectionRequestTimeoutSeconds, 0L));
+		if (actualMaxTotalTime.isPositive() && (actualMaxTotalTime.compareTo(firstAttemptWaits) < 0)) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover time budget ({}) is under the pool wait plus the connect timeout ({}s): it can cut a first attempt's connect timeout, which then puts a healthy endpoint in cooldown. Raise org.coldis.library.service-client.failover.max-total-time, or set it to 0.",
+					maxTotalTime, firstAttemptWaits.toSeconds());
 		}
 		// A read timeout retry needs room for two reads in the budget (only the
 		// shared read timeout is checked, not a client's own).

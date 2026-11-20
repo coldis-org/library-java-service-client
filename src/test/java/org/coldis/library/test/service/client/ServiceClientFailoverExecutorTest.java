@@ -731,7 +731,7 @@ public class ServiceClientFailoverExecutorTest {
 	public void testBudgetProperty() {
 		for (final Map.Entry<String, Duration> budget : Map.of("10s", Duration.ofSeconds(10), "0", Duration.ZERO, "1500ms", Duration.ofMillis(1500)).entrySet()) {
 			Assertions.assertEquals(budget.getValue(), new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null,
-					false, budget.getKey(), 9L, new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+					false, budget.getKey(), 9L, 3L, 5L, new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 					new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class)).getMaxTotalTime());
 		}
 	}
@@ -748,7 +748,7 @@ public class ServiceClientFailoverExecutorTest {
 		logger.addAppender(appender);
 		try {
 			for (final String maxTotalTime : List.of("10s", "18s", "0")) {
-				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true, maxTotalTime, 9L,
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true, maxTotalTime, 9L, 3L, 5L,
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
@@ -776,7 +776,7 @@ public class ServiceClientFailoverExecutorTest {
 		logger.addAppender(appender);
 		try {
 			for (final String maxTotalTime : List.of("10s", "0")) {
-				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L,
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE),
 						ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
@@ -788,6 +788,32 @@ public class ServiceClientFailoverExecutorTest {
 		}
 		Assertions.assertEquals(List.of("10s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
 				.map(event -> event.getFormattedMessage().contains("its own timeout scope") ? "10s" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * A budget under the pool wait plus the connect timeout (which could cut a first
+	 * attempt's waits) is warned about when the executor is created; one that
+	 * covers them, or none, is not.
+	 */
+	@Test
+	public void testShortBudgetWarning() {
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxTotalTime : List.of("1s", "8s", "0")) {
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
+						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("1s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("time budget (1s) is under the pool wait") ? "1s" : event.getFormattedMessage()).toList());
 	}
 
 	/**
@@ -1026,7 +1052,7 @@ public class ServiceClientFailoverExecutorTest {
 	 */
 	private static ServiceClientFailoverExecutor createExecutorBean(
 			final DefaultListableBeanFactory beanFactory) {
-		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, "10s", 9L,
+		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, "10s", 9L, 3L, 5L,
 				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 				beanFactory.getBeanProvider(ServiceClientMetrics.class));

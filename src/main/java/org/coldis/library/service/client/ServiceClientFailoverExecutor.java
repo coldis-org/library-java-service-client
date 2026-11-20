@@ -647,6 +647,8 @@ public class ServiceClientFailoverExecutor {
 	 * (the budget starts with it, and the shipped one exceeds the pool wait plus
 	 * the connect timeout), so its connect timeout is the endpoint's; a refused
 	 * connection, no route or an unknown host are the endpoint's on any attempt.
+	 * This holds while the budget covers the pool wait plus the connect timeout
+	 * (warned about at startup otherwise).
 	 *
 	 * @param  failure       Attempt failure ({@code null} if it succeeded).
 	 * @param  attemptIndex  Index of the attempt (from zero).
