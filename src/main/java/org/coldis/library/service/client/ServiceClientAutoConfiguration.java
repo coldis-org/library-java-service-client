@@ -302,6 +302,9 @@ public class ServiceClientAutoConfiguration {
 	 * @param  maxTotalTime             Time budget of an operation, over all its
 	 *                                      attempts (e.g. {@code 10s}; {@code 0}
 	 *                                      for none).
+	 * @param  readTimeoutSeconds       Read timeout of the default template
+	 *                                      (seconds; to warn when the budget leaves
+	 *                                      no room for a read timeout retry).
 	 * @param  balancer                 Endpoint balancer.
 	 * @param  readTimeoutScope         Scope that applies a call's own timeouts
 	 *                                      to its attempts.
@@ -326,11 +329,21 @@ public class ServiceClientAutoConfiguration {
 			final Boolean shouldRetryOnReadTimeout,
 			@Value(value = "${org.coldis.library.service-client.failover.max-total-time:10s}")
 			final String maxTotalTime,
+			@Value(value = "${org.coldis.library.service-client.timeout:9}")
+			final Long readTimeoutSeconds,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
+		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
+		// A read timeout retry needs room for two reads in the budget.
+		if (Boolean.TRUE.equals(shouldRetryOnReadTimeout) && actualMaxTotalTime.isPositive() && (readTimeoutSeconds != null)
+				&& (actualMaxTotalTime.compareTo(Duration.ofSeconds(readTimeoutSeconds).multipliedBy(2)) < 0)) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover retries read timeouts, but its time budget ({}) is under twice the read timeout ({}s): a read timeout spends most of it and is rarely retried. Raise org.coldis.library.service-client.failover.max-total-time, or set it to 0.",
+					maxTotalTime, readTimeoutSeconds);
+		}
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
-				DurationStyle.detectAndParse(maxTotalTime), balancer, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+				actualMaxTotalTime, balancer, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**

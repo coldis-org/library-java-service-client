@@ -645,20 +645,33 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	/**
 	 * A generated client whose endpoint list gets empty (as when its target has no
 	 * healthy instance left) keeps calling its last non-empty list, then takes the
-	 * new list when it is back.
-	 *
-	 * @throws Exception If the test fails.
+	 * new list when it is back: a refusing instance as the last list makes the
+	 * calls in the empty period fail on it (not on a missing host), and the working
+	 * one, once back, makes them succeed.
 	 */
 	@Test
-	public void testGeneratedClientKeepsLastEndpoints() throws Exception {
+	public void testGeneratedClientKeepsLastEndpoints() {
 		this.testService2Properties.setEndpoint("http://localhost:${local.server.port}");
-		this.testService2Client.test1();
+		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
 		for (final String emptyEndpoints : List.of("", " , ", ",")) {
 			this.testService2Properties.setEndpoint(emptyEndpoints);
-			this.testService2Client.test1();
+			Assertions.assertDoesNotThrow(() -> this.testService2Client.test1(), emptyEndpoints);
 		}
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.REFUSED_ENDPOINT);
+		Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+		this.testService2Properties.setEndpoint(" , ");
+		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+		Assertions.assertEquals("rest.operation.execution.error", exception.getInternalMessage().getCode());
 		this.testService2Properties.setEndpoint(" , http://localhost:${local.server.port} ,");
-		this.testService2Client.test1();
+		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
+	}
+
+	/**
+	 * The context's failover executor has the shipped time budget.
+	 */
+	@Test
+	public void testShippedBudget() {
+		Assertions.assertEquals(Duration.ofSeconds(10), this.failoverExecutor.getMaxTotalTime());
 	}
 
 	/**

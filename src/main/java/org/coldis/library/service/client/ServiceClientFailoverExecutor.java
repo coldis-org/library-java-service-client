@@ -20,6 +20,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -56,8 +58,10 @@ import org.springframework.web.client.RestOperations;
  * with no request.
  * <p>
  * The attempts of an operation share one time budget: no further attempt starts
- * once it is spent, and the wait for a pooled connection and for the connection
- * of every attempt is capped to what is left of it (the read timeout is not).
+ * once it is spent, and the wait for a pooled connection and the wait for the
+ * connection of every attempt are each capped to what is left of it when the
+ * attempt starts (the read timeout is not). The waits before a request is sent
+ * so stay under the budget plus one connect timeout.
  */
 public class ServiceClientFailoverExecutor {
 
@@ -78,6 +82,12 @@ public class ServiceClientFailoverExecutor {
 	 * Code of the failure of a call with no endpoint, ever.
 	 */
 	public static final String NO_ENDPOINTS_CODE = "service.client.endpoints.none";
+
+	/**
+	 * An absolute URL: its base (scheme, user information, host and port) and the
+	 * rest (path, query, fragment).
+	 */
+	private static final Pattern ABSOLUTE_URL = Pattern.compile("^([a-zA-Z][a-zA-Z0-9+.-]*://[^/?#\\s]+)(.*)$", Pattern.DOTALL);
 
 	/**
 	 * Failures that put the endpoint in its cooldown: the endpoint could not be
@@ -386,7 +396,8 @@ public class ServiceClientFailoverExecutor {
 	 * {@link #getAvailableEndpoints(List)}), kept as the target's last good list;
 	 * or, when none is left, the target's last good list (warned once, when the
 	 * list gets empty). A call with no target ({@link ServiceClientTarget#NONE})
-	 * has no last good list.
+	 * has no last good list. This records state: the list becomes the target's
+	 * last good one, and the transitions to and from an empty list are logged.
 	 *
 	 * @param  target               Target of the call.
 	 * @param  endpoints            Endpoints of the list ({@code null} for none).
@@ -680,7 +691,9 @@ public class ServiceClientFailoverExecutor {
 	 * attempt when the template buffers it. Attempts, retries, cooldowns and
 	 * requests in flight are recorded in the {@link ServiceClientMetrics}, under the
 	 * current thread's {@link ServiceClientTarget}. The endpoints come from
-	 * {@link #resolveEndpoints(String, List)} (no request when there are none).
+	 * {@link #resolveEndpoints(String, List)} (no request when there are none),
+	 * except that a path that is an absolute URL, with no endpoint in the list, is
+	 * called as is.
 	 * With a time budget, no further attempt starts once it is spent, and every
 	 * attempt waits for a pooled connection and for its connection no longer than
 	 * what is left of it (through the executor's
@@ -716,7 +729,12 @@ public class ServiceClientFailoverExecutor {
 			final RestOperations restTemplate) throws IntegrationException {
 		final long startNanos = System.nanoTime();
 		final String target = ServiceClientTarget.getCurrent();
-		final List<String> availableEndpoints = this.resolveEndpoints(target, endpoints);
+		// With no endpoint in the list, a path that is an absolute URL is called as
+		// is (its base as the only endpoint); it is not the target's list.
+		final Matcher absoluteUrl = ServiceClientFailoverExecutor.ABSOLUTE_URL.matcher(Objects.toString(path, ""));
+		final boolean isAbsolutePathCall = this.getAvailableEndpoints(endpoints).isEmpty() && absoluteUrl.matches();
+		final List<String> availableEndpoints = (isAbsolutePathCall ? List.of(absoluteUrl.group(1)) : this.resolveEndpoints(target, endpoints));
+		final String actualPath = (isAbsolutePathCall ? absoluteUrl.group(2) : Objects.toString(path, ""));
 		final boolean isBodyRepeatable = ServiceClientFailoverExecutor.isRepeatableBody(requestEntity.getBody());
 		final int maxAttemptsForCall = (isBodyRepeatable || !ServiceClientFailoverExecutor.isBufferingTemplate(restTemplate)
 				? this.getMaxAttempts(availableEndpoints.size())
@@ -726,7 +744,7 @@ public class ServiceClientFailoverExecutor {
 		Outcome<ResponseType> outcome = null;
 		for (int attemptIndex = 0; outcome == null; attemptIndex++) {
 			final String endpoint = this.chooseEndpoint(availableEndpoints, triedEndpoints);
-			final String url = endpoint + path;
+			final String url = endpoint + actualPath;
 			triedEndpoints.add(endpoint);
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(endpoint);
 			ResponseEntity<ResponseType> response = null;
@@ -755,6 +773,8 @@ public class ServiceClientFailoverExecutor {
 			}
 			else if (this.isTimeSpent(startNanos)) {
 				outcome = new Outcome<>(url, null, attemptFailure);
+				final String spentReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				this.recordMetrics(() -> this.metrics.recordBudgetSpent(target, spentReason));
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), and its time budget ({} ms) is spent: no other endpoint tried.",
 						method, ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall,
 						attemptFailure.getClass().getSimpleName(), this.maxTotalTime.toMillis());

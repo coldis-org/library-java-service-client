@@ -16,6 +16,7 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #ATTEMPTS} (counter; tags {@code target}, {@code outcome}).</li>
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
+ * <li>{@value #BUDGET_SPENT} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  */
@@ -35,6 +36,11 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * Cooldowns counter.
 	 */
 	public static final String COOLDOWNS = "service.client.cooldowns";
+
+	/**
+	 * Counter of operations not retried because their time budget was spent.
+	 */
+	public static final String BUDGET_SPENT = "service.client.budget.spent";
 
 	/**
 	 * Requests in flight gauge.
@@ -91,6 +97,16 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 			final String target,
 			final String reason) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.RETRIES, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordBudgetSpent(String, String)
+	 */
+	@Override
+	public void recordBudgetSpent(
+			final String target,
+			final String reason) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.BUDGET_SPENT, "target", target, "reason", reason).increment();
 	}
 
 	/**

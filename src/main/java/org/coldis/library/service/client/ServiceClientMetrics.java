@@ -43,6 +43,21 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records an operation that failed and was not retried on another endpoint
+	 * because its time budget was spent.
+	 *
+	 * @param target Target.
+	 * @param reason Kind of the last failure ({@code not-connected},
+	 *                   {@code status}, {@code read-timeout} or
+	 *                   {@code dropped}).
+	 */
+	default void recordBudgetSpent(
+			final String target,
+			final String reason) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records an endpoint put in its cooldown.
 	 *
 	 * @param target Target.
