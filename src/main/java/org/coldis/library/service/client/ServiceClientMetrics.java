@@ -51,7 +51,7 @@ public interface ServiceClientMetrics {
 	 *                   {@code status}, {@code read-timeout} or
 	 *                   {@code dropped}).
 	 */
-	default void recordBudgetSpent(
+	default void recordAttemptsStoppedByTimeLimit(
 			final String target,
 			final String reason) {
 		// Records nothing.
@@ -63,7 +63,7 @@ public interface ServiceClientMetrics {
 	 *
 	 * @param target Target.
 	 */
-	default void recordLastEndpointsCall(
+	default void recordCallOnPreviousEndpoints(
 			final String target) {
 		// Records nothing.
 	}

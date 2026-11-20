@@ -179,22 +179,22 @@ public class ServiceClientEndpointResolver {
 			}
 		}
 		else {
-			final LastEndpoints last = (hasTarget ? this.lastEndpoints.get(target) : null);
-			if (last == null) {
+			final LastEndpoints lastGoodEndpoints = (hasTarget ? this.lastEndpoints.get(target) : null);
+			if (lastGoodEndpoints == null) {
 				throw ServiceClientEndpointResolver.createNoEndpointsException(target, "");
 			}
-			if (this.lastEndpointsMaxAge.isPositive() && ((System.nanoTime() - last.seenNanos()) > this.lastEndpointsMaxAge.toNanos())) {
+			if (this.lastEndpointsMaxAge.isPositive() && ((System.nanoTime() - lastGoodEndpoints.seenNanos()) > this.lastEndpointsMaxAge.toNanos())) {
 				throw ServiceClientEndpointResolver.createNoEndpointsException(target,
 						" (its last list is older than " + this.lastEndpointsMaxAge.toSeconds() + "s)");
 			}
-			resolvedEndpoints = last.endpoints();
+			resolvedEndpoints = lastGoodEndpoints.endpoints();
 			if (this.targetsOnLastEndpoints.add(target)) {
 				ServiceClientEndpointResolver.LOGGER.warn(
 						"Endpoint list of {} is empty: its calls go to its last non-empty list ({} endpoints) until it is back, for at most {}.", target,
 						resolvedEndpoints.size(), this.lastEndpointsMaxAge.isPositive() ? this.lastEndpointsMaxAge.toSeconds() + "s" : "no limit");
 			}
 			try {
-				this.metrics.recordLastEndpointsCall(target);
+				this.metrics.recordCallOnPreviousEndpoints(target);
 			}
 			catch (final RuntimeException exception) {
 				ServiceClientEndpointResolver.LOGGER.debug("Service client metrics not recorded.", exception);

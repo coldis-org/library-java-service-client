@@ -450,7 +450,7 @@ public class ServiceClientFailoverExecutorTest {
 		resolver.resolve("AgedClient", List.of("http://first"));
 		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of()));
 		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of(" ")));
-		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.LAST_ENDPOINTS_CALLS).tag("target", "AgedClient").counter().count());
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.CALLS_ON_PREVIOUS_ENDPOINTS).tag("target", "AgedClient").counter().count());
 		Thread.sleep(300);
 		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> resolver.resolve("AgedClient", List.of()));
 		Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode());
@@ -468,17 +468,19 @@ public class ServiceClientFailoverExecutorTest {
 	 * cooldown.
 	 *
 	 * @param  maxTotalTime Time budget ({@code null} for none).
+	 * @param  scope        Timeout scope.
 	 * @param  failures     Failure of each attempt.
 	 * @return              The endpoints attempted, each with if it is in cooldown
 	 *                      (in the order of the attempts).
 	 */
 	private static List<Map.Entry<String, Boolean>> executeFailingAttempts(
 			final Duration maxTotalTime,
+			final ServiceClientReadTimeoutScope scope,
 			final List<RuntimeException> failures) {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
 		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false, maxTotalTime,
-				balancer, ServiceClientEndpointResolver.NO_MEMORY, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
+				balancer, ServiceClientEndpointResolver.NO_MEMORY, scope, ServiceClientMetrics.NONE);
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
 
@@ -520,21 +522,26 @@ public class ServiceClientFailoverExecutorTest {
 	 * With a time budget, only the first attempt of an operation (whose waits the
 	 * budget never cuts) starts an endpoint's cooldown on a connect timeout; a later
 	 * attempt's connect timeout, which the budget may have cut, starts none. A
-	 * refused connection starts it on any attempt; with no budget, a later
-	 * attempt's connect timeout does too.
+	 * refused connection starts it on any attempt; with no budget, or a scope that
+	 * does not apply it (so never cuts a wait), a later attempt's connect timeout
+	 * does too.
 	 */
 	@Test
 	public void testConnectTimeoutCooldownOnFirstAttemptOnly() {
-		final List<Map.Entry<String, Boolean>> timeouts = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+		final List<Map.Entry<String, Boolean>> timeouts = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
 		Assertions.assertEquals(List.of(true, false), timeouts.stream().map(Map.Entry::getValue).toList(), timeouts::toString);
-		final List<Map.Entry<String, Boolean>> laterRefused = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+		final List<Map.Entry<String, Boolean>> laterRefused = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createRefused()));
 		Assertions.assertEquals(List.of(true, true), laterRefused.stream().map(Map.Entry::getValue).toList(), laterRefused::toString);
-		final List<Map.Entry<String, Boolean>> noBudget = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ZERO,
+		final List<Map.Entry<String, Boolean>> noBudget = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ZERO, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 				List.of(ServiceClientFailoverExecutorTest.createRefused(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
 		Assertions.assertEquals(List.of(true, true), noBudget.stream().map(Map.Entry::getValue).toList(), noBudget::toString);
 		Assertions.assertEquals(2, noBudget.stream().map(Map.Entry::getKey).distinct().count());
+		final List<Map.Entry<String, Boolean>> uncappedScope = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+				ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
+				List.of(ServiceClientFailoverExecutorTest.createRefused(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, true), uncappedScope.stream().map(Map.Entry::getValue).toList(), uncappedScope::toString);
 	}
 
 	/**
@@ -712,7 +719,7 @@ public class ServiceClientFailoverExecutorTest {
 			previousLimit = connectionWaitLimit.get();
 		}
 		Assertions.assertTrue(connectionWaitLimits.get(connectionWaitLimits.size() - 1).get().compareTo(Duration.ofMillis(600)) <= 0);
-		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.BUDGET_SPENT).tag("target", ServiceClientTarget.NONE)
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.ATTEMPTS_STOPPED_BY_TIME_LIMIT).tag("target", ServiceClientTarget.NONE)
 				.tag("reason", "not-connected").counter().count());
 	}
 

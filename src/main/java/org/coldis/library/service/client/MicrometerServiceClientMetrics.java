@@ -16,8 +16,8 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #ATTEMPTS} (counter; tags {@code target}, {@code outcome}).</li>
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
- * <li>{@value #BUDGET_SPENT} (counter; tags {@code target}, {@code reason}).</li>
- * <li>{@value #LAST_ENDPOINTS_CALLS} (counter; tag {@code target}).</li>
+ * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
+ * <li>{@value #CALLS_ON_PREVIOUS_ENDPOINTS} (counter; tag {@code target}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  */
@@ -42,13 +42,13 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * Counter of operations whose further attempts were stopped because their total
 	 * time limit (budget) was spent.
 	 */
-	public static final String BUDGET_SPENT = "service.client.attempts.stopped.by.time.limit";
+	public static final String ATTEMPTS_STOPPED_BY_TIME_LIMIT = "service.client.attempts.stopped.by.time.limit";
 
 	/**
 	 * Counter of calls that went to their target's previous (last non-empty)
 	 * endpoint list, as its current one was empty.
 	 */
-	public static final String LAST_ENDPOINTS_CALLS = "service.client.calls.on.previous.endpoints";
+	public static final String CALLS_ON_PREVIOUS_ENDPOINTS = "service.client.calls.on.previous.endpoints";
 
 	/**
 	 * Requests in flight gauge.
@@ -108,22 +108,22 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	}
 
 	/**
-	 * @see ServiceClientMetrics#recordBudgetSpent(String, String)
+	 * @see ServiceClientMetrics#recordAttemptsStoppedByTimeLimit(String, String)
 	 */
 	@Override
-	public void recordBudgetSpent(
+	public void recordAttemptsStoppedByTimeLimit(
 			final String target,
 			final String reason) {
-		this.meterRegistry.counter(MicrometerServiceClientMetrics.BUDGET_SPENT, "target", target, "reason", reason).increment();
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.ATTEMPTS_STOPPED_BY_TIME_LIMIT, "target", target, "reason", reason).increment();
 	}
 
 	/**
-	 * @see ServiceClientMetrics#recordLastEndpointsCall(String)
+	 * @see ServiceClientMetrics#recordCallOnPreviousEndpoints(String)
 	 */
 	@Override
-	public void recordLastEndpointsCall(
+	public void recordCallOnPreviousEndpoints(
 			final String target) {
-		this.meterRegistry.counter(MicrometerServiceClientMetrics.LAST_ENDPOINTS_CALLS, "target", target).increment();
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.CALLS_ON_PREVIOUS_ENDPOINTS, "target", target).increment();
 	}
 
 	/**

@@ -642,8 +642,8 @@ public class ServiceClientFailoverExecutor {
 
 	/**
 	 * Gets if an attempt failed on a connect timeout that may have been cut short
-	 * by the time budget: a later attempt of an operation with a budget (its waits
-	 * are capped to what is left of it). The first attempt's waits are never cut
+	 * by the time budget: a later attempt of an operation with a budget, through a
+	 * scope that applies it (its waits are then capped to what is left of it). The first attempt's waits are never cut
 	 * (the budget starts with it, and the shipped one exceeds the pool wait plus
 	 * the connect timeout), so its connect timeout is the endpoint's; a refused
 	 * connection, no route or an unknown host are the endpoint's on any attempt.
@@ -655,11 +655,11 @@ public class ServiceClientFailoverExecutor {
 	 * @return               If the attempt failed on a connect timeout the budget
 	 *                       may have cut.
 	 */
-	private static boolean isConnectMaybeCutByBudget(
+	private boolean isConnectMaybeCutByBudget(
 			final Exception failure,
 			final int attemptIndex,
 			final Duration remainingTime) {
-		return (failure != null) && (attemptIndex > 0) && (remainingTime != null)
+		return (failure != null) && (attemptIndex > 0) && (remainingTime != null) && this.readTimeoutScope.appliesConnectionWaitLimit()
 				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class));
 	}
 
@@ -758,7 +758,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !ServiceClientFailoverExecutor.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
+					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
@@ -768,7 +768,7 @@ public class ServiceClientFailoverExecutor {
 			else if (this.isTimeSpent(startNanos)) {
 				outcome = new Outcome<>(url, null, attemptFailure);
 				final String spentReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
-				this.recordMetrics(() -> this.metrics.recordBudgetSpent(target, spentReason));
+				this.recordMetrics(() -> this.metrics.recordAttemptsStoppedByTimeLimit(target, spentReason));
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), and its time budget ({} ms) is spent: no other endpoint tried.",
 						method, ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall,
 						attemptFailure.getClass().getSimpleName(), this.maxTotalTime.toMillis());

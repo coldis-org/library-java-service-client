@@ -718,7 +718,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
 
 					@Override
-					public void recordBudgetSpent(
+					public void recordAttemptsStoppedByTimeLimit(
 							final String target,
 							final String reason) {
 						spentReasons.add(reason);
