@@ -380,12 +380,17 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Gets the endpoints of a list: trimmed, without blank or repeated ones (empty
-	 * when none is left).
+	 * Gets the endpoints of a list: trimmed, without blank or repeated ones. When
+	 * none is left, the list is now empty (it used to hold one blank endpoint, the
+	 * path then being the whole URL).
 	 *
-	 * @param  endpoints Endpoints of the list ({@code null} for none).
-	 * @return           The endpoints of the list.
+	 * @param      endpoints Endpoints of the list ({@code null} for none).
+	 * @return               The endpoints of the list.
+	 * @deprecated           Use
+	 *                           {@link ServiceClientEndpointResolver#getAvailableEndpoints(List)}
+	 *                           (same result).
 	 */
+	@Deprecated
 	public List<String> getAvailableEndpoints(
 			final List<String> endpoints) {
 		return ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
@@ -715,7 +720,7 @@ public class ServiceClientFailoverExecutor {
 		// With no endpoint in the list, a path that is an absolute URL is called as
 		// is (its base as the only endpoint); it is not the target's list.
 		final Matcher absoluteUrl = ServiceClientFailoverExecutor.ABSOLUTE_URL.matcher(Objects.toString(path, ""));
-		final boolean isAbsolutePathCall = this.getAvailableEndpoints(endpoints).isEmpty() && absoluteUrl.matches();
+		final boolean isAbsolutePathCall = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints).isEmpty() && absoluteUrl.matches();
 		final List<String> availableEndpoints = (isAbsolutePathCall ? List.of(absoluteUrl.group(1)) : this.endpointResolver.resolve(target, endpoints));
 		final String actualPath = (isAbsolutePathCall ? absoluteUrl.group(2) : Objects.toString(path, ""));
 		final boolean isBodyRepeatable = ServiceClientFailoverExecutor.isRepeatableBody(requestEntity.getBody());

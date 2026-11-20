@@ -27,6 +27,7 @@ import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -155,6 +156,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private ServiceClientEndpointResolver contextEndpointResolver;
+
+	/**
+	 * Timeout scope of the context (used by the failover executor).
+	 */
+	@Autowired
+	private ServiceClientReadTimeoutScope contextReadTimeoutScope;
 
 	/**
 	 * Object mapper.
@@ -706,6 +713,8 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(Duration.ofSeconds(10), this.failoverExecutor.getMaxTotalTime());
 		Assertions.assertSame(this.contextEndpointResolver, this.failoverExecutor.getEndpointResolver());
 		Assertions.assertEquals(Duration.ofMinutes(10), this.contextEndpointResolver.getLastEndpointsMaxAge());
+		// The context's timeout scope applies the budget's limit to each attempt.
+		Assertions.assertTrue(this.contextReadTimeoutScope.appliesConnectionWaitLimit());
 	}
 
 	/**
@@ -827,9 +836,9 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	public void testAttemptLimits() {
 		final List<String> endpoints = List.of("http://first", "http://second", "http://third", "http://fourth");
 		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
-		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints).size()));
-		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
-		Assertions.assertEquals(List.of(), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
+		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(ServiceClientEndpointResolver.getAvailableEndpoints(endpoints).size()));
+		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(ServiceClientEndpointResolver.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
+		Assertions.assertEquals(List.of(), ServiceClientEndpointResolver.getAvailableEndpoints(List.of(" ", "")));
 		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" },
 				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(1, disabledExecutor.getMaxAttempts(endpoints.size()));

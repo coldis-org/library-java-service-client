@@ -190,8 +190,8 @@ public class ServiceClientEndpointResolver {
 			resolvedEndpoints = last.endpoints();
 			if (this.targetsOnLastEndpoints.add(target)) {
 				ServiceClientEndpointResolver.LOGGER.warn(
-						"Endpoint list of {} is empty: its calls go to its last non-empty list ({} endpoints) until it is back, for at most {}s.", target,
-						resolvedEndpoints.size(), this.lastEndpointsMaxAge.isPositive() ? this.lastEndpointsMaxAge.toSeconds() : "(no limit)");
+						"Endpoint list of {} is empty: its calls go to its last non-empty list ({} endpoints) until it is back, for at most {}.", target,
+						resolvedEndpoints.size(), this.lastEndpointsMaxAge.isPositive() ? this.lastEndpointsMaxAge.toSeconds() + "s" : "no limit");
 			}
 			try {
 				this.metrics.recordLastEndpointsCall(target);

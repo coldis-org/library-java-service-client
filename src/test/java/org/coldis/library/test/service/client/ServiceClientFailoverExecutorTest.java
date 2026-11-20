@@ -222,7 +222,7 @@ public class ServiceClientFailoverExecutorTest {
 	@Test
 	public void testRepeatedEndpoints() {
 		Assertions.assertEquals(List.of("http://first", "http://second"),
-				ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of("http://first", " http://first ", "http://second", "")));
+				ServiceClientEndpointResolver.getAvailableEndpoints(List.of("http://first", " http://first ", "http://second", "")));
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.execute(List.of("http://first", " http://first ", "http://second"), HttpMethod.GET, null,
 				new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE), attemptedUrls);
@@ -395,6 +395,14 @@ public class ServiceClientFailoverExecutorTest {
 				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
 		Assertions.assertEquals(List.of("https://user@host:8443/base/{id}?query={query}", "http://host"), attemptedUrls);
 		Assertions.assertThrows(IntegrationException.class, () -> executor.getEndpointResolver().resolve("AbsoluteClient", List.of()));
+		// The absolute URL wins over a last list the target has, and keeps it.
+		attemptedUrls.clear();
+		ServiceClientFailoverExecutorTest.executeFor(executor, "AbsoluteClient", List.of("http://first"), attemptedUrls);
+		ServiceClientTarget.runFor("AbsoluteClient", () -> executor.executeOverEndpoints(List.of(), "http://host/other", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
+		Assertions.assertEquals(List.of("http://first/path", "http://host/other"), attemptedUrls);
+		Assertions.assertEquals(List.of("http://first"), executor.getEndpointResolver().resolve("AbsoluteClient", List.of()));
 		// A refused connection to such a URL puts its host in no cooldown: it is no
 		// listed instance.
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
