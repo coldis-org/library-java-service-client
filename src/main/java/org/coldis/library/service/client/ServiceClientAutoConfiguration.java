@@ -299,9 +299,12 @@ public class ServiceClientAutoConfiguration {
 	 *                                      its cooldown (none by default).
 	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                      operations.
+	 * @param  maxTotalTime             Time budget of an operation, over all its
+	 *                                      attempts (e.g. {@code 10s}; {@code 0}
+	 *                                      for none).
 	 * @param  balancer                 Endpoint balancer.
-	 * @param  readTimeoutScope         Scope that applies a call's own read
-	 *                                      timeout to its attempts.
+	 * @param  readTimeoutScope         Scope that applies a call's own timeouts
+	 *                                      to its attempts.
 	 * @param  metricsProvider          Metrics provider (the first by order; none
 	 *                                      without Micrometer).
 	 * @return                          The service client failover executor.
@@ -321,11 +324,13 @@ public class ServiceClientAutoConfiguration {
 			final String[] cooldownStatuses,
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
 			final Boolean shouldRetryOnReadTimeout,
+			@Value(value = "${org.coldis.library.service-client.failover.max-total-time:10s}")
+			final String maxTotalTime,
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
-		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
-				readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
+				DurationStyle.detectAndParse(maxTotalTime), balancer, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**

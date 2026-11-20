@@ -643,6 +643,25 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
+	 * A generated client whose endpoint list gets empty (as when its target has no
+	 * healthy instance left) keeps calling its last non-empty list, then takes the
+	 * new list when it is back.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testGeneratedClientKeepsLastEndpoints() throws Exception {
+		this.testService2Properties.setEndpoint("http://localhost:${local.server.port}");
+		this.testService2Client.test1();
+		for (final String emptyEndpoints : List.of("", " , ", ",")) {
+			this.testService2Properties.setEndpoint(emptyEndpoints);
+			this.testService2Client.test1();
+		}
+		this.testService2Properties.setEndpoint(" , http://localhost:${local.server.port} ,");
+		this.testService2Client.test1();
+	}
+
+	/**
 	 * Under concurrent load, a slow instance gets fewer requests than the fast ones
 	 * (fewer requests in flight wins).
 	 *
@@ -763,7 +782,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints).size()));
 		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
-		Assertions.assertEquals(List.of(""), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
+		Assertions.assertEquals(List.of(), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
 		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" },
 				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(1, disabledExecutor.getMaxAttempts(endpoints.size()));

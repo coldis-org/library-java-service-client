@@ -409,7 +409,10 @@ public class GenericRestServiceClient {
 	 * status (502, 503, 504 by default) only for idempotent operations; anything
 	 * else is not retried. Exception
 	 * handling ({@link #autoHandleExecutionExceptions} and the mapping to business
-	 * and integration exceptions) runs once, after the last attempt.
+	 * and integration exceptions) runs once, after the last attempt. An empty
+	 * endpoint list goes to the target's last non-empty one, and fails at once
+	 * (no request) when the target never had one; the attempts share the
+	 * executor's time budget (see {@link ServiceClientFailoverExecutor}).
 	 *
 	 * @param  <ResponseType>       REST operation response type.
 	 * @param  endpoints            Endpoints (base URLs) to try.

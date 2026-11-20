@@ -279,7 +279,7 @@ public class ServiceClientEndpointBalancer {
 	 */
 	public void startCooldown(
 			final String endpoint) {
-		// A blank endpoint (no list: the path is the whole URL) is not one instance.
+		// A blank endpoint is not one instance (the failover executor never passes one).
 		if (Strategy.LEAST_IN_FLIGHT.equals(this.strategy) && (this.failureCooldownNanos > 0) && StringUtils.isNotBlank(endpoint)) {
 			final long now = System.nanoTime();
 			this.pruneIdleEndpoints();
