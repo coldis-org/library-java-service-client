@@ -463,60 +463,78 @@ public class ServiceClientFailoverExecutorTest {
 	}
 
 	/**
-	 * Executes a call on one endpoint, with a budget, that fails on a connect
-	 * timeout, through a scope that says if the budget cut the connect timeout.
+	 * Executes a GET over two endpoints, with a time budget (or none), whose
+	 * attempts fail in turn with the given failures, and gets the endpoints put in
+	 * cooldown.
 	 *
-	 * @param balancer            Balancer.
-	 * @param isConnectTimeoutCut If the scope says the budget cut the connect
-	 *                                timeout.
+	 * @param  maxTotalTime Time budget ({@code null} for none).
+	 * @param  failures     Failure of each attempt.
+	 * @return              The endpoints attempted, each with if it is in cooldown
+	 *                      (in the order of the attempts).
 	 */
-	private static void executeConnectTimeout(
-			final ServiceClientEndpointBalancer balancer,
-			final boolean isConnectTimeoutCut) {
-		final ServiceClientReadTimeoutScope scope = new ServiceClientReadTimeoutScope() {
+	private static List<Map.Entry<String, Boolean>> executeFailingAttempts(
+			final Duration maxTotalTime,
+			final List<RuntimeException> failures) {
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false, maxTotalTime,
+				balancer, ServiceClientEndpointResolver.NO_MEMORY, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
 
 			@Override
-			public <ResultType> ResultType runWithReadTimeout(
-					final RestOperations template,
-					final Duration readTimeout,
-					final Supplier<ResultType> action) {
-				return action.get();
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				throw failures.get(attemptedUrls.size() - 1);
 			}
-
-			@Override
-			public boolean isLastConnectTimeoutCut() {
-				return isConnectTimeoutCut;
-			}
-
-			@Override
-			public boolean appliesConnectionWaitLimit() {
-				return true;
-			}
-
 		};
-		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 1, new String[] { "GET" }, null, null, false, Duration.ofSeconds(10),
-				balancer, ServiceClientEndpointResolver.NO_MEMORY, scope, ServiceClientMetrics.NONE);
-		executor.executeOverEndpoints(List.of("http://first"), "/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
-				Map.of(), null, null, ServiceClientFailoverExecutorTest.createFailingTemplate(
-						new ResourceAccessException("Connect timed out.", new ConnectTimeoutException("Connect timed out.")), new CopyOnWriteArrayList<>()));
+		executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, template);
+		return attemptedUrls.stream().map(url -> url.replace("/path", "")).map(endpoint -> Map.entry(endpoint, balancer.isCoolingDown(endpoint))).toList();
 	}
 
 	/**
-	 * A connect timeout the time budget cut short (as the timeout scope says) puts
-	 * the endpoint in no cooldown: the budget ended it, not the endpoint. A connect
-	 * timeout of the endpoint's own (not cut, however long the attempt took, as
-	 * after a long wait for a pooled connection) does.
+	 * Creates a connect timeout failure.
+	 *
+	 * @return The failure.
+	 */
+	private static RuntimeException createConnectTimeout() {
+		return new ResourceAccessException("Connect timed out.", new ConnectTimeoutException("Connect timed out."));
+	}
+
+	/**
+	 * Creates a refused connection failure.
+	 *
+	 * @return The failure.
+	 */
+	private static RuntimeException createRefused() {
+		return new ResourceAccessException("Refused.", new ConnectException("Refused."));
+	}
+
+	/**
+	 * With a time budget, only the first attempt of an operation (whose waits the
+	 * budget never cuts) starts an endpoint's cooldown on a connect timeout; a later
+	 * attempt's connect timeout, which the budget may have cut, starts none. A
+	 * refused connection starts it on any attempt; with no budget, a later
+	 * attempt's connect timeout does too.
 	 */
 	@Test
-	public void testBudgetCutConnectStartsNoCooldown() {
-		final ServiceClientEndpointBalancer cutBalancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
-				Duration.ofSeconds(10));
-		ServiceClientFailoverExecutorTest.executeConnectTimeout(cutBalancer, true);
-		Assertions.assertEquals(0, cutBalancer.getCooldownEndpointsCount());
-		final ServiceClientEndpointBalancer ownBalancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
-				Duration.ofSeconds(10));
-		ServiceClientFailoverExecutorTest.executeConnectTimeout(ownBalancer, false);
-		Assertions.assertTrue(ownBalancer.isCoolingDown("http://first"));
+	public void testConnectTimeoutCooldownOnFirstAttemptOnly() {
+		final List<Map.Entry<String, Boolean>> timeouts = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, false), timeouts.stream().map(Map.Entry::getValue).toList(), timeouts::toString);
+		final List<Map.Entry<String, Boolean>> laterRefused = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createRefused()));
+		Assertions.assertEquals(List.of(true, true), laterRefused.stream().map(Map.Entry::getValue).toList(), laterRefused::toString);
+		final List<Map.Entry<String, Boolean>> noBudget = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ZERO,
+				List.of(ServiceClientFailoverExecutorTest.createRefused(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, true), noBudget.stream().map(Map.Entry::getValue).toList(), noBudget::toString);
+		Assertions.assertEquals(2, noBudget.stream().map(Map.Entry::getKey).distinct().count());
 	}
 
 	/**
@@ -870,12 +888,9 @@ public class ServiceClientFailoverExecutorTest {
 			Assertions.assertEquals(1500, cappedConfig.getConnectionRequestTimeout().toMilliseconds());
 			Assertions.assertEquals(1500, cappedConfig.getConnectTimeout().toMilliseconds());
 			Assertions.assertEquals(9000, cappedConfig.getResponseTimeout().toMilliseconds());
-			Assertions.assertTrue(ServiceClientRequestFactory.READ_TIMEOUT_SCOPE.isLastConnectTimeoutCut());
-			// A limit that cuts the pool wait only leaves the connect timeout uncut.
 			final RequestConfig partlyCappedConfig = ServiceClientRequestFactory.runWithConnectionWaitLimit(Duration.ofSeconds(4), factory::getRequestConfig);
 			Assertions.assertEquals(4000, partlyCappedConfig.getConnectionRequestTimeout().toMilliseconds());
 			Assertions.assertEquals(3000, partlyCappedConfig.getConnectTimeout().toMilliseconds());
-			Assertions.assertFalse(ServiceClientRequestFactory.isLastConnectTimeoutCut());
 			final RequestConfig spentConfig = ServiceClientRequestFactory.runWithConnectionWaitLimit(Duration.ofMillis(-5), factory::getRequestConfig);
 			Assertions.assertEquals(1, spentConfig.getConnectionRequestTimeout().toMilliseconds());
 			// Outside the scope, the factory's own waits are back.

@@ -59,19 +59,6 @@ public interface ServiceClientReadTimeoutScope {
 	}
 
 	/**
-	 * Gets if the connection wait limit cut the connect timeout of the last
-	 * request the current thread made in
-	 * {@link #runWithTimeouts(RestOperations, Duration, Duration, Supplier)} (the
-	 * default, which applies no limit, never does). A connect timeout of such a
-	 * request says nothing about the endpoint.
-	 *
-	 * @return If the limit cut the last request's connect timeout.
-	 */
-	default boolean isLastConnectTimeoutCut() {
-		return false;
-	}
-
-	/**
 	 * Gets if the scope applies the connection wait limit of
 	 * {@link #runWithTimeouts(RestOperations, Duration, Duration, Supplier)} (the
 	 * default does not). A scope that overrides that method to apply the limit

@@ -608,7 +608,8 @@ public class ServiceClientFailoverExecutor {
 	 * endpoint that answered anything else ends it (if the request was sent after
 	 * the cooldown started). An attempt that says nothing about the endpoint's
 	 * health (the base of an absolute path, which is no listed instance, or a
-	 * connect timeout cut short by the time budget) starts none.
+	 * connect timeout of a later attempt, which the time budget may have cut)
+	 * starts none.
 	 *
 	 * @param target           Target of the call (for the metrics).
 	 * @param inFlightRequest  The attempt's request.
@@ -640,23 +641,26 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Gets if an attempt failed on a connect timeout cut short by the time budget:
-	 * the executor's {@link ServiceClientReadTimeoutScope} says the budget's limit
-	 * cut the attempt's connect timeout below the endpoint's own, so the limit, not
-	 * the endpoint, ended it. A scope that applies no limit never cuts it.
+	 * Gets if an attempt failed on a connect timeout that may have been cut short
+	 * by the time budget: a later attempt of an operation with a budget (its waits
+	 * are capped to what is left of it). The first attempt's waits are never cut
+	 * (the budget starts with it, and the shipped one exceeds the pool wait plus
+	 * the connect timeout), so its connect timeout is the endpoint's; a refused
+	 * connection, no route or an unknown host are the endpoint's on any attempt.
 	 *
 	 * @param  failure       Attempt failure ({@code null} if it succeeded).
+	 * @param  attemptIndex  Index of the attempt (from zero).
 	 * @param  remainingTime Connection wait limit of the attempt ({@code null}
 	 *                           with no budget).
-	 * @return               If the attempt failed on a connect timeout cut short by
-	 *                       the budget.
+	 * @return               If the attempt failed on a connect timeout the budget
+	 *                       may have cut.
 	 */
-	private boolean isConnectCutByBudget(
+	private static boolean isConnectMaybeCutByBudget(
 			final Exception failure,
+			final int attemptIndex,
 			final Duration remainingTime) {
-		return (failure != null) && (remainingTime != null)
-				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class))
-				&& this.readTimeoutScope.isLastConnectTimeoutCut();
+		return (failure != null) && (attemptIndex > 0) && (remainingTime != null)
+				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class));
 	}
 
 	/**
@@ -754,7 +758,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !this.isConnectCutByBudget(attemptFailure, remainingTime), attemptFailure);
+					!isAbsolutePathCall && !ServiceClientFailoverExecutor.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
