@@ -17,6 +17,7 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
  * <li>{@value #BUDGET_SPENT} (counter; tags {@code target}, {@code reason}).</li>
+ * <li>{@value #LAST_ENDPOINTS_CALLS} (counter; tag {@code target}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  */
@@ -41,6 +42,11 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * Counter of operations not retried because their time budget was spent.
 	 */
 	public static final String BUDGET_SPENT = "service.client.budget.spent";
+
+	/**
+	 * Counter of calls that went to their target's last good endpoint list.
+	 */
+	public static final String LAST_ENDPOINTS_CALLS = "service.client.endpoints.last";
 
 	/**
 	 * Requests in flight gauge.
@@ -107,6 +113,15 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 			final String target,
 			final String reason) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.BUDGET_SPENT, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordLastEndpointsCall(String)
+	 */
+	@Override
+	public void recordLastEndpointsCall(
+			final String target) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.LAST_ENDPOINTS_CALLS, "target", target).increment();
 	}
 
 	/**

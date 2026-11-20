@@ -662,6 +662,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		this.testService2Properties.setEndpoint(" , ");
 		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
 		Assertions.assertEquals("rest.operation.execution.error", exception.getInternalMessage().getCode());
+		// It failed on the refusing endpoint: a refused connection, not a missing host.
+		boolean isRefused = false;
+		for (Throwable cause = exception; (cause != null) && !isRefused; cause = cause.getCause()) {
+			isRefused = (cause instanceof java.net.ConnectException);
+		}
+		Assertions.assertTrue(isRefused, exception::toString);
 		this.testService2Properties.setEndpoint(" , http://localhost:${local.server.port} ,");
 		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
 	}

@@ -8,7 +8,9 @@ import org.springframework.web.client.RestOperations;
 /**
  * Scope in which a call's requests use a read timeout of its own (a generated
  * client's), instead of the template's, and, optionally, a shorter wait for a
- * connection (the rest of the operation's time budget).
+ * pooled connection and for the connection, before the request is sent (the
+ * rest of the operation's time budget; see
+ * {@link #runWithTimeouts(RestOperations, Duration, Duration, Supplier)}).
  */
 @FunctionalInterface
 public interface ServiceClientReadTimeoutScope {

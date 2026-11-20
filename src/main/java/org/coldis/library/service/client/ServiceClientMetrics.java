@@ -58,6 +58,17 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records a call that went to its target's last good endpoint list (its list
+	 * was empty).
+	 *
+	 * @param target Target.
+	 */
+	default void recordLastEndpointsCall(
+			final String target) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records an endpoint put in its cooldown.
 	 *
 	 * @param target Target.

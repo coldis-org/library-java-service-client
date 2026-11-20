@@ -274,6 +274,27 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the service client endpoint resolver (a service may declare its
+	 * own).
+	 *
+	 * @param  lastEndpointsMaxAge How long a target's last good endpoint list
+	 *                                 stands in for an empty one (e.g.
+	 *                                 {@code 10m}; {@code 0} for no limit).
+	 * @param  metricsProvider     Metrics provider (the first by order; none
+	 *                                 without Micrometer).
+	 * @return                     The service client endpoint resolver.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientEndpointResolver serviceClientEndpointResolver(
+			@Value(value = "${org.coldis.library.service-client.failover.last-endpoints-max-age:10m}")
+			final String lastEndpointsMaxAge,
+			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
+		return new ServiceClientEndpointResolver(DurationStyle.detectAndParse(lastEndpointsMaxAge),
+				metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+	}
+
+	/**
 	 * Creates the scope that applies a generated client's own read timeout: the
 	 * one of {@link ServiceClientRequestFactory}, the default template's factory.
 	 * The scope and the template's request factory come as a pair: a replacement
@@ -306,6 +327,7 @@ public class ServiceClientAutoConfiguration {
 	 *                                      (seconds; to warn when the budget leaves
 	 *                                      no room for a read timeout retry).
 	 * @param  balancer                 Endpoint balancer.
+	 * @param  endpointResolver         Endpoint resolver.
 	 * @param  readTimeoutScope         Scope that applies a call's own timeouts
 	 *                                      to its attempts.
 	 * @param  metricsProvider          Metrics provider (the first by order; none
@@ -329,13 +351,21 @@ public class ServiceClientAutoConfiguration {
 			final Boolean shouldRetryOnReadTimeout,
 			@Value(value = "${org.coldis.library.service-client.failover.max-total-time:10s}")
 			final String maxTotalTime,
-			@Value(value = "${org.coldis.library.service-client.timeout:9}")
+			@Value(value = "${org.coldis.library.service-client.timeout}")
 			final Long readTimeoutSeconds,
 			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
 		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
-		// A read timeout retry needs room for two reads in the budget.
+		// The per-attempt cap of the budget needs the library's scope.
+		if (actualMaxTotalTime.isPositive() && (readTimeoutScope != ServiceClientRequestFactory.READ_TIMEOUT_SCOPE)) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover uses its own timeout scope ({}): its time budget ({}) stops further attempts, but caps an attempt's connection waits only if the scope applies the limit (runWithTimeouts).",
+					readTimeoutScope.getClass().getName(), maxTotalTime);
+		}
+		// A read timeout retry needs room for two reads in the budget (only the
+		// shared read timeout is checked, not a client's own).
 		if (Boolean.TRUE.equals(shouldRetryOnReadTimeout) && actualMaxTotalTime.isPositive() && (readTimeoutSeconds != null)
 				&& (actualMaxTotalTime.compareTo(Duration.ofSeconds(readTimeoutSeconds).multipliedBy(2)) < 0)) {
 			ServiceClientAutoConfiguration.LOGGER.warn(
@@ -343,7 +373,7 @@ public class ServiceClientAutoConfiguration {
 					maxTotalTime, readTimeoutSeconds);
 		}
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
-				actualMaxTotalTime, balancer, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+				actualMaxTotalTime, balancer, endpointResolver, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**
