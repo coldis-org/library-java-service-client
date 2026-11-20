@@ -36,28 +36,6 @@ public class ServiceClientEndpointResolver {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientEndpointResolver.class);
 
 	/**
-	 * Resolver that keeps no last list (a call with an empty list fails at once):
-	 * for the executor used when none is configured, so it holds no state.
-	 */
-	public static final ServiceClientEndpointResolver NO_MEMORY = new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE) {
-
-		/**
-		 * @see ServiceClientEndpointResolver#resolve(String, List)
-		 */
-		@Override
-		public List<String> resolve(
-				final String target,
-				final List<String> endpoints) throws IntegrationException {
-			final List<String> availableEndpoints = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
-			if (availableEndpoints.isEmpty()) {
-				throw ServiceClientEndpointResolver.createNoEndpointsException(target, "");
-			}
-			return availableEndpoints;
-		}
-
-	};
-
-	/**
 	 * Last non-empty endpoint list of a target.
 	 *
 	 * @param endpoints Endpoints (not empty).
@@ -91,7 +69,36 @@ public class ServiceClientEndpointResolver {
 	private final Set<String> targetsOnLastEndpoints = ConcurrentHashMap.newKeySet();
 
 	/**
+	 * If the resolver keeps the last non-empty list of each target.
+	 */
+	private final boolean keepsLastEndpoints;
+
+	/**
+	 * Resolver that keeps no last list (a call with an empty list fails at once):
+	 * for the executor used when none is configured, so it holds no state.
+	 */
+	public static final ServiceClientEndpointResolver WITHOUT_LAST_ENDPOINTS = new ServiceClientEndpointResolver(false, Duration.ZERO,
+			ServiceClientMetrics.NONE);
+
+	/**
 	 * Constructor.
+	 *
+	 * @param keepsLastEndpoints  If the resolver keeps the last non-empty list of
+	 *                                each target.
+	 * @param lastEndpointsMaxAge How long a last list stands in for an empty one
+	 *                                ({@code null}, zero or negative for no
+	 *                                limit; not used without last lists).
+	 * @param metrics             Metrics.
+	 */
+	private ServiceClientEndpointResolver(final boolean keepsLastEndpoints, final Duration lastEndpointsMaxAge, final ServiceClientMetrics metrics) {
+		super();
+		this.keepsLastEndpoints = keepsLastEndpoints;
+		this.lastEndpointsMaxAge = (lastEndpointsMaxAge == null ? Duration.ZERO : lastEndpointsMaxAge);
+		this.metrics = Objects.requireNonNull(metrics, "metrics");
+	}
+
+	/**
+	 * Constructor of a resolver that keeps the last non-empty list of each target.
 	 *
 	 * @param lastEndpointsMaxAge How long a last list stands in for an empty one
 	 *                                ({@code null}, zero or negative for no
@@ -99,16 +106,23 @@ public class ServiceClientEndpointResolver {
 	 * @param metrics             Metrics.
 	 */
 	public ServiceClientEndpointResolver(final Duration lastEndpointsMaxAge, final ServiceClientMetrics metrics) {
-		super();
-		this.lastEndpointsMaxAge = (lastEndpointsMaxAge == null ? Duration.ZERO : lastEndpointsMaxAge);
-		this.metrics = Objects.requireNonNull(metrics, "metrics");
+		this(true, lastEndpointsMaxAge, metrics);
+	}
+
+	/**
+	 * Gets if the resolver keeps the last non-empty list of each target.
+	 *
+	 * @return If the resolver keeps the last non-empty list of each target.
+	 */
+	public boolean isKeepingLastEndpoints() {
+		return this.keepsLastEndpoints;
 	}
 
 	/**
 	 * Gets how long a last list stands in for an empty one.
 	 *
 	 * @return How long a last list stands in for an empty one (zero or negative
-	 *         for no limit).
+	 *         for no limit; not used when the resolver keeps no last list).
 	 */
 	public Duration getLastEndpointsMaxAge() {
 		return this.lastEndpointsMaxAge;
@@ -154,7 +168,8 @@ public class ServiceClientEndpointResolver {
 	 * {@link #getAvailableEndpoints(List)}), kept as the target's last good list;
 	 * or, when none is left, the target's last good list, if it is not older than
 	 * the maximum age (warned once, when the list gets empty). A call with no
-	 * target ({@link ServiceClientTarget#NONE}) has no last good list.
+	 * target ({@link ServiceClientTarget#NONE}), or on a resolver that keeps no
+	 * last list, has no last good list.
 	 *
 	 * @param  target               Target of the call.
 	 * @param  endpoints            Endpoints of the list ({@code null} for none).
@@ -166,12 +181,13 @@ public class ServiceClientEndpointResolver {
 	public List<String> resolve(
 			final String target,
 			final List<String> endpoints) throws IntegrationException {
-		final boolean hasTarget = StringUtils.isNotBlank(target) && !ServiceClientTarget.NONE.equals(target);
+		// Only a target's calls, on a resolver that keeps them, have a last list.
+		final boolean hasLastEndpoints = this.keepsLastEndpoints && StringUtils.isNotBlank(target) && !ServiceClientTarget.NONE.equals(target);
 		final List<String> availableEndpoints = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
 		final List<String> resolvedEndpoints;
 		if (!availableEndpoints.isEmpty()) {
 			resolvedEndpoints = availableEndpoints;
-			if (hasTarget) {
+			if (hasLastEndpoints) {
 				this.lastEndpoints.put(target, new LastEndpoints(availableEndpoints, System.nanoTime()));
 				if (this.targetsOnLastEndpoints.remove(target)) {
 					ServiceClientEndpointResolver.LOGGER.info("Endpoint list of {} is back ({} endpoints).", target, availableEndpoints.size());
@@ -179,7 +195,7 @@ public class ServiceClientEndpointResolver {
 			}
 		}
 		else {
-			final LastEndpoints lastGoodEndpoints = (hasTarget ? this.lastEndpoints.get(target) : null);
+			final LastEndpoints lastGoodEndpoints = (hasLastEndpoints ? this.lastEndpoints.get(target) : null);
 			if (lastGoodEndpoints == null) {
 				throw ServiceClientEndpointResolver.createNoEndpointsException(target, "");
 			}
@@ -194,7 +210,7 @@ public class ServiceClientEndpointResolver {
 						resolvedEndpoints.size(), this.lastEndpointsMaxAge.isPositive() ? this.lastEndpointsMaxAge.toSeconds() + "s" : "no limit");
 			}
 			try {
-				this.metrics.recordCallOnPreviousEndpoints(target);
+				this.metrics.recordCallOnLastEndpoints(target);
 			}
 			catch (final RuntimeException exception) {
 				ServiceClientEndpointResolver.LOGGER.debug("Service client metrics not recorded.", exception);

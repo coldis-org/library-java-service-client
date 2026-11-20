@@ -714,7 +714,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	public void testBudgetStopsClientAttempts() {
 		final List<String> spentReasons = new CopyOnWriteArrayList<>();
 		final ServiceClientFailoverExecutor budgetExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true,
-				Duration.ofMillis(500), ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientEndpointResolver.NO_MEMORY,
+				Duration.ofMillis(500), ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS,
 				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
 
 					@Override
@@ -752,6 +752,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	public void testShippedBudget() {
 		Assertions.assertEquals(Duration.ofSeconds(10), this.failoverExecutor.getMaxTotalTime());
 		Assertions.assertSame(this.contextEndpointResolver, this.failoverExecutor.getEndpointResolver());
+		Assertions.assertTrue(this.contextEndpointResolver.isKeepingLastEndpoints());
 		Assertions.assertEquals(Duration.ofMinutes(10), this.contextEndpointResolver.getLastEndpointsMaxAge());
 		// The context's timeout scope applies the budget's limit to each attempt.
 		Assertions.assertTrue(this.contextReadTimeoutScope.appliesConnectionWaitLimit());

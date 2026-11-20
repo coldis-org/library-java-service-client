@@ -72,7 +72,7 @@ public class ServiceClientFailoverExecutor {
 	 * does not reach it).
 	 */
 	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false, Duration.ZERO,
-			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientEndpointResolver.NO_MEMORY,
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS,
 			ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
 
 	/**
@@ -275,7 +275,7 @@ public class ServiceClientFailoverExecutor {
 
 	/**
 	 * Constructor with no time budget and an endpoint resolver that keeps no last
-	 * list ({@link ServiceClientEndpointResolver#NO_MEMORY}: a call with an empty
+	 * list ({@link ServiceClientEndpointResolver#WITHOUT_LAST_ENDPOINTS}: a call with an empty
 	 * list fails at once, with no request), so an executor a service builds itself
 	 * does not start calling a last list unless it passes a resolver.
 	 *
@@ -305,7 +305,7 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics) {
 		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, Duration.ZERO, balancer,
-				ServiceClientEndpointResolver.NO_MEMORY, readTimeoutScope, metrics);
+				ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, readTimeoutScope, metrics);
 	}
 
 	/**

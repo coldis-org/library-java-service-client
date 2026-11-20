@@ -63,7 +63,7 @@ public interface ServiceClientMetrics {
 	 *
 	 * @param target Target.
 	 */
-	default void recordCallOnPreviousEndpoints(
+	default void recordCallOnLastEndpoints(
 			final String target) {
 		// Records nothing.
 	}

@@ -305,7 +305,8 @@ public class ServiceClientFailoverExecutorTest {
 		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
 				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
 				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
-		Assertions.assertSame(ServiceClientEndpointResolver.NO_MEMORY, executor.getEndpointResolver());
+		Assertions.assertSame(ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, executor.getEndpointResolver());
+		Assertions.assertFalse(executor.getEndpointResolver().isKeepingLastEndpoints());
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.executeFor(executor, "OwnExecutorClient", List.of("http://first"), attemptedUrls);
 		Assertions.assertThrows(IntegrationException.class,
@@ -450,7 +451,7 @@ public class ServiceClientFailoverExecutorTest {
 		resolver.resolve("AgedClient", List.of("http://first"));
 		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of()));
 		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of(" ")));
-		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.CALLS_ON_PREVIOUS_ENDPOINTS).tag("target", "AgedClient").counter().count());
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.CALLS_ON_LAST_ENDPOINTS).tag("target", "AgedClient").counter().count());
 		Thread.sleep(300);
 		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> resolver.resolve("AgedClient", List.of()));
 		Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode());
@@ -480,7 +481,7 @@ public class ServiceClientFailoverExecutorTest {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
 		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false, maxTotalTime,
-				balancer, ServiceClientEndpointResolver.NO_MEMORY, scope, ServiceClientMetrics.NONE);
+				balancer, ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, scope, ServiceClientMetrics.NONE);
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
 
@@ -952,7 +953,7 @@ public class ServiceClientFailoverExecutorTest {
 			final List<String> outcomes = new CopyOnWriteArrayList<>();
 			final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
 					Duration.ofSeconds(1), new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
-					ServiceClientEndpointResolver.NO_MEMORY, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
+					ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
 
 						@Override
 						public void recordAttempt(

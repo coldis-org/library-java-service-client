@@ -17,7 +17,7 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
  * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
- * <li>{@value #CALLS_ON_PREVIOUS_ENDPOINTS} (counter; tag {@code target}).</li>
+ * <li>{@value #CALLS_ON_LAST_ENDPOINTS} (counter; tag {@code target}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  */
@@ -45,10 +45,10 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	public static final String ATTEMPTS_STOPPED_BY_TIME_LIMIT = "service.client.attempts.stopped.by.time.limit";
 
 	/**
-	 * Counter of calls that went to their target's previous (last non-empty)
+	 * Counter of calls that went to their target's last non-empty
 	 * endpoint list, as its current one was empty.
 	 */
-	public static final String CALLS_ON_PREVIOUS_ENDPOINTS = "service.client.calls.on.previous.endpoints";
+	public static final String CALLS_ON_LAST_ENDPOINTS = "service.client.calls.on.last.endpoints";
 
 	/**
 	 * Requests in flight gauge.
@@ -118,12 +118,12 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	}
 
 	/**
-	 * @see ServiceClientMetrics#recordCallOnPreviousEndpoints(String)
+	 * @see ServiceClientMetrics#recordCallOnLastEndpoints(String)
 	 */
 	@Override
-	public void recordCallOnPreviousEndpoints(
+	public void recordCallOnLastEndpoints(
 			final String target) {
-		this.meterRegistry.counter(MicrometerServiceClientMetrics.CALLS_ON_PREVIOUS_ENDPOINTS, "target", target).increment();
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.CALLS_ON_LAST_ENDPOINTS, "target", target).increment();
 	}
 
 	/**
