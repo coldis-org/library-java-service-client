@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -170,6 +171,45 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	}
 
 	/**
+	 * Limiter that gives a permit, then fails when an attempt is recorded and when
+	 * the permit is given back.
+	 */
+	private static class FailingAfterAcquireLimiter extends ServiceClientConcurrencyLimiter {
+
+		/**
+		 * Constructor.
+		 *
+		 * @param mode Mode.
+		 */
+		FailingAfterAcquireLimiter(final Mode mode) {
+			super(ServiceClientConcurrencyLimiter.Settings.DEFAULTS.withMode(mode), null, ServiceClientMetrics.NONE);
+		}
+
+		/**
+		 * @see ServiceClientConcurrencyLimiter#recordAttempt(TargetLimit, long,
+		 *      boolean, boolean)
+		 */
+		@Override
+		public void recordAttempt(
+				final TargetLimit targetLimit,
+				final long latencyNanos,
+				final boolean isLatencySample,
+				final boolean isOverload) {
+			throw new IllegalStateException("Failing limiter.");
+		}
+
+		/**
+		 * @see ServiceClientConcurrencyLimiter#release(TargetLimit)
+		 */
+		@Override
+		public void release(
+				final TargetLimit targetLimit) {
+			throw new IllegalStateException("Failing limiter.");
+		}
+
+	}
+
+	/**
 	 * Creates an executor (failover on, 3 attempts, GET idempotent, 503 retried,
 	 * no budget) with a limiter.
 	 *
@@ -288,9 +328,10 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	}
 
 	/**
-	 * A limiter failing in every method changes nothing in the call, in observe
-	 * and enforce mode: the same response, or the same failure, and the failures
-	 * are counted.
+	 * A limiter failing when the permit is taken changes nothing in the call, in
+	 * observe and enforce mode: the same response, or the same failure, and the
+	 * failures are counted (the operation then holds no permit, so nothing else
+	 * reaches the limiter).
 	 */
 	@Test
 	public void testFailingLimiterNeverChangesTheCall() {
@@ -309,6 +350,34 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 			Assertions.assertSame(failure, failed.failure());
 			Assertions.assertEquals(2, attemptedUrls.size());
 			Assertions.assertEquals(2, limiter.getErrorsWithoutTarget());
+		}
+	}
+
+	/**
+	 * A limiter that gives a permit, then fails when each attempt is recorded and
+	 * when the permit is given back, changes nothing in the call, in observe and
+	 * enforce mode: the same response, or the same failure over the same
+	 * endpoints; each failure is counted on the target.
+	 */
+	@Test
+	public void testLimiterFailingAfterAcquireNeverChangesTheCall() {
+		for (final ServiceClientConcurrencyLimiter.Mode mode : List.of(ServiceClientConcurrencyLimiter.Mode.OBSERVE,
+				ServiceClientConcurrencyLimiter.Mode.ENFORCE)) {
+			final FailingAfterAcquireLimiter limiter = new FailingAfterAcquireLimiter(mode);
+			final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorConcurrencyLimitTest.createExecutor(limiter);
+			final ServiceClientFailoverExecutor.Outcome<String> success = ServiceClientFailoverExecutorConcurrencyLimitTest.execute(executor,
+					List.of("http://only"), ServiceClientFailoverExecutorConcurrencyLimitTest.createTemplate(null, new ArrayList<>(), limiter, new ArrayList<>()));
+			Assertions.assertEquals("http://only/path", success.response().getBody());
+			Assertions.assertEquals(2, limiter.getSnapshot(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET).orElseThrow().errors());
+			final HttpServerErrorException failure = new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE);
+			final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+			final ServiceClientFailoverExecutor.Outcome<String> failed = ServiceClientFailoverExecutorConcurrencyLimitTest.execute(executor,
+					List.of("http://first", "http://second"),
+					ServiceClientFailoverExecutorConcurrencyLimitTest.createTemplate(failure, attemptedUrls, limiter, new ArrayList<>()));
+			Assertions.assertSame(failure, failed.failure());
+			Assertions.assertEquals(2, Set.copyOf(attemptedUrls).size());
+			// Two attempts recorded and one release, all failing.
+			Assertions.assertEquals(5, limiter.getSnapshot(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET).orElseThrow().errors());
 		}
 	}
 

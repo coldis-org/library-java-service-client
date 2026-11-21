@@ -103,12 +103,10 @@ public interface ServiceClientMetrics {
 	 * time from the limit; the limiter never reads them). Called once per target,
 	 * when its limit is created.
 	 *
-	 * @param limiter     Limiter.
-	 * @param targetLimit Limit of the target.
+	 * @param limit View of the limit of the target.
 	 */
 	default void registerConcurrencyLimit(
-			final ServiceClientConcurrencyLimiter limiter,
-			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) {
+			final ServiceClientConcurrencyLimitView limit) {
 		// Records nothing.
 	}
 

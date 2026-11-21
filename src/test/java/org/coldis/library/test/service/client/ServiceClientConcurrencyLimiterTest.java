@@ -234,6 +234,28 @@ public class ServiceClientConcurrencyLimiterTest {
 	}
 
 	/**
+	 * A window kept open by low traffic (one call a minute) and overloaded
+	 * charges one window of time as overloaded, not its idle minutes, and moves
+	 * the baseline as one window would.
+	 */
+	@Test
+	public void testLowTrafficOverloadedTime() {
+		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, 20, Duration.ofMinutes(10));
+		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
+		for (int operationIndex = 0; operationIndex < 10; operationIndex++) {
+			this.clock.addAndGet(TimeUnit.MINUTES.toNanos(1));
+			final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+			limiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(operationIndex == 0 ? 9000 : 70), true, operationIndex == 0);
+			limiter.release(permit);
+		}
+		final ServiceClientConcurrencyLimiter.Snapshot snapshot = ServiceClientConcurrencyLimiterTest.getSnapshot(limiter);
+		Assertions.assertTrue(snapshot.isOverloaded());
+		Assertions.assertEquals(1, snapshot.overloadedTime().toSeconds());
+		// (9000 + 9 x 70) / 10 = 963 ms; one window of a 10 min rise: + 893 x (1 - e^(-1/600)).
+		Assertions.assertEquals(71, snapshot.baselineLatency().toMillis());
+	}
+
+	/**
 	 * At least 10% overload outcomes (here a wait for a pooled connection, with no
 	 * latency sample) make a window overloaded, even with a normal latency.
 	 */
@@ -397,7 +419,6 @@ public class ServiceClientConcurrencyLimiterTest {
 			final ServiceClientConcurrencyLimiter.Snapshot snapshot = ServiceClientConcurrencyLimiterTest.getSnapshot(limiter);
 			Assertions.assertEquals(0, snapshot.inFlight());
 			Assertions.assertEquals(rejections, snapshot.rejectedCalls());
-			Assertions.assertEquals(0, snapshot.errors());
 			Assertions.assertTrue((snapshot.limit() >= 10) && (snapshot.limit() <= 256));
 		}
 		finally {

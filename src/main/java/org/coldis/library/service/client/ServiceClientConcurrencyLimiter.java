@@ -274,10 +274,17 @@ public class ServiceClientConcurrencyLimiter {
 			long errors) {}
 
 	/**
-	 * Limit of a target: its settings and state. Read by the metrics (getters only,
-	 * at scrape time); written by the limiter.
+	 * Limit of a target: its settings and state, written by the limiter. Read by
+	 * the metrics through its {@link ServiceClientConcurrencyLimitView} (at scrape
+	 * time). The slot arrays are written by the thread closing a window and read
+	 * as best effort (a reading may be one window late).
 	 */
-	public static final class TargetLimit {
+	public static final class TargetLimit implements ServiceClientConcurrencyLimitView {
+
+		/**
+		 * Limiter.
+		 */
+		private final ServiceClientConcurrencyLimiter limiter;
 
 		/**
 		 * Target.
@@ -330,7 +337,7 @@ public class ServiceClientConcurrencyLimiter {
 		 * Values read or written by every operation, each on cache lines of its own
 		 * (operations in flight, window peak, limit, window end).
 		 */
-		private final AtomicLongArray values = new AtomicLongArray(5 * TargetLimit.VALUE_SPACING);
+		private final AtomicLongArray paddedCounters = new AtomicLongArray(5 * TargetLimit.VALUE_SPACING);
 
 		/**
 		 * If a thread is closing the window.
@@ -445,6 +452,7 @@ public class ServiceClientConcurrencyLimiter {
 		/**
 		 * Constructor.
 		 *
+		 * @param limiter    Limiter.
 		 * @param target     Target.
 		 * @param mode       Mode.
 		 * @param min        Minimum limit.
@@ -454,6 +462,7 @@ public class ServiceClientConcurrencyLimiter {
 		 * @param windowNanos Duration of a window (nanoseconds).
 		 */
 		private TargetLimit(
+				final ServiceClientConcurrencyLimiter limiter,
 				final String target,
 				final Mode mode,
 				final int min,
@@ -462,13 +471,14 @@ public class ServiceClientConcurrencyLimiter {
 				final long nowNanos,
 				final long windowNanos) {
 			super();
+			this.limiter = limiter;
 			this.target = target;
 			this.mode = mode;
 			this.min = min;
 			this.max = max;
-			this.values.set(TargetLimit.LIMIT, initial);
+			this.paddedCounters.set(TargetLimit.LIMIT, initial);
 			this.windowStartNanos = nowNanos;
-			this.values.set(TargetLimit.WINDOW_END_NANOS, nowNanos + windowNanos);
+			this.paddedCounters.set(TargetLimit.WINDOW_END_NANOS, nowNanos + windowNanos);
 			this.lastLogNanos = nowNanos;
 			Arrays.fill(this.peakSlotMinutes, Long.MIN_VALUE);
 			Arrays.fill(this.demandSlotHours, Long.MIN_VALUE);
@@ -479,6 +489,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The target.
 		 */
+		@Override
 		public String getTarget() {
 			return this.target;
 		}
@@ -497,8 +508,9 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The current limit.
 		 */
+		@Override
 		public int getLimit() {
-			return (int) this.values.get(TargetLimit.LIMIT);
+			return (int) this.paddedCounters.get(TargetLimit.LIMIT);
 		}
 
 		/**
@@ -506,8 +518,9 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The operations in flight.
 		 */
+		@Override
 		public int getInFlight() {
-			return (int) this.values.get(TargetLimit.IN_FLIGHT);
+			return (int) this.paddedCounters.get(TargetLimit.IN_FLIGHT);
 		}
 
 		/**
@@ -515,6 +528,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The operations over the limit while overloaded.
 		 */
+		@Override
 		public long getOverLimitCalls() {
 			return this.overLimitCalls.sum();
 		}
@@ -524,6 +538,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The operations rejected.
 		 */
+		@Override
 		public long getRejectedCalls() {
 			return this.rejectedCalls.sum();
 		}
@@ -533,6 +548,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The failures inside the limiter.
 		 */
+		@Override
 		public long getErrors() {
 			return this.errors.sum();
 		}
@@ -542,6 +558,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The time overloaded (seconds).
 		 */
+		@Override
 		public double getOverloadedSeconds() {
 			return this.overloadedNanos / (double) TimeUnit.SECONDS.toNanos(1);
 		}
@@ -551,6 +568,7 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return The baseline latency (seconds; zero before the first window).
 		 */
+		@Override
 		public double getBaselineLatencySeconds() {
 			return this.baselineLatencyNanos / TimeUnit.SECONDS.toNanos(1);
 		}
@@ -561,6 +579,7 @@ public class ServiceClientConcurrencyLimiter {
 		 * @return The mean latency of the last window (seconds; zero before the
 		 *         first window).
 		 */
+		@Override
 		public double getCurrentLatencySeconds() {
 			return this.currentLatencyNanos / TimeUnit.SECONDS.toNanos(1);
 		}
@@ -570,8 +589,26 @@ public class ServiceClientConcurrencyLimiter {
 		 *
 		 * @return 1 if the limit is enforced, 0 otherwise.
 		 */
+		@Override
 		public double getEnforced() {
 			return (this.mode == Mode.ENFORCE ? 1 : 0);
+		}
+
+		/**
+		 * @see ServiceClientConcurrencyLimitView#getInFlightPeak()
+		 */
+		@Override
+		public int getInFlightPeak() {
+			return this.limiter.computeInFlightPeak(this, this.limiter.nanoClock.getAsLong());
+		}
+
+		/**
+		 * @see ServiceClientConcurrencyLimitView#getSuggestedLimit()
+		 */
+		@Override
+		public double getSuggestedLimit() {
+			final int suggestedLimit = this.limiter.computeSuggestedLimit(this, this.limiter.nanoClock.getAsLong());
+			return (suggestedLimit == 0 ? Double.NaN : suggestedLimit);
 		}
 
 		/**
@@ -759,7 +796,7 @@ public class ServiceClientConcurrencyLimiter {
 		final int actualMin = Math.max(1, min);
 		final int actualMax = Math.max(actualMin, max);
 		final int initial = Math.min(actualMax, Math.max(actualMin, this.settings.initial()));
-		return new TargetLimit(target, mode, actualMin, actualMax, initial, this.nanoClock.getAsLong(), this.windowNanos);
+		return new TargetLimit(this, target, mode, actualMin, actualMax, initial, this.nanoClock.getAsLong(), this.windowNanos);
 	}
 
 	/**
@@ -779,7 +816,7 @@ public class ServiceClientConcurrencyLimiter {
 				targetLimit = (existingTargetLimit == null ? newTargetLimit : existingTargetLimit);
 				if ((existingTargetLimit == null) && (newTargetLimit.mode != Mode.OFF)) {
 					try {
-						this.metrics.registerConcurrencyLimit(this, newTargetLimit);
+						this.metrics.registerConcurrencyLimit(newTargetLimit);
 					}
 					catch (final RuntimeException exception) {
 						ServiceClientConcurrencyLimiter.LOGGER.warn("Concurrency limit metrics of {} not registered ({}).", target,
@@ -847,18 +884,18 @@ public class ServiceClientConcurrencyLimiter {
 		final TargetLimit targetLimit = (this.isOffEverywhere ? null : this.getTargetLimit(target));
 		TargetLimit acquiredLimit = null;
 		if ((targetLimit != null) && (targetLimit.mode != Mode.OFF)) {
-			final long inFlight = targetLimit.values.incrementAndGet(TargetLimit.IN_FLIGHT);
-			long windowPeak = targetLimit.values.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT);
-			while ((inFlight > windowPeak) && !targetLimit.values.compareAndSet(TargetLimit.WINDOW_PEAK_IN_FLIGHT, windowPeak, inFlight)) {
-				windowPeak = targetLimit.values.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT);
+			final long inFlight = targetLimit.paddedCounters.incrementAndGet(TargetLimit.IN_FLIGHT);
+			long windowPeak = targetLimit.paddedCounters.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT);
+			while ((inFlight > windowPeak) && !targetLimit.paddedCounters.compareAndSet(TargetLimit.WINDOW_PEAK_IN_FLIGHT, windowPeak, inFlight)) {
+				windowPeak = targetLimit.paddedCounters.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT);
 			}
-			final long limit = targetLimit.values.get(TargetLimit.LIMIT);
+			final long limit = targetLimit.paddedCounters.get(TargetLimit.LIMIT);
 			if ((inFlight > limit) && (targetLimit.windows >= ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS)) {
 				if (!targetLimit.isOverloaded) {
-					targetLimit.values.accumulateAndGet(TargetLimit.LIMIT, Math.min(targetLimit.max, inFlight), Math::max);
+					targetLimit.paddedCounters.accumulateAndGet(TargetLimit.LIMIT, Math.min(targetLimit.max, inFlight), Math::max);
 				}
 				else if (targetLimit.mode == Mode.ENFORCE) {
-					targetLimit.values.decrementAndGet(TargetLimit.IN_FLIGHT);
+					targetLimit.paddedCounters.decrementAndGet(TargetLimit.IN_FLIGHT);
 					targetLimit.rejectedCalls.increment();
 					throw ServiceClientConcurrencyLimiter.createRejection(targetLimit, (int) inFlight, (int) limit);
 				}
@@ -932,7 +969,7 @@ public class ServiceClientConcurrencyLimiter {
 			final TargetLimit targetLimit,
 			final long nowNanos) {
 		final long minute = Math.floorDiv(nowNanos, ServiceClientConcurrencyLimiter.PEAK_SLOT_NANOS);
-		int peak = (int) Math.max(targetLimit.values.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT), targetLimit.values.get(TargetLimit.IN_FLIGHT));
+		int peak = (int) Math.max(targetLimit.paddedCounters.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT), targetLimit.paddedCounters.get(TargetLimit.IN_FLIGHT));
 		for (int slotIndex = 0; slotIndex < ServiceClientConcurrencyLimiter.PEAK_SLOTS; slotIndex++) {
 			if ((targetLimit.peakSlotMinutes[slotIndex] != Long.MIN_VALUE) && ((minute - targetLimit.peakSlotMinutes[slotIndex]) < ServiceClientConcurrencyLimiter.PEAK_SLOTS)) {
 				peak = Math.max(peak, targetLimit.peakSlots[slotIndex]);
@@ -957,32 +994,6 @@ public class ServiceClientConcurrencyLimiter {
 		final double peakDemand = ServiceClientConcurrencyLimiter.getRecentPeak(targetLimit.demandSlots, targetLimit.demandSlotHours,
 				Math.floorDiv(nowNanos, ServiceClientConcurrencyLimiter.SUGGESTION_SLOT_NANOS));
 		return (peakDemand <= 0 ? 0 : Math.max(targetLimit.min, (int) Math.ceil(this.settings.suggestionMargin() * peakDemand)));
-	}
-
-	/**
-	 * Gets the suggested fixed limit of a target (for the metrics).
-	 *
-	 * @param  targetLimit Limit of the target.
-	 * @return             The suggested fixed limit ({@code NaN} before a healthy
-	 *                     window).
-	 */
-	public double getSuggestedLimit(
-			final TargetLimit targetLimit) {
-		final int suggestedLimit = this.computeSuggestedLimit(targetLimit, this.nanoClock.getAsLong());
-		return (suggestedLimit == 0 ? Double.NaN : suggestedLimit);
-	}
-
-	/**
-	 * Gets the peak of operations in flight of a target over the last 5 minutes
-	 * (for the metrics).
-	 *
-	 * @param  targetLimit Limit of the target.
-	 * @return             The peak of operations in flight over the last 5
-	 *                     minutes.
-	 */
-	public int getInFlightPeak(
-			final TargetLimit targetLimit) {
-		return this.computeInFlightPeak(targetLimit, this.nanoClock.getAsLong());
 	}
 
 	/**
@@ -1046,6 +1057,7 @@ public class ServiceClientConcurrencyLimiter {
 	 * Gets the next limit of a target after a window.
 	 *
 	 * @param  targetLimit       Limit of the target.
+	 * @param  limit             Limit before the window closes.
 	 * @param  currentLatency    Mean latency of the window (nanoseconds; zero
 	 *                               with no sample).
 	 * @param  isLatencyOverload If the window's latency is over the tolerance.
@@ -1056,12 +1068,12 @@ public class ServiceClientConcurrencyLimiter {
 	 */
 	private int getNextLimit(
 			final TargetLimit targetLimit,
+			final int limit,
 			final double currentLatency,
 			final boolean isLatencyOverload,
 			final double overloadShare,
 			final boolean isOverloaded,
 			final int peakInFlight) {
-		final int limit = targetLimit.getLimit();
 		int nextLimit = limit;
 		if (isOverloaded) {
 			double factor = 1;
@@ -1087,7 +1099,7 @@ public class ServiceClientConcurrencyLimiter {
 	 * @param  targetLimit    Limit of the target.
 	 * @param  currentLatency Mean latency of the window (nanoseconds; zero with no
 	 *                            sample).
-	 * @param  elapsedNanos   Duration of the window.
+	 * @param  elapsedNanos   Duration of the window charged (at most one window).
 	 * @return                The next baseline latency.
 	 */
 	private double getNextBaseline(
@@ -1123,11 +1135,14 @@ public class ServiceClientConcurrencyLimiter {
 			final TargetLimit targetLimit,
 			final long nowNanos) {
 		final long elapsedNanos = Math.max(1, nowNanos - targetLimit.windowStartNanos);
+		// A window kept open by low traffic charges at most one window of time to
+		// the overloaded time and the baseline rise (its idle time is not counted).
+		final long chargedNanos = Math.min(elapsedNanos, this.windowNanos);
 		final long latencySum = targetLimit.windowLatencySum.sumThenReset();
 		final long latencySamples = targetLimit.windowLatencySamples.sumThenReset();
 		final long overloads = targetLimit.windowOverloads.sumThenReset();
 		final long overloadsWithoutSample = targetLimit.windowOverloadsWithoutSample.sumThenReset();
-		final int peakInFlight = (int) targetLimit.values.getAndSet(TargetLimit.WINDOW_PEAK_IN_FLIGHT, targetLimit.values.get(TargetLimit.IN_FLIGHT));
+		final int peakInFlight = (int) targetLimit.paddedCounters.getAndSet(TargetLimit.WINDOW_PEAK_IN_FLIGHT, targetLimit.paddedCounters.get(TargetLimit.IN_FLIGHT));
 		final long outcomes = latencySamples + overloadsWithoutSample;
 		final double currentLatency = (latencySamples > 0 ? latencySum / (double) latencySamples : 0);
 		final double overloadShare = (outcomes > 0 ? overloads / (double) outcomes : 0);
@@ -1136,7 +1151,10 @@ public class ServiceClientConcurrencyLimiter {
 				&& (currentLatency > (this.settings.latencyTolerance() * targetLimit.baselineLatencyNanos));
 		final boolean isOverloaded = !isWarmUp && (isLatencyOverload || (overloadShare >= ServiceClientConcurrencyLimiter.OVERLOAD_OUTCOMES_SHARE));
 		if (!isWarmUp) {
-			targetLimit.values.set(TargetLimit.LIMIT, this.getNextLimit(targetLimit, currentLatency, isLatencyOverload, overloadShare, isOverloaded, peakInFlight));
+			// A raise made by an operation meanwhile (healthy, over the limit) wins.
+			final int limit = targetLimit.getLimit();
+			targetLimit.paddedCounters.compareAndSet(TargetLimit.LIMIT, limit,
+					this.getNextLimit(targetLimit, limit, currentLatency, isLatencyOverload, overloadShare, isOverloaded, peakInFlight));
 		}
 		final boolean isHealthy = !isWarmUp && !isOverloaded;
 		if (isHealthy) {
@@ -1149,9 +1167,9 @@ public class ServiceClientConcurrencyLimiter {
 		}
 		// Little's law: rate times latency is the sum of the latencies over the window.
 		ServiceClientConcurrencyLimiter.updateSlots(targetLimit, nowNanos, peakInFlight, isHealthy ? Math.max(latencySum / (double) elapsedNanos, peakInFlight) : -1);
-		targetLimit.baselineLatencyNanos = this.getNextBaseline(targetLimit, currentLatency, elapsedNanos);
+		targetLimit.baselineLatencyNanos = this.getNextBaseline(targetLimit, currentLatency, chargedNanos);
 		targetLimit.currentLatencyNanos = currentLatency;
-		targetLimit.overloadedNanos = targetLimit.overloadedNanos + (isOverloaded ? elapsedNanos : 0);
+		targetLimit.overloadedNanos = targetLimit.overloadedNanos + (isOverloaded ? chargedNanos : 0);
 		targetLimit.isOverloaded = isOverloaded;
 		targetLimit.windowStartNanos = nowNanos;
 		targetLimit.windows = targetLimit.windows + 1;
@@ -1167,12 +1185,12 @@ public class ServiceClientConcurrencyLimiter {
 	private void closeWindowIfDue(
 			final TargetLimit targetLimit) {
 		final long nowNanos = this.nanoClock.getAsLong();
-		final long windowEndNanos = targetLimit.values.get(TargetLimit.WINDOW_END_NANOS);
+		final long windowEndNanos = targetLimit.paddedCounters.get(TargetLimit.WINDOW_END_NANOS);
 		if (((nowNanos - windowEndNanos) >= 0)
 				&& ((targetLimit.windowLatencySamples.sum() + targetLimit.windowOverloadsWithoutSample.sum()) >= this.settings.minSamples())
 				&& targetLimit.isClosingWindow.compareAndSet(false, true)) {
 			try {
-				if (targetLimit.values.compareAndSet(TargetLimit.WINDOW_END_NANOS, windowEndNanos, nowNanos + this.windowNanos)) {
+				if (targetLimit.paddedCounters.compareAndSet(TargetLimit.WINDOW_END_NANOS, windowEndNanos, nowNanos + this.windowNanos)) {
 					this.closeWindow(targetLimit, nowNanos);
 				}
 			}
@@ -1191,7 +1209,7 @@ public class ServiceClientConcurrencyLimiter {
 	public void release(
 			final TargetLimit targetLimit) {
 		if (targetLimit != null) {
-			targetLimit.values.decrementAndGet(TargetLimit.IN_FLIGHT);
+			targetLimit.paddedCounters.decrementAndGet(TargetLimit.IN_FLIGHT);
 			this.closeWindowIfDue(targetLimit);
 		}
 	}

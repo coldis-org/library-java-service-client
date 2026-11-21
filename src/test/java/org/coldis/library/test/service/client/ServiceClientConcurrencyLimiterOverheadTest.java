@@ -82,12 +82,14 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 	/**
 	 * Result of a thread.
 	 *
-	 * @param meanCpuNanos  Mean CPU time per operation (nanoseconds).
-	 * @param meanWallNanos Mean wall time per operation (nanoseconds).
+	 * @param meanMeasuredNanos Mean measured time per operation (nanoseconds):
+	 *                              the thread's CPU time back to back; with
+	 *                              calls, the limiter's own elapsed time.
+	 * @param meanWallNanos     Mean wall time per operation (nanoseconds).
 	 * @param allocatedBytes Bytes allocated by the measured loop.
 	 */
 	private record Result(
-			double meanCpuNanos,
+			double meanMeasuredNanos,
 			double meanWallNanos,
 			long allocatedBytes) {}
 
@@ -187,9 +189,9 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 			final String name,
 			final Result result,
 			final long maxMeanNanos) {
-		ServiceClientConcurrencyLimiterOverheadTest.LOGGER.info("Concurrency limiter overhead ({}): {} ns CPU, {} ns wall per operation, {} bytes allocated.",
-				name, Math.round(result.meanCpuNanos()), Math.round(result.meanWallNanos()), result.allocatedBytes());
-		Assertions.assertTrue(result.meanCpuNanos() < maxMeanNanos, name + ": " + result);
+		ServiceClientConcurrencyLimiterOverheadTest.LOGGER.info("Concurrency limiter overhead ({}): {} ns measured, {} ns wall per operation, {} bytes allocated.",
+				name, Math.round(result.meanMeasuredNanos()), Math.round(result.meanWallNanos()), result.allocatedBytes());
+		Assertions.assertTrue(result.meanMeasuredNanos() < maxMeanNanos, name + ": " + result);
 		Assertions.assertTrue(result.allocatedBytes() <= ServiceClientConcurrencyLimiterOverheadTest.MAX_ALLOCATED_BYTES, name + ": " + result);
 	}
 
@@ -208,7 +210,8 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 	}
 
 	/**
-	 * Runs 5 million operations from 8 threads at once on the same target, after a
+	 * Runs 5 million operations from 8 threads (at most one per processor) at
+	 * once on the same target, after a
 	 * warm-up in the same threads, and checks each thread's result.
 	 *
 	 * @param  name         Name of the run.
@@ -221,7 +224,9 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 			final String name,
 			final boolean isCalling,
 			final long maxMeanNanos) throws Exception {
-		final int threadCount = 8;
+		// At most one thread per processor: more would measure the scheduler's
+		// pauses (elapsed time), not the limiter.
+		final int threadCount = Math.min(8, Runtime.getRuntime().availableProcessors());
 		final ServiceClientConcurrencyLimiter limiter = new ServiceClientConcurrencyLimiter(ServiceClientConcurrencyLimiter.Settings.DEFAULTS, null,
 				ServiceClientMetrics.NONE);
 		final CyclicBarrier barrier = new CyclicBarrier(threadCount);
@@ -258,7 +263,7 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 	 */
 	@Test
 	public void testEightThreadsOverhead() throws Exception {
-		ServiceClientConcurrencyLimiterOverheadTest.runEightThreads("8 threads, 1 us calls", true, ServiceClientConcurrencyLimiterOverheadTest.MAX_MEAN_NANOS);
+		ServiceClientConcurrencyLimiterOverheadTest.runEightThreads("8 threads (at most one per processor), 1 us calls", true, ServiceClientConcurrencyLimiterOverheadTest.MAX_MEAN_NANOS);
 	}
 
 	/**

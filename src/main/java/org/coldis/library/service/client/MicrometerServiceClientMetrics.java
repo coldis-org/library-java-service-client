@@ -220,34 +220,32 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	}
 
 	/**
-	 * @see ServiceClientMetrics#registerConcurrencyLimit(ServiceClientConcurrencyLimiter,
-	 *      ServiceClientConcurrencyLimiter.TargetLimit)
+	 * @see ServiceClientMetrics#registerConcurrencyLimit(ServiceClientConcurrencyLimitView)
 	 */
 	@Override
 	public void registerConcurrencyLimit(
-			final ServiceClientConcurrencyLimiter limiter,
-			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) {
-		final Tags tags = Tags.of("target", targetLimit.getTarget());
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getLimit).tags(tags)
+			final ServiceClientConcurrencyLimitView limit) {
+		final Tags tags = Tags.of("target", limit.getTarget());
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT, limit, ServiceClientConcurrencyLimitView::getLimit).tags(tags)
 				.register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getInFlight).tags(tags)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT, limit, ServiceClientConcurrencyLimitView::getInFlight).tags(tags)
 				.register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT_PEAK, targetLimit, limiter::getInFlightPeak).tags(tags).register(this.meterRegistry);
-		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_CALLS, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getOverLimitCalls)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT_PEAK, limit, ServiceClientConcurrencyLimitView::getInFlightPeak).tags(tags).register(this.meterRegistry);
+		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_CALLS, limit, ServiceClientConcurrencyLimitView::getOverLimitCalls)
 				.tags(tags.and("result", "over-limit")).register(this.meterRegistry);
-		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_CALLS, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getRejectedCalls)
+		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_CALLS, limit, ServiceClientConcurrencyLimitView::getRejectedCalls)
 				.tags(tags.and("result", "rejected")).register(this.meterRegistry);
 		FunctionCounter
-				.builder(MicrometerServiceClientMetrics.LIMIT_OVERLOADED_SECONDS, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getOverloadedSeconds)
+				.builder(MicrometerServiceClientMetrics.LIMIT_OVERLOADED_SECONDS, limit, ServiceClientConcurrencyLimitView::getOverloadedSeconds)
 				.tags(tags).register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_LATENCY_BASELINE, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getBaselineLatencySeconds)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_LATENCY_BASELINE, limit, ServiceClientConcurrencyLimitView::getBaselineLatencySeconds)
 				.tags(tags).baseUnit("seconds").register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_LATENCY_CURRENT, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getCurrentLatencySeconds)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_LATENCY_CURRENT, limit, ServiceClientConcurrencyLimitView::getCurrentLatencySeconds)
 				.tags(tags).baseUnit("seconds").register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_SUGGESTED, targetLimit, limiter::getSuggestedLimit).tags(tags).register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_ENFORCED, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getEnforced).tags(tags)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_SUGGESTED, limit, ServiceClientConcurrencyLimitView::getSuggestedLimit).tags(tags).register(this.meterRegistry);
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_ENFORCED, limit, ServiceClientConcurrencyLimitView::getEnforced).tags(tags)
 				.register(this.meterRegistry);
-		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_ERRORS, targetLimit, ServiceClientConcurrencyLimiter.TargetLimit::getErrors).tags(tags)
+		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_ERRORS, limit, ServiceClientConcurrencyLimitView::getErrors).tags(tags)
 				.register(this.meterRegistry);
 	}
 

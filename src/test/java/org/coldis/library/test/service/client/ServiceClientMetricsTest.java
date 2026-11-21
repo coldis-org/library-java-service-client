@@ -1,9 +1,13 @@
 package org.coldis.library.test.service.client;
 
 import java.net.ServerSocket;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
@@ -235,6 +239,67 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		this.concurrencyLimiter.release(this.concurrencyLimiter.acquire(enforcedTarget));
 		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.ENFORCE, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().mode());
 		Assertions.assertEquals(1, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", enforcedTarget).gauge().value());
+	}
+
+	/**
+	 * Runs operations of a target through the context limiter, each with one
+	 * attempt of a latency (no request).
+	 *
+	 * @param target        Target.
+	 * @param operations    Operations.
+	 * @param latencyMillis Latency of each attempt (milliseconds).
+	 */
+	private void runLimiterOperations(
+			final String target,
+			final int operations,
+			final long latencyMillis) {
+		for (int operationIndex = 0; operationIndex < operations; operationIndex++) {
+			final ServiceClientConcurrencyLimiter.TargetLimit permit = this.concurrencyLimiter.acquire(target);
+			this.concurrencyLimiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(latencyMillis), true, false);
+			this.concurrencyLimiter.release(permit);
+		}
+	}
+
+	/**
+	 * A target set to enforce in the environment, overloaded and at its limit:
+	 * a call through the generic client (as a generated client makes it) gets the
+	 * rejection as is (code, status 503, retry in 1 s), and no request is sent.
+	 * The overload is fed to the context limiter directly (11 windows of 1 s of
+	 * real time): a real slow target would take as long and add nothing the plain
+	 * executor tests do not cover.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testEnforcedTargetRejectsTheCall() throws Exception {
+		final String enforcedTarget = "ConcurrencyLimitEnforcedTestClient";
+		final long windowMillis = this.concurrencyLimiter.getSettings().window().toMillis() + 50;
+		for (int windowIndex = 0; windowIndex <= ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS; windowIndex++) {
+			this.runLimiterOperations(enforcedTarget, 10, 70);
+			Thread.sleep(windowMillis);
+		}
+		this.runLimiterOperations(enforcedTarget, 10, 4000);
+		Thread.sleep(windowMillis);
+		this.runLimiterOperations(enforcedTarget, 1, 4000);
+		final ServiceClientConcurrencyLimiter.Snapshot snapshot = this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow();
+		Assertions.assertTrue(snapshot.isOverloaded());
+		final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+		try {
+			for (int operationIndex = 0; operationIndex < snapshot.limit(); operationIndex++) {
+				permits.add(this.concurrencyLimiter.acquire(enforcedTarget));
+			}
+			final long requests = this.countHttpClientRequests(enforcedTarget);
+			final IntegrationException rejection = Assertions.assertThrows(IntegrationException.class,
+					() -> this.serviceClient.executeOperation(List.of("http://localhost:" + this.localServerPort), "/test2", HttpMethod.GET, null, null, null,
+							new ParameterizedTypeReference<Void>() {}, null, null, enforcedTarget));
+			Assertions.assertEquals(ServiceClientConcurrencyLimiter.REJECTED_CODE, rejection.getInternalMessage().getCode());
+			Assertions.assertEquals(503, rejection.getStatusCode());
+			Assertions.assertEquals(Duration.ofSeconds(1), rejection.getRetryIn());
+			Assertions.assertEquals(requests, this.countHttpClientRequests(enforcedTarget));
+		}
+		finally {
+			permits.forEach(this.concurrencyLimiter::release);
+		}
 	}
 
 }
