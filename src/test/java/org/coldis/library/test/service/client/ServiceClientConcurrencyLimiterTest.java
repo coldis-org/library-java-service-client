@@ -173,6 +173,47 @@ public class ServiceClientConcurrencyLimiterTest {
 	}
 
 	/**
+	 * A healthy window with fewer than half the limit in flight leaves the limit
+	 * as is; a window over the latency tolerance (but not twice it) lowers it in
+	 * proportion: 3 x 70 ms / 280 ms = 0.75.
+	 */
+	@Test
+	public void testLimitKeptWhenIdleAndLoweredInProportion() {
+		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, 20, Duration.ofMinutes(10));
+		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
+		this.runWindows(limiter, 5, 70);
+		Assertions.assertFalse(ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).isOverloaded());
+		Assertions.assertEquals(20, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).limit());
+		this.runWindows(limiter, 1, 280);
+		Assertions.assertTrue(ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).isOverloaded());
+		Assertions.assertEquals(15, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).limit());
+	}
+
+	/**
+	 * The in-flight peak is the largest over the last 5 minutes: kept 3 minutes
+	 * later, forgotten 6 minutes later.
+	 */
+	@Test
+	public void testInFlightPeakOverFiveMinutes() {
+		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, 20, Duration.ofMinutes(10));
+		// 30 at once, all ended before the window closes (so none is carried over).
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
+		for (int operationIndex = 0; operationIndex < 30; operationIndex++) {
+			permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
+		}
+		permits.forEach(permit -> limiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(70), true, false));
+		permits.forEach(limiter::release);
+		this.runWindows(limiter, 1, 70);
+		Assertions.assertEquals(30, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlightPeak());
+		this.clock.addAndGet(TimeUnit.MINUTES.toNanos(3));
+		this.runWindows(limiter, 1, 70);
+		Assertions.assertEquals(30, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlightPeak());
+		this.clock.addAndGet(TimeUnit.MINUTES.toNanos(3));
+		this.runWindows(limiter, 1, 70);
+		Assertions.assertEquals(1, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlightPeak());
+	}
+
+	/**
 	 * A target that gets slower and stays so is overloaded at first, then becomes
 	 * the new normal as its baseline rises (about the rise time): 10x slower is
 	 * still overloaded after 15% of the rise time, and healthy after one rise time.
