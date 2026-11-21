@@ -29,6 +29,8 @@ import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
+import org.coldis.library.service.client.ServiceClientRequestDeadline;
+import org.coldis.library.service.client.ServiceClientRequestDeadlinePolicy;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -56,6 +59,13 @@ import org.springframework.web.client.HttpServerErrorException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.springframework.http.HttpEntity;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.coldis.library.service.client.MicrometerServiceClientMetrics;
 
 /**
  * Service client failover test.
@@ -110,6 +120,11 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 * Last value of the header added by a client hook, as received by an instance.
 	 */
 	private static final AtomicReference<String> LAST_HOOK_HEADER = new AtomicReference<>();
+
+	/**
+	 * Last value of the request deadline header, as received by an instance.
+	 */
+	private static final AtomicReference<String> LAST_DEADLINE_HEADER = new AtomicReference<>();
 
 	/**
 	 * Requests received by the third instance.
@@ -176,6 +191,18 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private RestTemplateBuilder restTemplateBuilder;
+
+	/**
+	 * Meter registry of the context.
+	 */
+	@Autowired
+	private MeterRegistry meterRegistry;
+
+	/**
+	 * Shipped value of the request deadline switch.
+	 */
+	@Value(value = "${org.coldis.library.service-client.deadline.enabled}")
+	private Boolean shippedDeadlineEnabled;
 
 	/**
 	 * Generated client endpoints.
@@ -245,6 +272,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		server.createContext("/", exchange -> {
 			requests.incrementAndGet();
 			ServiceClientFailoverTest.LAST_HOOK_HEADER.set(exchange.getRequestHeaders().getFirst("X-Hook"));
+			ServiceClientFailoverTest.LAST_DEADLINE_HEADER.set(exchange.getRequestHeaders().getFirst(ServiceClientRequestDeadline.HEADER));
 			final String path = exchange.getRequestURI().getPath();
 			final byte[] requestBody = exchange.getRequestBody().readAllBytes();
 			if ("/test2/slow".equals(path)) {
@@ -1174,6 +1202,102 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(1, handledFailures.size());
 		Assertions.assertTrue(handledFailures.get(0) instanceof HttpServerErrorException, handledFailures.get(0)::toString);
 		Assertions.assertTrue(handledUrls.get(0).endsWith("/unavailable"), handledUrls.get(0));
+	}
+
+	/**
+	 * The request deadline, through the shared context: the shipped property is
+	 * on, and the context's policy has the 100 ms margin and the default
+	 * template's 9 s read timeout (the executor of a client without the
+	 * auto-configuration has it off). Switched off at runtime (put back on before
+	 * each test), a call with a deadline is as before (no header); on, a generated
+	 * client call made with a deadline sends what is left of it and is cut by it (a
+	 * 3 s answer, 800 ms left), well before its 9 s read timeout; with nothing
+	 * left, it fails at once (504, its code) and the instance gets no request.
+	 */
+	@Test
+	public void testGeneratedClientRequestDeadline() {
+		Assertions.assertTrue(this.shippedDeadlineEnabled);
+		final ServiceClientRequestDeadlinePolicy policy = this.failoverExecutor.getDeadlinePolicy();
+		Assertions.assertTrue(policy.isEnabled());
+		Assertions.assertEquals(Duration.ofMillis(100), policy.getMargin());
+		Assertions.assertEquals(Duration.ofSeconds(9), policy.getDefaultReadTimeout());
+		Assertions.assertFalse(ServiceClientFailoverExecutor.SINGLE_ATTEMPT.getDeadlinePolicy().isEnabled());
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		ServiceClientFailoverTest.LAST_DEADLINE_HEADER.set("unset");
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(800));
+		try {
+			// Off: no header (the call itself fails on the instance's 503).
+			policy.setEnabled(false);
+			Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertNull(ServiceClientFailoverTest.LAST_DEADLINE_HEADER.get());
+			policy.setEnabled(true);
+			// Nothing left: no request.
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(0));
+			final IntegrationException expiredException = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertEquals(ServiceClientFailoverExecutor.DEADLINE_EXPIRED_CODE, expiredException.getInternalMessage().getCode());
+			Assertions.assertEquals(504, expiredException.getStatusCode());
+			Assertions.assertEquals(0, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
+			ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(800));
+			final long startNanos = System.nanoTime();
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1("slow"));
+			Assertions.assertTrue(ExceptionUtils.indexOfThrowable(exception, SocketTimeoutException.class) >= 0, ExceptionUtils.getStackTrace(exception));
+			Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofMillis(2000)) < 0);
+			final long sentMillis = Long.parseLong(ServiceClientFailoverTest.LAST_DEADLINE_HEADER.get());
+			Assertions.assertTrue((sentMillis > 0) && (sentMillis <= 700), Long.toString(sentMillis));
+		}
+		finally {
+			ServiceClientRequestDeadline.setDeadlineNanos(null);
+			this.failoverExecutor.getDeadlinePolicy().setEnabled(true);
+		}
+	}
+
+	/**
+	 * Through a generated client and the context's executor and metrics, the
+	 * failover stops once the request's deadline is spent: attempts that each
+	 * wait 300 ms for a pooled connection (always retried) over three endpoints,
+	 * with 400 ms of deadline left, stop before the third, and the stop is
+	 * counted (stage retry).
+	 */
+	@Test
+	public void testGeneratedClientFailoverStopsAtDeadline() {
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final GenericRestServiceClient slowPoolClient = new GenericRestServiceClient();
+		slowPoolClient.setFailoverExecutor(this.failoverExecutor);
+		slowPoolClient.setRestTemplate(new RestTemplate() {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				try {
+					Thread.sleep(300);
+				}
+				catch (final InterruptedException exception) {
+					Thread.currentThread().interrupt();
+				}
+				throw new ResourceAccessException("Pool exhausted.", new ConnectionRequestTimeoutException("Pool exhausted."));
+			}
+		});
+		final double stoppedBefore = this.meterRegistry.find(MicrometerServiceClientMetrics.DEADLINE_EXPIRED).tag("stage", "retry").counters().stream()
+				.mapToDouble(Counter::count).sum();
+		this.testService2Properties.setEndpoint("http://first-slow-pool,http://second-slow-pool,http://third-slow-pool");
+		this.testService2Client.setServiceClient(slowPoolClient);
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(500));
+		try {
+			Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertTrue((attemptedUrls.size() >= 1) && (attemptedUrls.size() < 3), attemptedUrls::toString);
+			Assertions.assertEquals(stoppedBefore + 1, this.meterRegistry.find(MicrometerServiceClientMetrics.DEADLINE_EXPIRED).tag("stage", "retry").counters()
+					.stream().mapToDouble(Counter::count).sum());
+		}
+		finally {
+			ServiceClientRequestDeadline.setDeadlineNanos(null);
+			this.testService2Client.setServiceClient(this.serviceClient);
+		}
 	}
 
 	/**

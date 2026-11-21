@@ -18,7 +18,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -30,6 +29,7 @@ import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.NoHttpResponseException;
 import org.coldis.library.exception.IntegrationException;
+import org.coldis.library.model.SimpleMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -65,6 +65,23 @@ import org.springframework.web.client.RestOperations;
  * outcome feed it. A failure inside the limiter is counted and the operation
  * proceeds (deliberate fail-open: the limit protects the target, and must never
  * fail or slow a call by itself).
+ * <p>
+ * When the thread serves a request with a deadline
+ * ({@link ServiceClientRequestDeadline}, set by the service library from the
+ * caller's {@value ServiceClientRequestDeadline#HEADER} header), what is left of
+ * it, less a margin, is checked before every attempt: once it is spent, no
+ * attempt starts (the first one fails at once with an
+ * {@link IntegrationException}, status 504, and no request); otherwise it caps
+ * the attempt's read timeout and connection waits (and so the time budget), and
+ * is sent to the endpoint in the same header (the attempt's read timeout, the
+ * call's own or else the default template's, when shorter). The deadline is on
+ * by default and can be switched off
+ * ({@code org.coldis.library.service-client.deadline.enabled}, or
+ * {@link ServiceClientRequestDeadlinePolicy#setEnabled(boolean)}); an executor
+ * built without the auto-configuration has it off. A connect
+ * timeout that took all the time the deadline left puts no endpoint in
+ * cooldown (one well within it does). Nothing
+ * running is interrupted: the deadline is only checked when an attempt starts.
  */
 public class ServiceClientFailoverExecutor {
 
@@ -81,6 +98,50 @@ public class ServiceClientFailoverExecutor {
 	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false, Duration.ZERO,
 			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS,
 			ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
+
+	/**
+	 * Margin under an attempt's deadline limit within which a connect timeout is
+	 * taken as the deadline's, not the endpoint's.
+	 */
+	private static final Duration DEADLINE_CUT_MARGIN = Duration.ofMillis(50);
+
+	/**
+	 * Connect timeouts (a cooldown failure when not cut by the deadline).
+	 */
+	private static final List<Class<? extends Throwable>> CONNECT_TIMEOUT_FAILURES = List.of(ConnectTimeoutException.class);
+
+	/**
+	 * Read and pool wait timeouts (overload outcomes when not cut by the
+	 * deadline).
+	 */
+	private static final List<Class<? extends Throwable>> READ_OR_POOL_TIMEOUT_FAILURES = List.of(SocketTimeoutException.class,
+			ConnectionRequestTimeoutException.class);
+
+	/**
+	 * Least remaining time for another attempt.
+	 */
+	private static final Duration LEAST_REMAINING_TIME = Duration.ofMillis(1);
+
+	/**
+	 * Message code of a call not made because the request's deadline is spent.
+	 */
+	public static final String DEADLINE_EXPIRED_CODE = "service.client.deadline.expired";
+
+	/**
+	 * Status of the failure of a call not made because the request's deadline is
+	 * spent (gateway timeout: the caller of the request gave up waiting).
+	 */
+	public static final int DEADLINE_EXPIRED_STATUS = 504;
+
+	/**
+	 * Stage of a deadline expiry (its metrics tag value): before the first attempt.
+	 */
+	public static final String DEADLINE_STAGE_CALL = "call";
+
+	/**
+	 * Stage of a deadline expiry (its metrics tag value): before a retry.
+	 */
+	public static final String DEADLINE_STAGE_RETRY = "retry";
 
 	/**
 	 * An absolute URL: its base (scheme, user information, host and port) and the
@@ -230,6 +291,11 @@ public class ServiceClientFailoverExecutor {
 	private final ServiceClientConcurrencyLimiter concurrencyLimiter;
 
 	/**
+	 * How the request's deadline is applied to the calls.
+	 */
+	private final ServiceClientRequestDeadlinePolicy deadlinePolicy;
+
+	/**
 	 * Outcome of an operation: the response, or the failure of its last attempt.
 	 *
 	 * @param <ResponseType> Response type.
@@ -264,6 +330,9 @@ public class ServiceClientFailoverExecutor {
 	 *                                     its attempts.
 	 * @param metrics                  Metrics.
 	 * @param concurrencyLimiter       Concurrency limiter.
+	 * @param deadlinePolicy           How the request's deadline is applied to
+	 *                                     the calls ({@code null} for one that is
+	 *                                     off).
 	 */
 	public ServiceClientFailoverExecutor(
 			final boolean isEnabled,
@@ -277,7 +346,8 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics,
-			final ServiceClientConcurrencyLimiter concurrencyLimiter) {
+			final ServiceClientConcurrencyLimiter concurrencyLimiter,
+			final ServiceClientRequestDeadlinePolicy deadlinePolicy) {
 		super();
 		this.concurrencyLimiter = Objects.requireNonNull(concurrencyLimiter, "concurrencyLimiter");
 		this.balancer = Objects.requireNonNull(balancer, "balancer");
@@ -292,11 +362,54 @@ public class ServiceClientFailoverExecutor {
 		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
 		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
 		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+		this.deadlinePolicy = (deadlinePolicy == null ? ServiceClientRequestDeadlinePolicy.createDisabled() : deadlinePolicy);
+	}
+
+	/**
+	 * Constructor with the request's deadline off (a policy of its own, see
+	 * {@link ServiceClientRequestDeadlinePolicy#createDisabled()}).
+	 *
+	 * @param isEnabled                If failover is enabled.
+	 * @param maxAttempts              Maximum attempts per operation.
+	 * @param idempotentMethods        Methods taken as idempotent when the
+	 *                                     operation does not say.
+	 * @param retryStatuses            Response statuses retried for idempotent
+	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
+	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
+	 *                                     operations.
+	 * @param maxTotalTime             Time budget of an operation, over all its
+	 *                                     attempts ({@code null}, zero or
+	 *                                     negative for none).
+	 * @param balancer                 Endpoint balancer.
+	 * @param endpointResolver         Endpoint resolver.
+	 * @param readTimeoutScope         Scope that applies a call's own timeouts to
+	 *                                     its attempts.
+	 * @param metrics                  Metrics.
+	 * @param concurrencyLimiter       Concurrency limiter.
+	 */
+	public ServiceClientFailoverExecutor(
+			final boolean isEnabled,
+			final int maxAttempts,
+			final String[] idempotentMethods,
+			final String[] retryStatuses,
+			final String[] cooldownStatuses,
+			final boolean shouldRetryOnReadTimeout,
+			final Duration maxTotalTime,
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientEndpointResolver endpointResolver,
+			final ServiceClientReadTimeoutScope readTimeoutScope,
+			final ServiceClientMetrics metrics,
+			final ServiceClientConcurrencyLimiter concurrencyLimiter) {
+		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, maxTotalTime, balancer, endpointResolver,
+				readTimeoutScope, metrics, concurrencyLimiter, null);
 	}
 
 	/**
 	 * Constructor with no concurrency limit
-	 * ({@link ServiceClientConcurrencyLimiter#NONE}).
+	 * ({@link ServiceClientConcurrencyLimiter#NONE}) and the request's deadline
+	 * off.
 	 *
 	 * @param isEnabled                If failover is enabled.
 	 * @param maxAttempts              Maximum attempts per operation.
@@ -330,7 +443,7 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics) {
 		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, maxTotalTime, balancer, endpointResolver,
-				readTimeoutScope, metrics, ServiceClientConcurrencyLimiter.NONE);
+				readTimeoutScope, metrics, ServiceClientConcurrencyLimiter.NONE, null);
 	}
 
 	/**
@@ -428,6 +541,15 @@ public class ServiceClientFailoverExecutor {
 	 */
 	public Duration getMaxTotalTime() {
 		return this.maxTotalTime;
+	}
+
+	/**
+	 * Gets how the request's deadline is applied to the calls.
+	 *
+	 * @return How the request's deadline is applied to the calls.
+	 */
+	public ServiceClientRequestDeadlinePolicy getDeadlinePolicy() {
+		return this.deadlinePolicy;
 	}
 
 	/**
@@ -735,6 +857,79 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Gets if an attempt failed on a timeout of the given types that took (about)
+	 * all the time the request's deadline left it: the deadline, not the target,
+	 * ended it.
+	 *
+	 * @param  failure               Attempt failure ({@code null} if it
+	 *                                   succeeded).
+	 * @param  deadlineRemainingTime What was left of the deadline when the attempt
+	 *                                   started ({@code null} for none).
+	 * @param  attemptStartNanos     When the attempt started
+	 *                                   ({@link System#nanoTime()}).
+	 * @param  timeoutTypes          Timeout types.
+	 * @return                       If the attempt failed on such a timeout cut
+	 *                               short by the deadline.
+	 */
+	private static boolean isTimeoutCutByDeadline(
+			final Exception failure,
+			final Duration deadlineRemainingTime,
+			final long attemptStartNanos,
+			final List<Class<? extends Throwable>> timeoutTypes) {
+		return (failure != null) && (deadlineRemainingTime != null) && ServiceClientFailoverExecutor.isCausedBy(failure, timeoutTypes)
+				&& (Duration.ofNanos(System.nanoTime() - attemptStartNanos).compareTo(deadlineRemainingTime.minus(ServiceClientFailoverExecutor.DEADLINE_CUT_MARGIN)) >= 0);
+	}
+
+	/**
+	 * Gets if an attempt failed on a connect timeout cut short by the request's
+	 * deadline: through a scope that applies the limit, it took (about) all the
+	 * time the deadline left it, so the deadline, not the endpoint's own connect
+	 * timeout, ended it. A connect timeout well within the deadline is the
+	 * endpoint's.
+	 *
+	 * @param  failure               Attempt failure ({@code null} if it
+	 *                                   succeeded).
+	 * @param  deadlineRemainingTime What was left of the deadline when the attempt
+	 *                                   started ({@code null} for none).
+	 * @param  attemptStartNanos     When the attempt started
+	 *                                   ({@link System#nanoTime()}).
+	 * @return                       If the attempt failed on a connect timeout cut
+	 *                               short by the deadline.
+	 */
+	private boolean isConnectCutByDeadline(
+			final Exception failure,
+			final Duration deadlineRemainingTime,
+			final long attemptStartNanos) {
+		return this.readTimeoutScope.appliesConnectionWaitLimit()
+				&& ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos,
+				ServiceClientFailoverExecutor.CONNECT_TIMEOUT_FAILURES);
+	}
+
+	/**
+	 * Gets if a remaining time is spent (under one millisecond).
+	 *
+	 * @param  remainingTime Remaining time ({@code null} for no limit).
+	 * @return               If there is a limit and it is spent.
+	 */
+	private static boolean isSpent(
+			final Duration remainingTime) {
+		return (remainingTime != null) && (remainingTime.compareTo(ServiceClientFailoverExecutor.LEAST_REMAINING_TIME) < 0);
+	}
+
+	/**
+	 * Gets the shorter of two limits.
+	 *
+	 * @param  first  First limit ({@code null} for none).
+	 * @param  second Second limit ({@code null} for none).
+	 * @return        The shorter limit ({@code null} if there is none).
+	 */
+	private static Duration getShorter(
+			final Duration first,
+			final Duration second) {
+		return (first == null ? second : ((second == null) || (first.compareTo(second) <= 0) ? first : second));
+	}
+
+	/**
 	 * Gets if an operation's time budget is spent.
 	 *
 	 * @param  startNanos When the operation started ({@link System#nanoTime()}).
@@ -742,8 +937,31 @@ public class ServiceClientFailoverExecutor {
 	 */
 	private boolean isTimeSpent(
 			final long startNanos) {
-		final Duration remainingTime = this.getRemainingTime(startNanos);
-		return (remainingTime != null) && (remainingTime.toNanos() < TimeUnit.MILLISECONDS.toNanos(1));
+		return ServiceClientFailoverExecutor.isSpent(this.getRemainingTime(startNanos));
+	}
+
+	/**
+	 * Fails a call at once, with no request, when the deadline of the request the
+	 * current thread serves is spent.
+	 *
+	 * @param  target               Target of the call.
+	 * @param  method               Method of the call.
+	 * @param  deadlineRemainingTime What is left of the deadline ({@code null}
+	 *                                  for none).
+	 * @throws IntegrationException If the deadline is spent (status
+	 *                                  {@value #DEADLINE_EXPIRED_STATUS}).
+	 */
+	private void failIfDeadlineSpent(
+			final String target,
+			final HttpMethod method,
+			final Duration deadlineRemainingTime) throws IntegrationException {
+		if (ServiceClientFailoverExecutor.isSpent(deadlineRemainingTime)) {
+			this.recordMetrics(() -> this.metrics.recordDeadlineExpired(target, ServiceClientFailoverExecutor.DEADLINE_STAGE_CALL));
+			ServiceClientFailoverExecutor.LOGGER.debug("REST operation {} to {} not made: the request's deadline is spent ({} ms left, margin {} ms).", method, target,
+					deadlineRemainingTime.toMillis(), this.deadlinePolicy.getMargin().toMillis());
+			throw new IntegrationException(new SimpleMessage(ServiceClientFailoverExecutor.DEADLINE_EXPIRED_CODE,
+					"Call to " + target + " not made: the request's deadline is spent."), ServiceClientFailoverExecutor.DEADLINE_EXPIRED_STATUS);
+		}
 	}
 
 	/**
@@ -775,20 +993,28 @@ public class ServiceClientFailoverExecutor {
 	 * Records an attempt in the concurrency limit. A latency sample: the target
 	 * answered (any status), or did not in the read timeout. An overload outcome: a
 	 * read timeout, no pooled connection in time, or an overload status. Anything
-	 * else (connect failures, a dropped connection, a connect cut by the budget)
-	 * records nothing. A failure inside the limiter is counted and ignored.
+	 * else (connect failures, a dropped connection, a connect cut by the budget,
+	 * a read timeout or pool wait cut by the request's deadline: the caller's
+	 * time, not the target's) records nothing. A failure inside the limiter is
+	 * counted and ignored.
 	 *
-	 * @param target            Target of the operation.
-	 * @param concurrencyPermit Permit of the operation ({@code null} for none).
-	 * @param failure           Attempt failure ({@code null} if it succeeded).
-	 * @param attemptStartNanos When the attempt started
-	 *                              ({@link System#nanoTime()}).
+	 * @param target                Target of the operation.
+	 * @param concurrencyPermit     Permit of the operation ({@code null} for
+	 *                                  none).
+	 * @param failure               Attempt failure ({@code null} if it
+	 *                                  succeeded).
+	 * @param attemptStartNanos     When the attempt started
+	 *                                  ({@link System#nanoTime()}).
+	 * @param deadlineRemainingTime What was left of the request's deadline when
+	 *                                  the attempt started ({@code null} for
+	 *                                  none).
 	 */
 	private void recordConcurrencyLimitAttempt(
 			final String target,
 			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
 			final Exception failure,
-			final long attemptStartNanos) {
+			final long attemptStartNanos,
+			final Duration deadlineRemainingTime) {
 		// No permit: the outcome is not even classified.
 		if (concurrencyPermit != null) {
 			try {
@@ -796,6 +1022,11 @@ public class ServiceClientFailoverExecutor {
 				final boolean isOverload;
 				if (failure == null) {
 					isLatencySample = true;
+					isOverload = false;
+				}
+				else if (ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos,
+						ServiceClientFailoverExecutor.READ_OR_POOL_TIMEOUT_FAILURES)) {
+					isLatencySample = false;
 					isOverload = false;
 				}
 				else if (failure instanceof final RestClientResponseException responseFailure) {
@@ -854,6 +1085,9 @@ public class ServiceClientFailoverExecutor {
 	 * @param  restTemplate         Template.
 	 * @param  concurrencyPermit    Permit of the operation ({@code null} for
 	 *                                  none).
+	 * @param  firstDeadlineRemainingTime What was left of the request's deadline
+	 *                                  at the check before the permit (used by the
+	 *                                  first attempt; {@code null} for none).
 	 * @return                      The outcome: the response, or the failure of
 	 *                              the last attempt.
 	 * @throws IntegrationException If there is no endpoint to go to.
@@ -868,7 +1102,8 @@ public class ServiceClientFailoverExecutor {
 			final Boolean declaredIdempotent,
 			final Duration readTimeout,
 			final RestOperations restTemplate,
-			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit) throws IntegrationException {
+			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
+			final Duration firstDeadlineRemainingTime) throws IntegrationException {
 		final long startNanos = System.nanoTime();
 		final String target = ServiceClientTarget.getCurrent();
 		// With no endpoint in the list, a path that is an absolute URL is called as
@@ -891,13 +1126,18 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(endpoint);
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
-			final Duration remainingTime = this.getRemainingTime(startNanos);
+			// The request's deadline caps the attempt's waits, and so the budget.
+			final Duration deadlineRemainingTime = (attemptIndex == 0 ? firstDeadlineRemainingTime : this.deadlinePolicy.getRemainingTime());
+			final Duration budgetRemainingTime = this.getRemainingTime(startNanos);
+			final Duration remainingTime = ServiceClientFailoverExecutor.getShorter(budgetRemainingTime, deadlineRemainingTime);
+			final HttpEntity<?> attemptEntity = ((deadlineRemainingTime == null) || isAbsolutePathCall ? requestEntity
+					: this.deadlinePolicy.withHeader(requestEntity, readTimeout, deadlineRemainingTime));
 			final long attemptStartNanos = System.nanoTime();
 			try {
 				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
-				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, remainingTime, () -> (maxAttemptsForCall > 1
-						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
-						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters)));
+				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, deadlineRemainingTime, remainingTime, () -> (maxAttemptsForCall > 1
+						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters))
+						: restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters)));
 			}
 			catch (final Exception exception) {
 				attemptFailure = exception;
@@ -908,8 +1148,10 @@ public class ServiceClientFailoverExecutor {
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
-			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos);
+					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
+							&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
+					attemptFailure);
+			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
@@ -923,6 +1165,13 @@ public class ServiceClientFailoverExecutor {
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), and its time budget ({} ms) is spent: no other endpoint tried.",
 						method, ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall,
 						attemptFailure.getClass().getSimpleName(), this.maxTotalTime.toMillis());
+			}
+			else if (ServiceClientFailoverExecutor.isSpent(this.deadlinePolicy.getRemainingTime())) {
+				outcome = new Outcome<>(url, null, attemptFailure);
+				this.recordMetrics(() -> this.metrics.recordDeadlineExpired(target, ServiceClientFailoverExecutor.DEADLINE_STAGE_RETRY));
+				ServiceClientFailoverExecutor.LOGGER.warn(
+						"REST operation {} on {} failed on attempt {} of {} ({}), and the request's deadline is spent: no other endpoint tried.", method,
+						ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall, attemptFailure.getClass().getSimpleName());
 			}
 			else {
 				final String retryReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
@@ -955,6 +1204,15 @@ public class ServiceClientFailoverExecutor {
 	 * The operation holds one permit of its target's
 	 * {@link ServiceClientConcurrencyLimiter} across its attempts; a rejection
 	 * (enforce mode only) fails it before any request, with no attempt.
+	 * With a request deadline ({@link ServiceClientRequestDeadline}), what is left
+	 * of it, less the margin, is checked before the permit and before each
+	 * attempt: spent before the first one, the call fails at once with no request
+	 * (and takes no permit); spent before a retry, no other endpoint is tried.
+	 * Otherwise it caps the attempt's read timeout and connection waits, and the
+	 * shorter of it and the attempt's read timeout (the call's own, or else the
+	 * default template's) is sent in the
+	 * {@value ServiceClientRequestDeadline#HEADER} header (not to the base of an
+	 * absolute path, which may be a third party).
 	 *
 	 * @param  <ResponseType> Response type.
 	 * @param  endpoints      Endpoints (base URLs).
@@ -975,7 +1233,10 @@ public class ServiceClientFailoverExecutor {
 	 *                                  {@link ServiceClientEndpointResolver}), or
 	 *                                  the concurrency limiter rejects the
 	 *                                  operation
-	 *                                  ({@value ServiceClientConcurrencyLimiter#REJECTED_CODE}).
+	 *                                  ({@value ServiceClientConcurrencyLimiter#REJECTED_CODE}),
+	 *                                  or the request's deadline is spent before
+	 *                                  the first attempt (status
+	 *                                  {@value #DEADLINE_EXPIRED_STATUS}).
 	 */
 	public <ResponseType> Outcome<ResponseType> executeOverEndpoints(
 			final List<String> endpoints,
@@ -988,10 +1249,15 @@ public class ServiceClientFailoverExecutor {
 			final Duration readTimeout,
 			final RestOperations restTemplate) throws IntegrationException {
 		final String target = ServiceClientTarget.getCurrent();
+		// The deadline is checked before the permit, so a call not made never
+		// counts in the concurrency limit; read once for the check and the first
+		// attempt, so a call that passes the check is made with what it saw.
+		final Duration firstDeadlineRemainingTime = this.deadlinePolicy.getRemainingTime();
+		this.failIfDeadlineSpent(target, method, firstDeadlineRemainingTime);
 		final ServiceClientConcurrencyLimiter.Permit concurrencyPermit = this.acquireConcurrencyPermit(target);
 		try {
 			return this.executeAttempts(endpoints, path, method, requestEntity, responseType, uriParameters, declaredIdempotent, readTimeout, restTemplate,
-					concurrencyPermit);
+					concurrencyPermit, firstDeadlineRemainingTime);
 		}
 		finally {
 			this.releaseConcurrencyPermit(target, concurrencyPermit);

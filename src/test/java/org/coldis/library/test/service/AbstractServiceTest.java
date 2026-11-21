@@ -5,6 +5,7 @@ import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
+import org.coldis.library.service.client.ServiceClientRequestDeadlinePolicy;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
@@ -69,6 +70,12 @@ public abstract class AbstractServiceTest extends TestHelper {
 	private TestServiceClient testServiceClient;
 
 	/**
+	 * Request deadline policy of the generated clients.
+	 */
+	@Autowired
+	private ServiceClientRequestDeadlinePolicy serviceClientRequestDeadlinePolicy;
+
+	/**
 	 * Generated service client.
 	 */
 	@Autowired
@@ -116,6 +123,7 @@ public abstract class AbstractServiceTest extends TestHelper {
 		this.serviceClientEndpointBalancer.clear();
 		this.serviceClientEndpointResolver.clear();
 		this.serviceClientConcurrencyLimiter.clear();
+		this.serviceClientRequestDeadlinePolicy.setEnabled(true);
 	}
 
 }

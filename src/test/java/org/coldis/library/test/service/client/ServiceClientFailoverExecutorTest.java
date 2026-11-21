@@ -38,6 +38,7 @@ import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
+import org.coldis.library.service.client.ServiceClientRequestDeadlinePolicy;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.Assertions;
@@ -734,7 +735,7 @@ public class ServiceClientFailoverExecutorTest {
 		for (final Map.Entry<String, Duration> budget : Map.of("10s", Duration.ofSeconds(10), "0", Duration.ZERO, "1500ms", Duration.ofMillis(1500)).entrySet()) {
 			Assertions.assertEquals(budget.getValue(), new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null,
 					false, budget.getKey(), 9L, 3L, 5L, new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
-					new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE).getMaxTotalTime());
+					new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE, ServiceClientRequestDeadlinePolicy.createDisabled()).getMaxTotalTime());
 		}
 	}
 
@@ -753,7 +754,7 @@ public class ServiceClientFailoverExecutorTest {
 				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true, maxTotalTime, 9L, 3L, 5L,
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
-						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE, ServiceClientRequestDeadlinePolicy.createDisabled());
 			}
 		}
 		finally {
@@ -782,7 +783,7 @@ public class ServiceClientFailoverExecutorTest {
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE),
 						ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
-						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE, ServiceClientRequestDeadlinePolicy.createDisabled());
 			}
 		}
 		finally {
@@ -808,7 +809,7 @@ public class ServiceClientFailoverExecutorTest {
 				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
-						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE, ServiceClientRequestDeadlinePolicy.createDisabled());
 			}
 		}
 		finally {
@@ -1057,7 +1058,7 @@ public class ServiceClientFailoverExecutorTest {
 		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, "10s", 9L, 3L, 5L,
 				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
-				beanFactory.getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
+				beanFactory.getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE, ServiceClientRequestDeadlinePolicy.createDisabled());
 	}
 
 	/**

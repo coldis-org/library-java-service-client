@@ -22,7 +22,9 @@ import org.springframework.web.client.RestOperations;
  * (response) timeout can be overridden for the requests made by the current
  * thread while an action runs (a generated client's own read timeout), and
  * whose waits for a pooled connection and for the connection can be capped the
- * same way (the rest of an operation's time budget). The overrides are per
+ * same way (the rest of an operation's time budget), and whose read timeout can
+ * be capped (what is left of the request's deadline, see
+ * {@link ServiceClientRequestDeadline}). The overrides are per
  * thread: any other request made through this kind of factory on the same thread
  * during the exchange (by an interceptor or a message converter, for instance)
  * gets the same ones.
@@ -40,6 +42,12 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 	 * made by the current thread ({@code null} for the factory's own).
 	 */
 	private static final ThreadLocal<Duration> CONNECTION_WAIT_LIMIT = new ThreadLocal<>();
+
+	/**
+	 * Longest read timeout of the requests made by the current thread ({@code null}
+	 * for none): caps the read timeout, the factory's own included.
+	 */
+	private static final ThreadLocal<Duration> READ_TIMEOUT_LIMIT = new ThreadLocal<>();
 
 	/**
 	 * Read timeout scope of this kind of factory: warns when the template visibly
@@ -80,6 +88,22 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 		@Override
 		public boolean appliesConnectionWaitLimit() {
 			return true;
+		}
+
+		/**
+		 * @see ServiceClientReadTimeoutScope#runWithTimeouts(RestOperations,
+		 *      Duration, Duration, Duration, Supplier)
+		 */
+		@Override
+		public <ResultType> ResultType runWithTimeouts(
+				final RestOperations template,
+				final Duration readTimeout,
+				final Duration readTimeoutLimit,
+				final Duration connectionWaitLimit,
+				final Supplier<ResultType> action) {
+			return (readTimeoutLimit == null ? this.runWithTimeouts(template, readTimeout, connectionWaitLimit, action)
+					: ServiceClientRequestFactory.runWithReadTimeoutLimit(readTimeoutLimit,
+							() -> this.runWithTimeouts(template, readTimeout, connectionWaitLimit, action)));
 		}
 
 	};
@@ -190,6 +214,37 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 	}
 
 	/**
+	 * Runs an action with a limit on the read timeout of every request the current
+	 * thread makes through this kind of factory while the action runs (nested
+	 * calls included): the read timeout in effect (the action's own, or the
+	 * factory's), when shorter, is kept.
+	 *
+	 * @param  <ResultType>     Action result type.
+	 * @param  readTimeoutLimit Longest read timeout ({@code null} for none; zero or
+	 *                              negative waits the least possible, one
+	 *                              millisecond).
+	 * @param  action           Action.
+	 * @return                  The action result.
+	 */
+	public static <ResultType> ResultType runWithReadTimeoutLimit(
+			final Duration readTimeoutLimit,
+			final Supplier<ResultType> action) {
+		final Duration previousLimit = ServiceClientRequestFactory.READ_TIMEOUT_LIMIT.get();
+		ServiceClientRequestFactory.READ_TIMEOUT_LIMIT.set(readTimeoutLimit);
+		try {
+			return action.get();
+		}
+		finally {
+			if (previousLimit == null) {
+				ServiceClientRequestFactory.READ_TIMEOUT_LIMIT.remove();
+			}
+			else {
+				ServiceClientRequestFactory.READ_TIMEOUT_LIMIT.set(previousLimit);
+			}
+		}
+	}
+
+	/**
 	 * Caps a timeout to a limit: the shorter of both (a missing or disabled
 	 * timeout, zero, is no wait limit at all, so the limit wins).
 	 *
@@ -249,10 +304,11 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 	}
 
 	/**
-	 * Applies the current thread's read timeout and connection wait limit, if any,
-	 * over the factory's request configuration (at least one millisecond: zero
-	 * would mean no timeout). The limit caps the wait for a pooled connection and
-	 * the connect timeout.
+	 * Applies the current thread's read timeout, read timeout limit and connection
+	 * wait limit, if any, over the factory's request configuration (at least one
+	 * millisecond: zero would mean no timeout). The read timeout limit caps the
+	 * read timeout in effect; the connection wait limit caps the wait for a pooled
+	 * connection and the connect timeout.
 	 *
 	 * @see HttpComponentsClientHttpRequestFactory#createRequestConfig(Object)
 	 */
@@ -263,12 +319,17 @@ public class ServiceClientRequestFactory extends HttpComponentsClientHttpRequest
 		final RequestConfig requestConfig = super.createRequestConfig(client);
 		final Duration readTimeout = ServiceClientRequestFactory.READ_TIMEOUT.get();
 		final Duration connectionWaitLimit = ServiceClientRequestFactory.CONNECTION_WAIT_LIMIT.get();
+		final Duration readTimeoutLimit = ServiceClientRequestFactory.READ_TIMEOUT_LIMIT.get();
 		RequestConfig actualRequestConfig = requestConfig;
-		if ((readTimeout != null) || (connectionWaitLimit != null)) {
+		if ((readTimeout != null) || (connectionWaitLimit != null) || (readTimeoutLimit != null)) {
 			final RequestConfig baseRequestConfig = (requestConfig == null ? RequestConfig.DEFAULT : requestConfig);
 			final RequestConfig.Builder requestConfigBuilder = RequestConfig.copy(baseRequestConfig);
 			if (readTimeout != null) {
 				requestConfigBuilder.setResponseTimeout(Math.max(1L, readTimeout.toMillis()), TimeUnit.MILLISECONDS);
+			}
+			if (readTimeoutLimit != null) {
+				final Timeout readTimeoutInEffect = (readTimeout == null ? baseRequestConfig.getResponseTimeout() : Timeout.ofMilliseconds(Math.max(1L, readTimeout.toMillis())));
+				requestConfigBuilder.setResponseTimeout(ServiceClientRequestFactory.capTimeout(readTimeoutInEffect, Math.max(1L, readTimeoutLimit.toMillis())));
 			}
 			if (connectionWaitLimit != null) {
 				final long limitMillis = Math.max(1L, connectionWaitLimit.toMillis());
