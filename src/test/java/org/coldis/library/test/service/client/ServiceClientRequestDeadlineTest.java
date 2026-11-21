@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -510,9 +511,10 @@ public class ServiceClientRequestDeadlineTest {
 	}
 
 	/**
-	 * A read timeout that took all the time the deadline left is the caller's,
-	 * not the target's: the concurrency limit records neither a latency sample
-	 * nor an overload outcome for it; one well within the deadline records both.
+	 * A read timeout or pool wait that took all the time the deadline left is the
+	 * caller's, not the target's: the concurrency limit records neither a latency
+	 * sample nor an overload outcome for it; one well within the deadline records
+	 * what it always did (a read timeout both, a pool wait an overload).
 	 */
 	@Test
 	public void testReadTimeoutCutByDeadlineNotOverload() {
@@ -544,8 +546,8 @@ public class ServiceClientRequestDeadlineTest {
 					final HttpEntity<?> requestEntity,
 					final ParameterizedTypeReference<ResponseType> responseType,
 					final Map<String, ?> uriVariables) {
-				// The cut call times out at the limit it was given (200 ms left).
-				if (url.startsWith("http://cut")) {
+				// The cut calls time out at the limit they were given (200 ms left).
+				if (url.contains("cut")) {
 					try {
 						Thread.sleep(250);
 					}
@@ -553,7 +555,8 @@ public class ServiceClientRequestDeadlineTest {
 						Thread.currentThread().interrupt();
 					}
 				}
-				throw new ResourceAccessException("Read timeout.", new SocketTimeoutException("Read timeout."));
+				throw (url.contains("pool") ? new ResourceAccessException("Pool exhausted.", new ConnectionRequestTimeoutException("Pool exhausted."))
+						: new ResourceAccessException("Read timeout.", new SocketTimeoutException("Read timeout.")));
 			}
 		};
 		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(300));
@@ -562,7 +565,14 @@ public class ServiceClientRequestDeadlineTest {
 		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(5000));
 		ServiceClientTarget.runFor("SlowTarget", () -> executor.executeOverEndpoints(List.of("http://slow"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
 				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, readTimingOutTemplate));
-		Assertions.assertEquals(List.of("false/false", "true/true"), recordedOutcomes);
+		// A pool wait: cut, nothing; well within the deadline, an overload outcome.
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(300));
+		ServiceClientTarget.runFor("CutPoolTarget", () -> executor.executeOverEndpoints(List.of("http://cut-pool"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, readTimingOutTemplate));
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(5000));
+		ServiceClientTarget.runFor("SlowPoolTarget", () -> executor.executeOverEndpoints(List.of("http://slow-pool"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, readTimingOutTemplate));
+		Assertions.assertEquals(List.of("false/false", "true/true", "false/false", "false/true"), recordedOutcomes);
 	}
 
 	/**

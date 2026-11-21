@@ -106,6 +106,18 @@ public class ServiceClientFailoverExecutor {
 	private static final Duration DEADLINE_CUT_MARGIN = Duration.ofMillis(50);
 
 	/**
+	 * Connect timeouts (a cooldown failure when not cut by the deadline).
+	 */
+	private static final List<Class<? extends Throwable>> CONNECT_TIMEOUT_FAILURES = List.of(ConnectTimeoutException.class);
+
+	/**
+	 * Read and pool wait timeouts (overload outcomes when not cut by the
+	 * deadline).
+	 */
+	private static final List<Class<? extends Throwable>> READ_OR_POOL_TIMEOUT_FAILURES = List.of(SocketTimeoutException.class,
+			ConnectionRequestTimeoutException.class);
+
+	/**
 	 * Least remaining time for another attempt.
 	 */
 	private static final Duration LEAST_REMAINING_TIME = Duration.ofMillis(1);
@@ -845,30 +857,6 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Gets if an attempt failed on a connect timeout cut short by the request's
-	 * deadline: through a scope that applies the limit, it took (about) all the
-	 * time the deadline left it, so the deadline, not the endpoint's own connect
-	 * timeout, ended it. A connect timeout well within the deadline is the
-	 * endpoint's.
-	 *
-	 * @param  failure               Attempt failure ({@code null} if it
-	 *                                   succeeded).
-	 * @param  deadlineRemainingTime What was left of the deadline when the attempt
-	 *                                   started ({@code null} for none).
-	 * @param  attemptStartNanos     When the attempt started
-	 *                                   ({@link System#nanoTime()}).
-	 * @return                       If the attempt failed on a connect timeout cut
-	 *                               short by the deadline.
-	 */
-	private boolean isConnectCutByDeadline(
-			final Exception failure,
-			final Duration deadlineRemainingTime,
-			final long attemptStartNanos) {
-		return this.readTimeoutScope.appliesConnectionWaitLimit()
-				&& ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos, List.of(ConnectTimeoutException.class));
-	}
-
-	/**
 	 * Gets if an attempt failed on a timeout of the given types that took (about)
 	 * all the time the request's deadline left it: the deadline, not the target,
 	 * ended it.
@@ -890,6 +878,31 @@ public class ServiceClientFailoverExecutor {
 			final List<Class<? extends Throwable>> timeoutTypes) {
 		return (failure != null) && (deadlineRemainingTime != null) && ServiceClientFailoverExecutor.isCausedBy(failure, timeoutTypes)
 				&& (Duration.ofNanos(System.nanoTime() - attemptStartNanos).compareTo(deadlineRemainingTime.minus(ServiceClientFailoverExecutor.DEADLINE_CUT_MARGIN)) >= 0);
+	}
+
+	/**
+	 * Gets if an attempt failed on a connect timeout cut short by the request's
+	 * deadline: through a scope that applies the limit, it took (about) all the
+	 * time the deadline left it, so the deadline, not the endpoint's own connect
+	 * timeout, ended it. A connect timeout well within the deadline is the
+	 * endpoint's.
+	 *
+	 * @param  failure               Attempt failure ({@code null} if it
+	 *                                   succeeded).
+	 * @param  deadlineRemainingTime What was left of the deadline when the attempt
+	 *                                   started ({@code null} for none).
+	 * @param  attemptStartNanos     When the attempt started
+	 *                                   ({@link System#nanoTime()}).
+	 * @return                       If the attempt failed on a connect timeout cut
+	 *                               short by the deadline.
+	 */
+	private boolean isConnectCutByDeadline(
+			final Exception failure,
+			final Duration deadlineRemainingTime,
+			final long attemptStartNanos) {
+		return this.readTimeoutScope.appliesConnectionWaitLimit()
+				&& ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos,
+				ServiceClientFailoverExecutor.CONNECT_TIMEOUT_FAILURES);
 	}
 
 	/**
@@ -1012,7 +1025,7 @@ public class ServiceClientFailoverExecutor {
 					isOverload = false;
 				}
 				else if (ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos,
-						List.of(SocketTimeoutException.class, ConnectionRequestTimeoutException.class))) {
+						ServiceClientFailoverExecutor.READ_OR_POOL_TIMEOUT_FAILURES)) {
 					isLatencySample = false;
 					isOverload = false;
 				}
