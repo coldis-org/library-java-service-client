@@ -412,7 +412,11 @@ public class GenericRestServiceClient {
 	 * and integration exceptions) runs once, after the last attempt. An empty
 	 * endpoint list goes to the target's last non-empty one, and fails at once
 	 * (no request) when the target never had one; the attempts share the
-	 * executor's time budget (see {@link ServiceClientFailoverExecutor}).
+	 * executor's time budget (see {@link ServiceClientFailoverExecutor}). When the
+	 * thread serves a request with a deadline
+	 * ({@link ServiceClientRequestDeadline}), the attempts are capped to what is
+	 * left of it and send it on, and a call with nothing left fails at once with
+	 * no request.
 	 *
 	 * @param  <ResponseType>       REST operation response type.
 	 * @param  endpoints            Endpoints (base URLs) to try.

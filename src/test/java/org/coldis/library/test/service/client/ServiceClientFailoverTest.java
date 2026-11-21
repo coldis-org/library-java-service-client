@@ -29,6 +29,8 @@ import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
+import org.coldis.library.service.client.ServiceClientRequestDeadline;
+import org.coldis.library.service.client.ServiceClientRequestDeadlinePolicy;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -112,6 +115,11 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	private static final AtomicReference<String> LAST_HOOK_HEADER = new AtomicReference<>();
 
 	/**
+	 * Last value of the request deadline header, as received by an instance.
+	 */
+	private static final AtomicReference<String> LAST_DEADLINE_HEADER = new AtomicReference<>();
+
+	/**
 	 * Requests received by the third instance.
 	 */
 	private static final AtomicInteger THIRD_SERVER_REQUESTS = new AtomicInteger();
@@ -176,6 +184,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private RestTemplateBuilder restTemplateBuilder;
+
+	/**
+	 * Shipped value of the request deadline switch.
+	 */
+	@Value(value = "${org.coldis.library.service-client.deadline.enabled}")
+	private Boolean shippedDeadlineEnabled;
 
 	/**
 	 * Generated client endpoints.
@@ -245,6 +259,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		server.createContext("/", exchange -> {
 			requests.incrementAndGet();
 			ServiceClientFailoverTest.LAST_HOOK_HEADER.set(exchange.getRequestHeaders().getFirst("X-Hook"));
+			ServiceClientFailoverTest.LAST_DEADLINE_HEADER.set(exchange.getRequestHeaders().getFirst(ServiceClientRequestDeadline.HEADER));
 			final String path = exchange.getRequestURI().getPath();
 			final byte[] requestBody = exchange.getRequestBody().readAllBytes();
 			if ("/test2/slow".equals(path)) {
@@ -1174,6 +1189,54 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		Assertions.assertEquals(1, handledFailures.size());
 		Assertions.assertTrue(handledFailures.get(0) instanceof HttpServerErrorException, handledFailures.get(0)::toString);
 		Assertions.assertTrue(handledUrls.get(0).endsWith("/unavailable"), handledUrls.get(0));
+	}
+
+	/**
+	 * The request deadline, through the shared context: the shipped property is
+	 * on, and the context's policy has the 100 ms margin and the default
+	 * template's 9 s read timeout (the executor of a client without the
+	 * auto-configuration has it off). Switched off at runtime (put back on before
+	 * each test), a call with a deadline is as before (no header); on, a generated
+	 * client call made with a deadline sends what is left of it and is cut by it (a
+	 * 3 s answer, 800 ms left), well before its 9 s read timeout; with nothing
+	 * left, it fails at once (504, its code) and the instance gets no request.
+	 */
+	@Test
+	public void testGeneratedClientRequestDeadline() {
+		Assertions.assertTrue(this.shippedDeadlineEnabled);
+		final ServiceClientRequestDeadlinePolicy policy = this.failoverExecutor.getDeadlinePolicy();
+		Assertions.assertTrue(policy.isEnabled());
+		Assertions.assertEquals(Duration.ofMillis(100), policy.getMargin());
+		Assertions.assertEquals(Duration.ofSeconds(9), policy.getDefaultReadTimeout());
+		Assertions.assertFalse(ServiceClientFailoverExecutor.SINGLE_ATTEMPT.getDeadlinePolicy().isEnabled());
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER));
+		ServiceClientFailoverTest.LAST_DEADLINE_HEADER.set("unset");
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(800));
+		try {
+			// Off: no header (the call itself fails on the instance's 503).
+			policy.setEnabled(false);
+			Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertNull(ServiceClientFailoverTest.LAST_DEADLINE_HEADER.get());
+			policy.setEnabled(true);
+			// Nothing left: no request.
+			ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.set(0);
+			ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(0));
+			final IntegrationException expiredException = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertEquals(ServiceClientFailoverExecutor.DEADLINE_EXPIRED_CODE, expiredException.getInternalMessage().getCode());
+			Assertions.assertEquals(504, expiredException.getStatusCode());
+			Assertions.assertEquals(0, ServiceClientFailoverTest.FIRST_SERVER_REQUESTS.get());
+			ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(800));
+			final long startNanos = System.nanoTime();
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1("slow"));
+			Assertions.assertTrue(ExceptionUtils.indexOfThrowable(exception, SocketTimeoutException.class) >= 0, ExceptionUtils.getStackTrace(exception));
+			Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofMillis(2000)) < 0);
+			final long sentMillis = Long.parseLong(ServiceClientFailoverTest.LAST_DEADLINE_HEADER.get());
+			Assertions.assertTrue((sentMillis > 0) && (sentMillis <= 700), Long.toString(sentMillis));
+		}
+		finally {
+			ServiceClientRequestDeadline.setDeadlineNanos(null);
+			this.failoverExecutor.getDeadlinePolicy().setEnabled(true);
+		}
 	}
 
 	/**

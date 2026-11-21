@@ -20,6 +20,8 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
  * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #CALLS_ON_LAST_ENDPOINTS} (counter; tag {@code target}).</li>
+ * <li>{@value #DEADLINE_EXPIRED} (counter; tags {@code target},
+ * {@code stage}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  * The concurrency limit of each target (see
@@ -59,6 +61,13 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * time limit (budget) was spent.
 	 */
 	public static final String ATTEMPTS_STOPPED_BY_TIME_LIMIT = "service.client.attempts.stopped.by.time.limit";
+
+	/**
+	 * Counter of calls stopped because the request's deadline was spent (also the
+	 * message code of their failure,
+	 * {@link ServiceClientFailoverExecutor#DEADLINE_EXPIRED_CODE}).
+	 */
+	public static final String DEADLINE_EXPIRED = "service.client.deadline.expired";
 
 	/**
 	 * Counter of calls that went to their target's last non-empty
@@ -181,6 +190,16 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 			final String target,
 			final String reason) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.ATTEMPTS_STOPPED_BY_TIME_LIMIT, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordDeadlineExpired(String, String)
+	 */
+	@Override
+	public void recordDeadlineExpired(
+			final String target,
+			final String stage) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.DEADLINE_EXPIRED, "target", target, "stage", stage).increment();
 	}
 
 	/**

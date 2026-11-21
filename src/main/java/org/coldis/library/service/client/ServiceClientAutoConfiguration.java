@@ -387,6 +387,32 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates how the generated clients apply the request's deadline (see
+	 * {@link ServiceClientRequestDeadline}; a service may declare its own).
+	 *
+	 * @param  isEnabled          If the request's deadline is applied to the calls
+	 *                                (on by default; also a runtime switch).
+	 * @param  margin             Margin kept from the request's deadline (e.g.
+	 *                                {@code 100ms}).
+	 * @param  readTimeoutSeconds Read timeout of the default template (seconds):
+	 *                                bounds the time sent on by a call with none
+	 *                                of its own.
+	 * @return                    The request deadline policy.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientRequestDeadlinePolicy serviceClientRequestDeadlinePolicy(
+			@Value(value = "${org.coldis.library.service-client.deadline.enabled:true}")
+			final Boolean isEnabled,
+			@Value(value = "${org.coldis.library.service-client.deadline.margin:100ms}")
+			final String margin,
+			@Value(value = "${org.coldis.library.service-client.timeout}")
+			final Long readTimeoutSeconds) {
+		return new ServiceClientRequestDeadlinePolicy(Boolean.TRUE.equals(isEnabled), DurationStyle.detectAndParse(margin),
+				(readTimeoutSeconds == null ? null : Duration.ofSeconds(readTimeoutSeconds)));
+	}
+
+	/**
 	 * Creates the service client failover executor (a service may declare its own).
 	 *
 	 * @param  isEnabled                If failover is enabled.
@@ -416,6 +442,8 @@ public class ServiceClientAutoConfiguration {
 	 * @param  metricsProvider          Metrics provider (the first by order; none
 	 *                                      without Micrometer).
 	 * @param  concurrencyLimiter       Concurrency limiter.
+	 * @param  deadlinePolicy           How the request's deadline is applied to
+	 *                                      the calls.
 	 * @return                          The service client failover executor.
 	 */
 	@Bean
@@ -445,7 +473,8 @@ public class ServiceClientAutoConfiguration {
 			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider,
-			final ServiceClientConcurrencyLimiter concurrencyLimiter) {
+			final ServiceClientConcurrencyLimiter concurrencyLimiter,
+			final ServiceClientRequestDeadlinePolicy deadlinePolicy) {
 		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
 		// The per-attempt cap of the budget needs a scope that applies the limit.
 		if (actualMaxTotalTime.isPositive() && !readTimeoutScope.appliesConnectionWaitLimit()) {
@@ -472,7 +501,7 @@ public class ServiceClientAutoConfiguration {
 		}
 		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
 				actualMaxTotalTime, balancer, endpointResolver, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE),
-				concurrencyLimiter);
+				concurrencyLimiter, deadlinePolicy);
 	}
 
 	/**
