@@ -373,6 +373,38 @@ public class ServiceClientConcurrencyLimiterTest {
 		Assertions.assertEquals(30, snapshot.limit());
 		limiter.release(limiter.acquire("InvalidTestClient"));
 		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, limiter.getSnapshot("InvalidTestClient").orElseThrow().mode());
+		// The per-target maximum caps a healthy burst (not the default 256).
+		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS + 1, 70);
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
+		for (int operationIndex = 0; operationIndex < 100; operationIndex++) {
+			permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
+		}
+		final ServiceClientConcurrencyLimiter.Snapshot burstSnapshot = ServiceClientConcurrencyLimiterTest.getSnapshot(limiter);
+		Assertions.assertEquals(40, burstSnapshot.limit());
+		Assertions.assertEquals(100, burstSnapshot.inFlight());
+		Assertions.assertEquals(0, burstSnapshot.rejectedCalls());
+		permits.forEach(limiter::release);
+	}
+
+	/**
+	 * Mode off by default, with one target switched on in the environment: only
+	 * that target is limited.
+	 */
+	@Test
+	public void testOffByDefaultWithTargetOn() {
+		final StandardEnvironment environment = new StandardEnvironment();
+		environment.getPropertySources().addFirst(new MapPropertySource("test",
+				Map.of(ServiceClientConcurrencyLimiter.PROPERTY_PREFIX + "mode." + ServiceClientConcurrencyLimiterTest.TARGET, "observe")));
+		final ServiceClientConcurrencyLimiter limiter = new ServiceClientConcurrencyLimiter(
+				ServiceClientConcurrencyLimiterTest.SETTINGS.withMode(ServiceClientConcurrencyLimiter.Mode.OFF), environment, ServiceClientMetrics.NONE,
+				this.clock::get);
+		Assertions.assertNull(limiter.acquire("OtherTestClient"));
+		final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+		Assertions.assertNotNull(permit);
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).mode());
+		Assertions.assertEquals(1, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlight());
+		limiter.release(permit);
+		Assertions.assertEquals(0, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlight());
 	}
 
 	/**
