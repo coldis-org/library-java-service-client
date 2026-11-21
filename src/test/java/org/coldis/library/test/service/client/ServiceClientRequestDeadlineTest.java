@@ -6,6 +6,7 @@ import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -506,6 +507,79 @@ public class ServiceClientRequestDeadlineTest {
 			ServiceClientRequestDeadlineTest.callEcho(executor, null, template);
 			Assertions.assertEquals(1, acquiredPermits.get());
 		}
+	}
+
+	/**
+	 * A read timeout that took all the time the deadline left is the caller's,
+	 * not the target's: the concurrency limit records neither a latency sample
+	 * nor an overload outcome for it; one well within the deadline records both.
+	 */
+	@Test
+	public void testReadTimeoutCutByDeadlineNotOverload() {
+		final List<String> recordedOutcomes = new CopyOnWriteArrayList<>();
+		final ServiceClientConcurrencyLimiter recordingLimiter = new ServiceClientConcurrencyLimiter(ServiceClientConcurrencyLimiter.Settings.DEFAULTS, null,
+				ServiceClientMetrics.NONE) {
+
+			@Override
+			public void recordAttempt(
+					final Permit permit,
+					final long latencyNanos,
+					final boolean isLatencySample,
+					final boolean isOverload) {
+				recordedOutcomes.add(isLatencySample + "/" + isOverload);
+				super.recordAttempt(permit, latencyNanos, isLatencySample, isOverload);
+			}
+
+		};
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 1, new String[] { "GET" }, null, null, false, Duration.ZERO,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
+				ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE, recordingLimiter,
+				new ServiceClientRequestDeadlinePolicy(true, Duration.ofMillis(100), null));
+		final RestTemplate readTimingOutTemplate = new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				// The cut call times out at the limit it was given (200 ms left).
+				if (url.startsWith("http://cut")) {
+					try {
+						Thread.sleep(250);
+					}
+					catch (final InterruptedException exception) {
+						Thread.currentThread().interrupt();
+					}
+				}
+				throw new ResourceAccessException("Read timeout.", new SocketTimeoutException("Read timeout."));
+			}
+		};
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(300));
+		ServiceClientTarget.runFor("CutTarget", () -> executor.executeOverEndpoints(List.of("http://cut"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, readTimingOutTemplate));
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(5000));
+		ServiceClientTarget.runFor("SlowTarget", () -> executor.executeOverEndpoints(List.of("http://slow"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, readTimingOutTemplate));
+		Assertions.assertEquals(List.of("false/false", "true/true"), recordedOutcomes);
+	}
+
+	/**
+	 * A failure adding the header is logged and the request goes as it is.
+	 */
+	@Test
+	public void testHeaderFailureKeepsRequest() {
+		final HttpEntity<String> brokenEntity = new HttpEntity<>("body") {
+
+			@Override
+			public HttpHeaders getHeaders() {
+				throw new IllegalStateException("Broken headers.");
+			}
+
+		};
+		Assertions.assertSame(brokenEntity, new ServiceClientRequestDeadlinePolicy(true, Duration.ofMillis(100), null).withHeader(brokenEntity, null,
+				Duration.ofSeconds(1)));
 	}
 
 	/**

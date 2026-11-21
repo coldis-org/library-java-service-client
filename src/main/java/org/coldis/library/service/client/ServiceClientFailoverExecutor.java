@@ -864,8 +864,31 @@ public class ServiceClientFailoverExecutor {
 			final Exception failure,
 			final Duration deadlineRemainingTime,
 			final long attemptStartNanos) {
-		return (failure != null) && (deadlineRemainingTime != null) && this.readTimeoutScope.appliesConnectionWaitLimit()
-				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class))
+		return this.readTimeoutScope.appliesConnectionWaitLimit()
+				&& ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos, List.of(ConnectTimeoutException.class));
+	}
+
+	/**
+	 * Gets if an attempt failed on a timeout of the given types that took (about)
+	 * all the time the request's deadline left it: the deadline, not the target,
+	 * ended it.
+	 *
+	 * @param  failure               Attempt failure ({@code null} if it
+	 *                                   succeeded).
+	 * @param  deadlineRemainingTime What was left of the deadline when the attempt
+	 *                                   started ({@code null} for none).
+	 * @param  attemptStartNanos     When the attempt started
+	 *                                   ({@link System#nanoTime()}).
+	 * @param  timeoutTypes          Timeout types.
+	 * @return                       If the attempt failed on such a timeout cut
+	 *                               short by the deadline.
+	 */
+	private static boolean isTimeoutCutByDeadline(
+			final Exception failure,
+			final Duration deadlineRemainingTime,
+			final long attemptStartNanos,
+			final List<Class<? extends Throwable>> timeoutTypes) {
+		return (failure != null) && (deadlineRemainingTime != null) && ServiceClientFailoverExecutor.isCausedBy(failure, timeoutTypes)
 				&& (Duration.ofNanos(System.nanoTime() - attemptStartNanos).compareTo(deadlineRemainingTime.minus(ServiceClientFailoverExecutor.DEADLINE_CUT_MARGIN)) >= 0);
 	}
 
@@ -957,20 +980,28 @@ public class ServiceClientFailoverExecutor {
 	 * Records an attempt in the concurrency limit. A latency sample: the target
 	 * answered (any status), or did not in the read timeout. An overload outcome: a
 	 * read timeout, no pooled connection in time, or an overload status. Anything
-	 * else (connect failures, a dropped connection, a connect cut by the budget)
-	 * records nothing. A failure inside the limiter is counted and ignored.
+	 * else (connect failures, a dropped connection, a connect cut by the budget,
+	 * a read timeout or pool wait cut by the request's deadline: the caller's
+	 * time, not the target's) records nothing. A failure inside the limiter is
+	 * counted and ignored.
 	 *
-	 * @param target            Target of the operation.
-	 * @param concurrencyPermit Permit of the operation ({@code null} for none).
-	 * @param failure           Attempt failure ({@code null} if it succeeded).
-	 * @param attemptStartNanos When the attempt started
-	 *                              ({@link System#nanoTime()}).
+	 * @param target                Target of the operation.
+	 * @param concurrencyPermit     Permit of the operation ({@code null} for
+	 *                                  none).
+	 * @param failure               Attempt failure ({@code null} if it
+	 *                                  succeeded).
+	 * @param attemptStartNanos     When the attempt started
+	 *                                  ({@link System#nanoTime()}).
+	 * @param deadlineRemainingTime What was left of the request's deadline when
+	 *                                  the attempt started ({@code null} for
+	 *                                  none).
 	 */
 	private void recordConcurrencyLimitAttempt(
 			final String target,
 			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
 			final Exception failure,
-			final long attemptStartNanos) {
+			final long attemptStartNanos,
+			final Duration deadlineRemainingTime) {
 		// No permit: the outcome is not even classified.
 		if (concurrencyPermit != null) {
 			try {
@@ -978,6 +1009,11 @@ public class ServiceClientFailoverExecutor {
 				final boolean isOverload;
 				if (failure == null) {
 					isLatencySample = true;
+					isOverload = false;
+				}
+				else if (ServiceClientFailoverExecutor.isTimeoutCutByDeadline(failure, deadlineRemainingTime, attemptStartNanos,
+						List.of(SocketTimeoutException.class, ConnectionRequestTimeoutException.class))) {
+					isLatencySample = false;
 					isOverload = false;
 				}
 				else if (failure instanceof final RestClientResponseException responseFailure) {
@@ -1102,7 +1138,7 @@ public class ServiceClientFailoverExecutor {
 					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
 							&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
 					attemptFailure);
-			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos);
+			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}

@@ -143,15 +143,19 @@ public class ServiceClientRequestDeadlinePolicy {
 	}
 
 	/**
-	 * Gets the time sent on with an attempt: what is left of the deadline, bounded
-	 * by the attempt's read timeout (the call's own, or else the default one).
+	 * Gets the timeout forwarded with an attempt (in the header): what is left of
+	 * the deadline, bounded by the attempt's read timeout (the call's own, or else
+	 * the default one: the default template's, from
+	 * {@code org.coldis.library.service-client.timeout}, not that of a template a
+	 * service declares itself; the read cap itself follows the template in
+	 * effect).
 	 *
 	 * @param  readTimeout   The call's own read timeout ({@code null}, zero or
 	 *                           negative for none).
 	 * @param  remainingTime What is left of the deadline.
-	 * @return               The time sent on.
+	 * @return               The timeout forwarded.
 	 */
-	public Duration getTimeSent(
+	public Duration getForwardedTimeout(
 			final Duration readTimeout,
 			final Duration remainingTime) {
 		final Duration attemptReadTimeout = (ServiceClientRequestFactory.hasOwnReadTimeout(readTimeout) ? readTimeout : this.defaultReadTimeout);
@@ -178,7 +182,7 @@ public class ServiceClientRequestDeadlinePolicy {
 		try {
 			final HttpHeaders headers = new HttpHeaders();
 			headers.putAll(requestEntity.getHeaders());
-			headers.set(ServiceClientRequestDeadline.HEADER, Long.toString(Math.max(1L, this.getTimeSent(readTimeout, remainingTime).toMillis())));
+			headers.set(ServiceClientRequestDeadline.HEADER, Long.toString(Math.max(1L, this.getForwardedTimeout(readTimeout, remainingTime).toMillis())));
 			attemptEntity = new HttpEntity<>(requestEntity.getBody(), headers);
 		}
 		catch (final RuntimeException exception) {
