@@ -27,6 +27,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
@@ -151,6 +152,22 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	}
 
 	/**
+	 * Gets the count of a target's limit calls of a result (zero if the meter
+	 * does not exist).
+	 *
+	 * @param  target Target.
+	 * @param  result Result ({@code over-limit} or {@code rejected}).
+	 * @return        The count.
+	 */
+	private double countLimitCalls(
+			final String target,
+			final String result) {
+		final FunctionCounter counter = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_CALLS).tag("target", target).tag("result", result)
+				.functionCounter();
+		return (counter == null ? 0 : counter.count());
+	}
+
+	/**
 	 * A generated client's calls are recorded in {@code http.client.requests}
 	 * with the client's name as target; a full-URL call with target
 	 * {@value ServiceClientTarget#NONE}.
@@ -263,7 +280,8 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	/**
 	 * A target set to enforce in the environment, overloaded and at its limit:
 	 * a call through the generic client (as a generated client makes it) gets the
-	 * rejection as is (code, status 503, retry in 1 s), and no request is sent.
+	 * rejection as is (code, status 503, retry in 1 s), no request is sent, and
+	 * the rejection is counted in its meter (not as over the limit).
 	 * The overload is fed to the context limiter directly (11 windows of 1 s of
 	 * real time): a real slow target would take as long and add nothing the plain
 	 * executor tests do not cover.
@@ -289,6 +307,8 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 				permits.add(this.concurrencyLimiter.acquire(enforcedTarget));
 			}
 			final long requests = this.countHttpClientRequests(enforcedTarget);
+			final double rejectedCalls = this.countLimitCalls(enforcedTarget, "rejected");
+			final double overLimitCalls = this.countLimitCalls(enforcedTarget, "over-limit");
 			final IntegrationException rejection = Assertions.assertThrows(IntegrationException.class,
 					() -> this.serviceClient.executeOperation(List.of("http://localhost:" + this.localServerPort), "/test2", HttpMethod.GET, null, null, null,
 							new ParameterizedTypeReference<Void>() {}, null, null, enforcedTarget));
@@ -296,6 +316,8 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 			Assertions.assertEquals(503, rejection.getStatusCode());
 			Assertions.assertEquals(Duration.ofSeconds(1), rejection.getRetryIn());
 			Assertions.assertEquals(requests, this.countHttpClientRequests(enforcedTarget));
+			Assertions.assertEquals(rejectedCalls + 1, this.countLimitCalls(enforcedTarget, "rejected"));
+			Assertions.assertEquals(overLimitCalls, this.countLimitCalls(enforcedTarget, "over-limit"));
 		}
 		finally {
 			permits.forEach(this.concurrencyLimiter::release);

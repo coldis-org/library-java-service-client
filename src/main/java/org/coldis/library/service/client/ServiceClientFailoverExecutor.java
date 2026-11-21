@@ -752,14 +752,15 @@ public class ServiceClientFailoverExecutor {
 	 * fail-open); only the limiter's rejection propagates.
 	 *
 	 * @param  target               Target of the operation.
-	 * @return                      The limit of the target ({@code null} for none).
+	 * @return                      The permit of the operation ({@code null} for
+	 *                              none).
 	 * @throws IntegrationException If the limiter rejects the operation.
 	 */
-	private ServiceClientConcurrencyLimiter.Permit acquireConcurrencyLimit(
+	private ServiceClientConcurrencyLimiter.Permit acquireConcurrencyPermit(
 			final String target) throws IntegrationException {
-		ServiceClientConcurrencyLimiter.Permit targetLimit = null;
+		ServiceClientConcurrencyLimiter.Permit concurrencyPermit = null;
 		try {
-			targetLimit = this.concurrencyLimiter.acquire(target);
+			concurrencyPermit = this.concurrencyLimiter.acquire(target);
 		}
 		catch (final RuntimeException exception) {
 			if (ServiceClientConcurrencyLimiter.isRejection(exception)) {
@@ -767,7 +768,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			this.concurrencyLimiter.recordFailure(target, exception);
 		}
-		return targetLimit;
+		return concurrencyPermit;
 	}
 
 	/**
@@ -778,18 +779,18 @@ public class ServiceClientFailoverExecutor {
 	 * records nothing. A failure inside the limiter is counted and ignored.
 	 *
 	 * @param target            Target of the operation.
-	 * @param targetLimit       Limit of the target ({@code null} for none).
+	 * @param concurrencyPermit Permit of the operation ({@code null} for none).
 	 * @param failure           Attempt failure ({@code null} if it succeeded).
 	 * @param attemptStartNanos When the attempt started
 	 *                              ({@link System#nanoTime()}).
 	 */
 	private void recordConcurrencyLimitAttempt(
 			final String target,
-			final ServiceClientConcurrencyLimiter.Permit targetLimit,
+			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
 			final Exception failure,
 			final long attemptStartNanos) {
 		// No permit: the outcome is not even classified.
-		if (targetLimit != null) {
+		if (concurrencyPermit != null) {
 			try {
 				final boolean isLatencySample;
 				final boolean isOverload;
@@ -809,7 +810,7 @@ public class ServiceClientFailoverExecutor {
 					isLatencySample = (ServiceClientFailoverExecutor.getFailureKind(failure) == FailureKind.READ_TIMEOUT);
 					isOverload = isLatencySample;
 				}
-				this.concurrencyLimiter.recordAttempt(targetLimit, System.nanoTime() - attemptStartNanos, isLatencySample, isOverload);
+				this.concurrencyLimiter.recordAttempt(concurrencyPermit, System.nanoTime() - attemptStartNanos, isLatencySample, isOverload);
 			}
 			catch (final RuntimeException exception) {
 				this.concurrencyLimiter.recordFailure(target, exception);
@@ -822,13 +823,13 @@ public class ServiceClientFailoverExecutor {
 	 * the limiter is counted and ignored.
 	 *
 	 * @param target      Target of the operation.
-	 * @param targetLimit Limit of the target ({@code null} for none).
+	 * @param concurrencyPermit Permit of the operation ({@code null} for none).
 	 */
-	private void releaseConcurrencyLimit(
+	private void releaseConcurrencyPermit(
 			final String target,
-			final ServiceClientConcurrencyLimiter.Permit targetLimit) {
+			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit) {
 		try {
-			this.concurrencyLimiter.release(targetLimit);
+			this.concurrencyLimiter.release(concurrencyPermit);
 		}
 		catch (final RuntimeException exception) {
 			this.concurrencyLimiter.recordFailure(target, exception);
@@ -851,8 +852,8 @@ public class ServiceClientFailoverExecutor {
 	 * @param  readTimeout          Read timeout of the attempts ({@code null},
 	 *                                  zero or negative keeps the template's).
 	 * @param  restTemplate         Template.
-	 * @param  targetLimit          Concurrency limit of the target ({@code null}
-	 *                                  for none).
+	 * @param  concurrencyPermit    Permit of the operation ({@code null} for
+	 *                                  none).
 	 * @return                      The outcome: the response, or the failure of
 	 *                              the last attempt.
 	 * @throws IntegrationException If there is no endpoint to go to.
@@ -867,7 +868,7 @@ public class ServiceClientFailoverExecutor {
 			final Boolean declaredIdempotent,
 			final Duration readTimeout,
 			final RestOperations restTemplate,
-			final ServiceClientConcurrencyLimiter.Permit targetLimit) throws IntegrationException {
+			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit) throws IntegrationException {
 		final long startNanos = System.nanoTime();
 		final String target = ServiceClientTarget.getCurrent();
 		// With no endpoint in the list, a path that is an absolute URL is called as
@@ -908,7 +909,7 @@ public class ServiceClientFailoverExecutor {
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
 					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
-			this.recordConcurrencyLimitAttempt(target, targetLimit, attemptFailure, attemptStartNanos);
+			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
@@ -987,13 +988,13 @@ public class ServiceClientFailoverExecutor {
 			final Duration readTimeout,
 			final RestOperations restTemplate) throws IntegrationException {
 		final String target = ServiceClientTarget.getCurrent();
-		final ServiceClientConcurrencyLimiter.Permit targetLimit = this.acquireConcurrencyLimit(target);
+		final ServiceClientConcurrencyLimiter.Permit concurrencyPermit = this.acquireConcurrencyPermit(target);
 		try {
 			return this.executeAttempts(endpoints, path, method, requestEntity, responseType, uriParameters, declaredIdempotent, readTimeout, restTemplate,
-					targetLimit);
+					concurrencyPermit);
 		}
 		finally {
-			this.releaseConcurrencyLimit(target, targetLimit);
+			this.releaseConcurrencyPermit(target, concurrencyPermit);
 		}
 	}
 

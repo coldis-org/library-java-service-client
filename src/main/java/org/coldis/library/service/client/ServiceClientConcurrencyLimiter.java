@@ -679,7 +679,7 @@ public class ServiceClientConcurrencyLimiter {
 	/**
 	 * Overload statuses (indexed by status).
 	 */
-	private final boolean[] isOverloadStatus = new boolean[ServiceClientConcurrencyLimiter.MAX_STATUS + 1];
+	private final boolean[] overloadStatusFlags = new boolean[ServiceClientConcurrencyLimiter.MAX_STATUS + 1];
 
 	/**
 	 * If nothing is limited for any target (mode off and no per-target settings).
@@ -730,7 +730,7 @@ public class ServiceClientConcurrencyLimiter {
 		this.windowNanos = Math.max(1, settings.window().toNanos());
 		(settings.overloadStatuses() == null ? List.<Integer>of() : settings.overloadStatuses()).stream()
 				.filter(status -> (status != null) && (status >= 0) && (status <= ServiceClientConcurrencyLimiter.MAX_STATUS))
-				.forEach(status -> this.isOverloadStatus[status] = true);
+				.forEach(status -> this.overloadStatusFlags[status] = true);
 		this.isOffEverywhere = (settings.mode() == Mode.OFF) && (propertyResolver == null);
 	}
 
@@ -763,7 +763,7 @@ public class ServiceClientConcurrencyLimiter {
 	 */
 	public boolean isOverloadStatus(
 			final int status) {
-		return (status >= 0) && (status <= ServiceClientConcurrencyLimiter.MAX_STATUS) && this.isOverloadStatus[status];
+		return (status >= 0) && (status <= ServiceClientConcurrencyLimiter.MAX_STATUS) && this.overloadStatusFlags[status];
 	}
 
 	/**
@@ -1056,7 +1056,7 @@ public class ServiceClientConcurrencyLimiter {
 		if ((logIntervalNanos > 0) && ((nowNanos - targetLimit.lastLogNanos) >= logIntervalNanos)) {
 			final int suggestedLimit = this.computeSuggestedLimit(targetLimit, nowNanos);
 			ServiceClientConcurrencyLimiter.LOGGER.info(
-					"Target {}: limit {}, in flight peak {}, latency {} ms (baseline {} ms), suggested fixed limit {}, overloaded {} s.", targetLimit.target,
+					"Target {}: limit {}, in flight peak {}, average healthy latency {} ms (baseline {} ms), suggested fixed limit {}, overloaded {} s.", targetLimit.target,
 					targetLimit.getLimit(), this.computeInFlightPeak(targetLimit, nowNanos),
 					Math.round(targetLimit.averageHealthyLatencyNanos / TimeUnit.MILLISECONDS.toNanos(1)),
 					Math.round(targetLimit.baselineLatencyNanos / TimeUnit.MILLISECONDS.toNanos(1)),
@@ -1233,6 +1233,8 @@ public class ServiceClientConcurrencyLimiter {
 	/**
 	 * Forgets what every target's limit learnt (see the shared test context);
 	 * the targets, their meters, operations in flight and counters are kept.
+	 * Only while no operation is in flight (between tests): it does not wait for
+	 * a window being closed.
 	 */
 	public void clear() {
 		final long nowNanos = this.nanoClock.getAsLong();
