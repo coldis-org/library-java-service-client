@@ -892,6 +892,7 @@ public class ServiceClientFailoverExecutor {
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
 			final Duration remainingTime = this.getRemainingTime(startNanos);
+			final long attemptStartNanos = System.nanoTime();
 			try {
 				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
 				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, remainingTime, () -> (maxAttemptsForCall > 1

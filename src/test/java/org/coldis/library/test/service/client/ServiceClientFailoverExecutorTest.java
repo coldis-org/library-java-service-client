@@ -782,7 +782,7 @@ public class ServiceClientFailoverExecutorTest {
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE),
 						ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
-						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
 			}
 		}
 		finally {
@@ -808,7 +808,7 @@ public class ServiceClientFailoverExecutorTest {
 				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
 						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
 						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
-						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class), ServiceClientConcurrencyLimiter.NONE);
 			}
 		}
 		finally {
