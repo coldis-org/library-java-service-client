@@ -253,7 +253,11 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 				.forEach(meter -> Assertions.assertTrue(Set.of("target", "result").containsAll(
 						meter.getId().getTags().stream().map(Tag::getKey).toList()), meter.getId()::toString));
 		final String enforcedTarget = "ConcurrencyLimitEnforcedTestClient";
-		this.concurrencyLimiter.release(this.concurrencyLimiter.acquire(enforcedTarget));
+		// A call through the generic client (as a generated client makes it), under
+		// its limit: it passes, and creates the target's limit and meters.
+		this.serviceClient.executeOperation(List.of("http://localhost:" + this.localServerPort), "/test2", HttpMethod.GET, null, null, null,
+				new ParameterizedTypeReference<Void>() {}, null, null, enforcedTarget);
+		Assertions.assertEquals(0, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().inFlight());
 		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.ENFORCE, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().mode());
 		Assertions.assertEquals(1, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", enforcedTarget).gauge().value());
 	}
