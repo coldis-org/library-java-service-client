@@ -1,10 +1,18 @@
 package org.coldis.library.test.service.client;
 
 import java.net.ServerSocket;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.coldis.library.service.client.ServiceClientTargetObservationFilter;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -19,8 +27,10 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Timer;
 
 /**
@@ -58,6 +68,18 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private ServiceClientEndpointBalancer contextBalancer;
+
+	/**
+	 * Concurrency limiter of the context.
+	 */
+	@Autowired
+	private ServiceClientConcurrencyLimiter concurrencyLimiter;
+
+	/**
+	 * Failover executor of the context.
+	 */
+	@Autowired
+	private ServiceClientFailoverExecutor failoverExecutor;
 
 	/**
 	 * Generated client endpoints.
@@ -130,6 +152,22 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	}
 
 	/**
+	 * Gets the count of a target's limit calls of a result (zero if the meter
+	 * does not exist).
+	 *
+	 * @param  target Target.
+	 * @param  result Result ({@code over-limit} or {@code rejected}).
+	 * @return        The count.
+	 */
+	private double countLimitCalls(
+			final String target,
+			final String result) {
+		final FunctionCounter counter = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_CALLS).tag("target", target).tag("result", result)
+				.functionCounter();
+		return (counter == null ? 0 : counter.count());
+	}
+
+	/**
 	 * A generated client's calls are recorded in {@code http.client.requests}
 	 * with the client's name as target; a full-URL call with target
 	 * {@value ServiceClientTarget#NONE}.
@@ -182,6 +220,117 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		final Gauge inFlight = this.meterRegistry.find(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(inFlight);
 		Assertions.assertEquals(0, inFlight.value());
+	}
+
+	/**
+	 * The concurrency limit of the context observes by default: a generated
+	 * client's calls get its meters (tagged with the target only, and the result),
+	 * not enforced, nothing left in flight. A target with its own mode in the
+	 * environment enforces it.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testConcurrencyLimitMeters() throws Exception {
+		Assertions.assertSame(this.concurrencyLimiter, this.failoverExecutor.getConcurrencyLimiter());
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, this.concurrencyLimiter.getSettings().mode());
+		// The shipped properties reach the bean: the same as the defaults in code.
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Settings.DEFAULTS, this.concurrencyLimiter.getSettings());
+		Assertions.assertTrue(this.concurrencyLimiter.isOverloadStatus(429));
+		Assertions.assertTrue(this.concurrencyLimiter.isOverloadStatus(503));
+		Assertions.assertFalse(this.concurrencyLimiter.isOverloadStatus(500));
+		this.testService2Client.test1();
+		final Gauge limit = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
+		Assertions.assertNotNull(limit);
+		Assertions.assertTrue(limit.value() >= this.concurrencyLimiter.getSettings().min());
+		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", ServiceClientMetricsTest.TARGET)
+				.gauge().value());
+		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET)
+				.gauge().value());
+		for (final String name : List.of(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT_PEAK, MicrometerServiceClientMetrics.LIMIT_OVERLOADED_SECONDS,
+				MicrometerServiceClientMetrics.LIMIT_LATENCY_BASELINE, MicrometerServiceClientMetrics.LIMIT_LATENCY_CURRENT,
+				MicrometerServiceClientMetrics.LIMIT_SUGGESTED, MicrometerServiceClientMetrics.LIMIT_ERRORS)) {
+			Assertions.assertNotNull(this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).meter(), name);
+		}
+		Assertions.assertEquals(2, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_CALLS).tag("target", ServiceClientMetricsTest.TARGET)
+				.meters().size());
+		this.meterRegistry.getMeters().stream().filter(meter -> meter.getId().getName().startsWith(MicrometerServiceClientMetrics.LIMIT))
+				.forEach(meter -> Assertions.assertTrue(Set.of("target", "result").containsAll(
+						meter.getId().getTags().stream().map(Tag::getKey).toList()), meter.getId()::toString));
+		final String enforcedTarget = "ConcurrencyLimitEnforcedTestClient";
+		// A call through the generic client (as a generated client makes it), under
+		// its limit: it passes, and creates the target's limit and meters.
+		this.serviceClient.executeOperation(List.of("http://localhost:" + this.localServerPort), "/test2", HttpMethod.GET, null, null, null,
+				new ParameterizedTypeReference<Void>() {}, null, null, enforcedTarget);
+		Assertions.assertEquals(0, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().inFlight());
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.ENFORCE, this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow().mode());
+		Assertions.assertEquals(1, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", enforcedTarget).gauge().value());
+	}
+
+	/**
+	 * Runs operations of a target through the context limiter, each with one
+	 * attempt of a latency (no request).
+	 *
+	 * @param target        Target.
+	 * @param operations    Operations.
+	 * @param latencyMillis Latency of each attempt (milliseconds).
+	 */
+	private void runLimiterOperations(
+			final String target,
+			final int operations,
+			final long latencyMillis) {
+		for (int operationIndex = 0; operationIndex < operations; operationIndex++) {
+			final ServiceClientConcurrencyLimiter.Permit permit = this.concurrencyLimiter.acquire(target);
+			this.concurrencyLimiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(latencyMillis), true, false);
+			this.concurrencyLimiter.release(permit);
+		}
+	}
+
+	/**
+	 * A target set to enforce in the environment, overloaded and at its limit:
+	 * a call through the generic client (as a generated client makes it) gets the
+	 * rejection as is (code, status 503, retry in 1 s), no request is sent, and
+	 * the rejection is counted in its meter (not as over the limit).
+	 * The overload is fed to the context limiter directly (11 windows of 1 s of
+	 * real time): a real slow target would take as long and add nothing the plain
+	 * executor tests do not cover.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testEnforcedTargetRejectsTheCall() throws Exception {
+		final String enforcedTarget = "ConcurrencyLimitEnforcedTestClient";
+		final long windowMillis = this.concurrencyLimiter.getSettings().window().toMillis() + 50;
+		for (int windowIndex = 0; windowIndex <= ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS; windowIndex++) {
+			this.runLimiterOperations(enforcedTarget, 10, 70);
+			Thread.sleep(windowMillis);
+		}
+		this.runLimiterOperations(enforcedTarget, 10, 4000);
+		Thread.sleep(windowMillis);
+		this.runLimiterOperations(enforcedTarget, 1, 4000);
+		final ServiceClientConcurrencyLimiter.Snapshot snapshot = this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow();
+		Assertions.assertTrue(snapshot.isOverloaded());
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
+		try {
+			for (int operationIndex = 0; operationIndex < snapshot.limit(); operationIndex++) {
+				permits.add(this.concurrencyLimiter.acquire(enforcedTarget));
+			}
+			final long requests = this.countHttpClientRequests(enforcedTarget);
+			final double rejectedCalls = this.countLimitCalls(enforcedTarget, "rejected");
+			final double overLimitCalls = this.countLimitCalls(enforcedTarget, "over-limit");
+			final IntegrationException rejection = Assertions.assertThrows(IntegrationException.class,
+					() -> this.serviceClient.executeOperation(List.of("http://localhost:" + this.localServerPort), "/test2", HttpMethod.GET, null, null, null,
+							new ParameterizedTypeReference<Void>() {}, null, null, enforcedTarget));
+			Assertions.assertEquals(ServiceClientConcurrencyLimiter.REJECTED_CODE, rejection.getInternalMessage().getCode());
+			Assertions.assertEquals(503, rejection.getStatusCode());
+			Assertions.assertEquals(Duration.ofSeconds(1), rejection.getRetryIn());
+			Assertions.assertEquals(requests, this.countHttpClientRequests(enforcedTarget));
+			Assertions.assertEquals(rejectedCalls + 1, this.countLimitCalls(enforcedTarget, "rejected"));
+			Assertions.assertEquals(overLimitCalls, this.countLimitCalls(enforcedTarget, "over-limit"));
+		}
+		finally {
+			permits.forEach(this.concurrencyLimiter::release);
+		}
 	}
 
 }

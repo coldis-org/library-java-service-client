@@ -98,4 +98,16 @@ public interface ServiceClientMetrics {
 		// Records nothing.
 	}
 
+	/**
+	 * Registers the meters of the concurrency limit of a target (read at scrape
+	 * time from the limit; the limiter never reads them). Called once per target,
+	 * when its limit is created.
+	 *
+	 * @param limit View of the limit of the target.
+	 */
+	default void registerConcurrencyLimit(
+			final ServiceClientConcurrencyLimitView limit) {
+		// Records nothing.
+	}
+
 }
