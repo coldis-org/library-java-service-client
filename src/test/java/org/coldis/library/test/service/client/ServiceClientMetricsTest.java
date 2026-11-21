@@ -223,7 +223,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * The concurrency limit of the context observes by default: a generated
+	 * The concurrency limit of the context enforces by default: a generated
 	 * client's calls get its meters (tagged with the target only, and the result),
 	 * not enforced, nothing left in flight. A target with its own mode in the
 	 * environment enforces it.
@@ -233,7 +233,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	@Test
 	public void testConcurrencyLimitMeters() throws Exception {
 		Assertions.assertSame(this.concurrencyLimiter, this.failoverExecutor.getConcurrencyLimiter());
-		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, this.concurrencyLimiter.getSettings().mode());
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.ENFORCE, this.concurrencyLimiter.getSettings().mode());
 		// The shipped properties reach the bean: the same as the defaults in code.
 		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Settings.DEFAULTS, this.concurrencyLimiter.getSettings());
 		Assertions.assertTrue(this.concurrencyLimiter.isOverloadStatus(429));
@@ -243,7 +243,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		final Gauge limit = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(limit);
 		Assertions.assertTrue(limit.value() >= this.concurrencyLimiter.getSettings().min());
-		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", ServiceClientMetricsTest.TARGET)
+		Assertions.assertEquals(1, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_ENFORCED).tag("target", ServiceClientMetricsTest.TARGET)
 				.gauge().value());
 		Assertions.assertEquals(0, this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT_IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET)
 				.gauge().value());

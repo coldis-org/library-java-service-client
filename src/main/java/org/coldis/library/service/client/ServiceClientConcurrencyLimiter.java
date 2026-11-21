@@ -40,8 +40,8 @@ import org.springframework.core.env.PropertyResolver;
  * count, so a healthy target is never limited except by the maximum. The first
  * 10 windows are a warm-up: nothing counts as over the limit.
  * <p>
- * In {@link Mode#OBSERVE} (the default) it never rejects: operations that would
- * have been rejected are counted. In {@link Mode#ENFORCE}, an operation is
+ * In {@link Mode#OBSERVE} it never rejects: operations that would have been
+ * rejected are counted. In {@link Mode#ENFORCE} (the default), an operation is
  * rejected (fail fast, no queue, before any request) only when the target is
  * overloaded and its in-flight count is over the limit; the minimum always
  * passes. In {@link Mode#OFF} it does nothing for the target.
@@ -206,11 +206,11 @@ public class ServiceClientConcurrencyLimiter {
 			Duration suggestionLogInterval) {
 
 		/**
-		 * Shipped defaults: observe, minimum 10, maximum 256, initial 20, windows of
+		 * Shipped defaults: enforce, minimum 10, maximum 256, initial 20, windows of
 		 * 1 s with at least 10 samples, tolerance 3x, baseline rise time 10 min,
 		 * statuses 429 and 503, suggestion margin 2x logged every 15 min.
 		 */
-		public static final Settings DEFAULTS = new Settings(Mode.OBSERVE, 10, 256, 20, Duration.ofSeconds(1), 10, 3.0, Duration.ofMinutes(10),
+		public static final Settings DEFAULTS = new Settings(Mode.ENFORCE, 10, 256, 20, Duration.ofSeconds(1), 10, 3.0, Duration.ofMinutes(10),
 				List.of(429, 503), 2.0, Duration.ofMinutes(15));
 
 		/**

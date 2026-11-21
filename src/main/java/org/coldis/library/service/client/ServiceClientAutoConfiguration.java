@@ -351,7 +351,7 @@ public class ServiceClientAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public ServiceClientConcurrencyLimiter serviceClientConcurrencyLimiter(
-			@Value(value = "${org.coldis.library.service-client.concurrency-limit.mode:observe}")
+			@Value(value = "${org.coldis.library.service-client.concurrency-limit.mode:enforce}")
 			final String mode,
 			@Value(value = "${org.coldis.library.service-client.concurrency-limit.min:10}")
 			final Integer min,
