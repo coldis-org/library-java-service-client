@@ -254,7 +254,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 			final int operations,
 			final long latencyMillis) {
 		for (int operationIndex = 0; operationIndex < operations; operationIndex++) {
-			final ServiceClientConcurrencyLimiter.TargetLimit permit = this.concurrencyLimiter.acquire(target);
+			final ServiceClientConcurrencyLimiter.Permit permit = this.concurrencyLimiter.acquire(target);
 			this.concurrencyLimiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(latencyMillis), true, false);
 			this.concurrencyLimiter.release(permit);
 		}
@@ -283,7 +283,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		this.runLimiterOperations(enforcedTarget, 1, 4000);
 		final ServiceClientConcurrencyLimiter.Snapshot snapshot = this.concurrencyLimiter.getSnapshot(enforcedTarget).orElseThrow();
 		Assertions.assertTrue(snapshot.isOverloaded());
-		final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
 		try {
 			for (int operationIndex = 0; operationIndex < snapshot.limit(); operationIndex++) {
 				permits.add(this.concurrencyLimiter.acquire(enforcedTarget));

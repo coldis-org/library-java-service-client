@@ -82,9 +82,9 @@ public interface ServiceClientConcurrencyLimitView {
 	/**
 	 * Gets if the limit is enforced.
 	 *
-	 * @return 1 if the limit is enforced, 0 otherwise.
+	 * @return If the limit is enforced.
 	 */
-	double getEnforced();
+	boolean isEnforced();
 
 	/**
 	 * Gets the failures inside the limiter (the operations proceeded).

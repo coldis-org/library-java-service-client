@@ -274,12 +274,18 @@ public class ServiceClientConcurrencyLimiter {
 			long errors) {}
 
 	/**
+	 * Permit of an operation, from {@link #acquire(String)} to
+	 * {@link #release(Permit)}: an opaque handle.
+	 */
+	public interface Permit {}
+
+	/**
 	 * Limit of a target: its settings and state, written by the limiter. Read by
 	 * the metrics through its {@link ServiceClientConcurrencyLimitView} (at scrape
 	 * time). The slot arrays are written by the thread closing a window and read
 	 * as best effort (a reading may be one window late).
 	 */
-	public static final class TargetLimit implements ServiceClientConcurrencyLimitView {
+	private static final class TargetLimit implements Permit, ServiceClientConcurrencyLimitView {
 
 		/**
 		 * Limiter.
@@ -305,6 +311,11 @@ public class ServiceClientConcurrencyLimiter {
 		 * Maximum limit.
 		 */
 		private final int max;
+
+		/**
+		 * Initial limit.
+		 */
+		private final int initial;
 
 		/**
 		 * Distance between the values written by every operation and the others
@@ -476,6 +487,7 @@ public class ServiceClientConcurrencyLimiter {
 			this.mode = mode;
 			this.min = min;
 			this.max = max;
+			this.initial = initial;
 			this.paddedCounters.set(TargetLimit.LIMIT, initial);
 			this.windowStartNanos = nowNanos;
 			this.paddedCounters.set(TargetLimit.WINDOW_END_NANOS, nowNanos + windowNanos);
@@ -492,15 +504,6 @@ public class ServiceClientConcurrencyLimiter {
 		@Override
 		public String getTarget() {
 			return this.target;
-		}
-
-		/**
-		 * Gets the mode.
-		 *
-		 * @return The mode.
-		 */
-		public Mode getMode() {
-			return this.mode;
 		}
 
 		/**
@@ -585,13 +588,42 @@ public class ServiceClientConcurrencyLimiter {
 		}
 
 		/**
-		 * Gets if the limit is enforced.
+		 * Forgets what the limit learnt (limit, windows, baseline, overload and
+		 * suggestion), starting a new window; the operations in flight and the
+		 * counters are kept.
 		 *
-		 * @return 1 if the limit is enforced, 0 otherwise.
+		 * @param nowNanos    Now ({@link System#nanoTime()}).
+		 * @param windowNanos Duration of a window (nanoseconds).
+		 */
+		private void reset(
+				final long nowNanos,
+				final long windowNanos) {
+			this.paddedCounters.set(TargetLimit.LIMIT, this.initial);
+			this.paddedCounters.set(TargetLimit.WINDOW_PEAK_IN_FLIGHT, this.paddedCounters.get(TargetLimit.IN_FLIGHT));
+			this.paddedCounters.set(TargetLimit.WINDOW_END_NANOS, nowNanos + windowNanos);
+			this.windowLatencySum.reset();
+			this.windowLatencySamples.reset();
+			this.windowOverloads.reset();
+			this.windowOverloadsWithoutSample.reset();
+			this.windowStartNanos = nowNanos;
+			this.isOverloaded = false;
+			this.baselineLatencyNanos = 0;
+			this.currentLatencyNanos = 0;
+			this.averageRate = 0;
+			this.averageHealthyLatencyNanos = 0;
+			Arrays.fill(this.peakSlots, 0);
+			Arrays.fill(this.peakSlotMinutes, Long.MIN_VALUE);
+			Arrays.fill(this.demandSlots, 0);
+			Arrays.fill(this.demandSlotHours, Long.MIN_VALUE);
+			this.windows = 0;
+		}
+
+		/**
+		 * @see ServiceClientConcurrencyLimitView#isEnforced()
 		 */
 		@Override
-		public double getEnforced() {
-			return (this.mode == Mode.ENFORCE ? 1 : 0);
+		public boolean isEnforced() {
+			return (this.mode == Mode.ENFORCE);
 		}
 
 		/**
@@ -609,24 +641,6 @@ public class ServiceClientConcurrencyLimiter {
 		public double getSuggestedLimit() {
 			final int suggestedLimit = this.limiter.computeSuggestedLimit(this, this.limiter.nanoClock.getAsLong());
 			return (suggestedLimit == 0 ? Double.NaN : suggestedLimit);
-		}
-
-		/**
-		 * Gets if the last window was overloaded.
-		 *
-		 * @return If the last window was overloaded.
-		 */
-		public boolean isOverloaded() {
-			return this.isOverloaded;
-		}
-
-		/**
-		 * Gets the windows closed.
-		 *
-		 * @return The windows closed.
-		 */
-		public long getWindows() {
-			return this.windows;
 		}
 
 	}
@@ -866,23 +880,23 @@ public class ServiceClientConcurrencyLimiter {
 
 	/**
 	 * Starts an operation of a target: takes its permit, held until
-	 * {@link #release(TargetLimit)} (across all its attempts). A healthy target over
+	 * {@link #release(Permit)} (across all its attempts). A healthy target over
 	 * its limit raises the limit; an overloaded one over its limit is counted, and
 	 * in {@link Mode#ENFORCE} rejected (the permit is not kept). Nothing counts as
 	 * over the limit during the warm-up.
 	 *
 	 * @param  target               Target.
-	 * @return                      The limit of the target, to give back to
+	 * @return                      The permit of the operation, to give back to
 	 *                              {@link #recordAttempt} and {@link #release}
 	 *                              ({@code null} when the target is not limited).
 	 * @throws IntegrationException If the operation is rejected
 	 *                                  ({@value #REJECTED_CODE}, status 503,
 	 *                                  retry in 1 s).
 	 */
-	public TargetLimit acquire(
+	public Permit acquire(
 			final String target) throws IntegrationException {
 		final TargetLimit targetLimit = (this.isOffEverywhere ? null : this.getTargetLimit(target));
-		TargetLimit acquiredLimit = null;
+		Permit acquiredLimit = null;
 		if ((targetLimit != null) && (targetLimit.mode != Mode.OFF)) {
 			final long inFlight = targetLimit.paddedCounters.incrementAndGet(TargetLimit.IN_FLIGHT);
 			long windowPeak = targetLimit.paddedCounters.get(TargetLimit.WINDOW_PEAK_IN_FLIGHT);
@@ -911,18 +925,18 @@ public class ServiceClientConcurrencyLimiter {
 	/**
 	 * Records an attempt of an operation.
 	 *
-	 * @param targetLimit     Limit of the target ({@code null} does nothing).
+	 * @param permit          Permit of the operation ({@code null} does nothing).
 	 * @param latencyNanos    Latency of the attempt (nanoseconds).
 	 * @param isLatencySample If the latency is a sample (the target answered, or
 	 *                            did not in the read timeout).
 	 * @param isOverload      If the outcome is an overload outcome.
 	 */
 	public void recordAttempt(
-			final TargetLimit targetLimit,
+			final Permit permit,
 			final long latencyNanos,
 			final boolean isLatencySample,
 			final boolean isOverload) {
-		if (targetLimit != null) {
+		if (permit instanceof final TargetLimit targetLimit) {
 			if (isLatencySample) {
 				targetLimit.windowLatencySum.add(Math.max(0, latencyNanos));
 				targetLimit.windowLatencySamples.increment();
@@ -1145,7 +1159,9 @@ public class ServiceClientConcurrencyLimiter {
 		final int peakInFlight = (int) targetLimit.paddedCounters.getAndSet(TargetLimit.WINDOW_PEAK_IN_FLIGHT, targetLimit.paddedCounters.get(TargetLimit.IN_FLIGHT));
 		final long outcomes = latencySamples + overloadsWithoutSample;
 		final double currentLatency = (latencySamples > 0 ? latencySum / (double) latencySamples : 0);
-		final double overloadShare = (outcomes > 0 ? overloads / (double) outcomes : 0);
+		// The two adders are reset one after the other, so an outcome may land
+		// between them: the share is capped at 1.
+		final double overloadShare = (outcomes > 0 ? Math.min(1, overloads / (double) outcomes) : 0);
 		final boolean isWarmUp = (targetLimit.windows < ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS);
 		final boolean isLatencyOverload = (currentLatency > 0) && (targetLimit.baselineLatencyNanos > 0)
 				&& (currentLatency > (this.settings.latencyTolerance() * targetLimit.baselineLatencyNanos));
@@ -1204,14 +1220,23 @@ public class ServiceClientConcurrencyLimiter {
 	 * Ends an operation: gives its permit back, and closes the target's window if
 	 * it is due.
 	 *
-	 * @param targetLimit Limit of the target ({@code null} does nothing).
+	 * @param permit Permit of the operation ({@code null} does nothing).
 	 */
 	public void release(
-			final TargetLimit targetLimit) {
-		if (targetLimit != null) {
+			final Permit permit) {
+		if (permit instanceof final TargetLimit targetLimit) {
 			targetLimit.paddedCounters.decrementAndGet(TargetLimit.IN_FLIGHT);
 			this.closeWindowIfDue(targetLimit);
 		}
+	}
+
+	/**
+	 * Forgets what every target's limit learnt (see the shared test context);
+	 * the targets, their meters, operations in flight and counters are kept.
+	 */
+	public void clear() {
+		final long nowNanos = this.nanoClock.getAsLong();
+		this.targetLimits.values().forEach(targetLimit -> targetLimit.reset(nowNanos, this.windowNanos));
 	}
 
 	/**

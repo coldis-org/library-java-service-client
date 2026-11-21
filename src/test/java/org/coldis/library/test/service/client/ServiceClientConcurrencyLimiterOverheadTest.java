@@ -103,7 +103,7 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 			final ServiceClientConcurrencyLimiter limiter,
 			final int operations) {
 		for (int operationIndex = 0; operationIndex < operations; operationIndex++) {
-			final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterOverheadTest.TARGET);
+			final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterOverheadTest.TARGET);
 			limiter.recordAttempt(permit, 1_000_000L + operationIndex, true, false);
 			limiter.release(permit);
 		}
@@ -125,7 +125,7 @@ public class ServiceClientConcurrencyLimiterOverheadTest {
 		long limiterNanos = 0;
 		for (int operationIndex = 0; operationIndex < operations; operationIndex++) {
 			final long acquireStart = System.nanoTime();
-			final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterOverheadTest.TARGET);
+			final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterOverheadTest.TARGET);
 			final long callStart = System.nanoTime();
 			long callEnd = callStart;
 			while ((callEnd - callStart) < callNanos) {

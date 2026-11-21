@@ -81,19 +81,19 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		 * @see ServiceClientConcurrencyLimiter#acquire(String)
 		 */
 		@Override
-		public TargetLimit acquire(
+		public Permit acquire(
 				final String target) throws IntegrationException {
 			this.events.add("acquire");
 			return super.acquire(target);
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#recordAttempt(TargetLimit, long,
+		 * @see ServiceClientConcurrencyLimiter#recordAttempt(Permit, long,
 		 *      boolean, boolean)
 		 */
 		@Override
 		public void recordAttempt(
-				final TargetLimit targetLimit,
+				final Permit targetLimit,
 				final long latencyNanos,
 				final boolean isLatencySample,
 				final boolean isOverload) {
@@ -102,11 +102,11 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#release(TargetLimit)
+		 * @see ServiceClientConcurrencyLimiter#release(Permit)
 		 */
 		@Override
 		public void release(
-				final TargetLimit targetLimit) {
+				final Permit targetLimit) {
 			this.events.add("release");
 			super.release(targetLimit);
 		}
@@ -141,18 +141,18 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		 * @see ServiceClientConcurrencyLimiter#acquire(String)
 		 */
 		@Override
-		public TargetLimit acquire(
+		public Permit acquire(
 				final String target) throws IntegrationException {
 			throw new IllegalStateException("Failing limiter.");
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#recordAttempt(TargetLimit, long,
+		 * @see ServiceClientConcurrencyLimiter#recordAttempt(Permit, long,
 		 *      boolean, boolean)
 		 */
 		@Override
 		public void recordAttempt(
-				final TargetLimit targetLimit,
+				final Permit targetLimit,
 				final long latencyNanos,
 				final boolean isLatencySample,
 				final boolean isOverload) {
@@ -160,11 +160,11 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#release(TargetLimit)
+		 * @see ServiceClientConcurrencyLimiter#release(Permit)
 		 */
 		@Override
 		public void release(
-				final TargetLimit targetLimit) {
+				final Permit targetLimit) {
 			throw new IllegalStateException("Failing limiter.");
 		}
 
@@ -186,12 +186,12 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#recordAttempt(TargetLimit, long,
+		 * @see ServiceClientConcurrencyLimiter#recordAttempt(Permit, long,
 		 *      boolean, boolean)
 		 */
 		@Override
 		public void recordAttempt(
-				final TargetLimit targetLimit,
+				final Permit targetLimit,
 				final long latencyNanos,
 				final boolean isLatencySample,
 				final boolean isOverload) {
@@ -199,11 +199,11 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		}
 
 		/**
-		 * @see ServiceClientConcurrencyLimiter#release(TargetLimit)
+		 * @see ServiceClientConcurrencyLimiter#release(Permit)
 		 */
 		@Override
 		public void release(
-				final TargetLimit targetLimit) {
+				final Permit targetLimit) {
 			throw new IllegalStateException("Failing limiter.");
 		}
 
@@ -330,8 +330,8 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	/**
 	 * A limiter failing when the permit is taken changes nothing in the call, in
 	 * observe and enforce mode: the same response, or the same failure, and the
-	 * failures are counted (the operation then holds no permit, so nothing else
-	 * reaches the limiter).
+	 * failures are counted (the operation then holds no permit, so no attempt is
+	 * recorded).
 	 */
 	@Test
 	public void testFailingLimiterNeverChangesTheCall() {
@@ -349,7 +349,8 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 					ServiceClientFailoverExecutorConcurrencyLimitTest.createTemplate(failure, attemptedUrls, limiter, new ArrayList<>()));
 			Assertions.assertSame(failure, failed.failure());
 			Assertions.assertEquals(2, attemptedUrls.size());
-			Assertions.assertEquals(2, limiter.getErrorsWithoutTarget());
+			// Per call: taking the permit and giving none back both fail.
+			Assertions.assertEquals(4, limiter.getErrorsWithoutTarget());
 		}
 	}
 
@@ -391,12 +392,12 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	 */
 	private ServiceClientConcurrencyLimiter createOverloadedLimiter(
 			final ServiceClientConcurrencyLimiter.Mode mode,
-			final List<ServiceClientConcurrencyLimiter.TargetLimit> permits) {
+			final List<ServiceClientConcurrencyLimiter.Permit> permits) {
 		final ServiceClientConcurrencyLimiter limiter = new ServiceClientConcurrencyLimiter(ServiceClientConcurrencyLimiter.Settings.DEFAULTS.withMode(mode),
 				null, ServiceClientMetrics.NONE, this.clock::get);
 		for (int windowIndex = 0; windowIndex <= ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS; windowIndex++) {
 			for (int operationIndex = 0; operationIndex < 10; operationIndex++) {
-				final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET);
+				final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET);
 				limiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(windowIndex < ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS ? 70 : 4000), true,
 						false);
 				if (operationIndex == 9) {
@@ -420,7 +421,7 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	 */
 	@Test
 	public void testEnforceRejectsObserveNever() {
-		final List<ServiceClientConcurrencyLimiter.TargetLimit> enforcedPermits = new ArrayList<>();
+		final List<ServiceClientConcurrencyLimiter.Permit> enforcedPermits = new ArrayList<>();
 		final ServiceClientConcurrencyLimiter enforcingLimiter = this.createOverloadedLimiter(ServiceClientConcurrencyLimiter.Mode.ENFORCE, enforcedPermits);
 		final List<String> rejectedUrls = new CopyOnWriteArrayList<>();
 		final IntegrationException rejection = Assertions.assertThrows(IntegrationException.class,
@@ -432,7 +433,7 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		Assertions.assertTrue(rejectedUrls.isEmpty());
 		Assertions.assertEquals(10, enforcingLimiter.getSnapshot(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET).orElseThrow().inFlight());
 		enforcedPermits.forEach(enforcingLimiter::release);
-		final List<ServiceClientConcurrencyLimiter.TargetLimit> observedPermits = new ArrayList<>();
+		final List<ServiceClientConcurrencyLimiter.Permit> observedPermits = new ArrayList<>();
 		final ServiceClientConcurrencyLimiter observingLimiter = this.createOverloadedLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, observedPermits);
 		final List<String> observedUrls = new CopyOnWriteArrayList<>();
 		final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientFailoverExecutorConcurrencyLimitTest.execute(

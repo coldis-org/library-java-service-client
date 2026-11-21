@@ -79,7 +79,7 @@ public class ServiceClientConcurrencyLimiterTest {
 			final long latencyMillis,
 			final boolean isOverload) {
 		for (int batchIndex = 0; batchIndex < batches; batchIndex++) {
-			final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+			final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
 			for (int operationIndex = 0; operationIndex < concurrent; operationIndex++) {
 				permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
 			}
@@ -155,7 +155,7 @@ public class ServiceClientConcurrencyLimiterTest {
 	public void testHealthyBurstNeverOverLimit() {
 		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.ENFORCE, 20, Duration.ofMinutes(10));
 		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS + 1, 70);
-		final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
 		for (int operationIndex = 0; operationIndex < 100; operationIndex++) {
 			permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
 		}
@@ -199,7 +199,7 @@ public class ServiceClientConcurrencyLimiterTest {
 		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.ENFORCE, 20, Duration.ofMinutes(10));
 		this.runWindows(limiter, 1, 70);
 		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS - 2, 4000);
-		final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+		final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
 		for (int operationIndex = 0; operationIndex < 50; operationIndex++) {
 			permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
 		}
@@ -244,7 +244,7 @@ public class ServiceClientConcurrencyLimiterTest {
 		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
 		for (int operationIndex = 0; operationIndex < 10; operationIndex++) {
 			this.clock.addAndGet(TimeUnit.MINUTES.toNanos(1));
-			final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+			final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
 			limiter.recordAttempt(permit, TimeUnit.MILLISECONDS.toNanos(operationIndex == 0 ? 9000 : 70), true, operationIndex == 0);
 			limiter.release(permit);
 		}
@@ -256,6 +256,28 @@ public class ServiceClientConcurrencyLimiterTest {
 	}
 
 	/**
+	 * Clearing forgets what a target learnt (limit, overload, windows, baseline),
+	 * and keeps the operations in flight and the counters.
+	 */
+	@Test
+	public void testClear() {
+		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, 20, Duration.ofMinutes(10));
+		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
+		this.runWindows(limiter, 1, 4000);
+		final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+		limiter.clear();
+		final ServiceClientConcurrencyLimiter.Snapshot snapshot = ServiceClientConcurrencyLimiterTest.getSnapshot(limiter);
+		Assertions.assertFalse(snapshot.isOverloaded());
+		Assertions.assertEquals(20, snapshot.limit());
+		Assertions.assertEquals(0, snapshot.windows());
+		Assertions.assertEquals(Duration.ZERO, snapshot.baselineLatency());
+		Assertions.assertEquals(1, snapshot.inFlight());
+		Assertions.assertEquals(1, snapshot.overloadedTime().toSeconds());
+		limiter.release(permit);
+		Assertions.assertEquals(0, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).inFlight());
+	}
+
+	/**
 	 * At least 10% overload outcomes (here a wait for a pooled connection, with no
 	 * latency sample) make a window overloaded, even with a normal latency.
 	 */
@@ -263,7 +285,7 @@ public class ServiceClientConcurrencyLimiterTest {
 	public void testOverloadOutcomes() {
 		final ServiceClientConcurrencyLimiter limiter = this.createLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE, 20, Duration.ofMinutes(10));
 		this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
-		final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+		final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
 		limiter.recordAttempt(permit, TimeUnit.SECONDS.toNanos(5), false, true);
 		limiter.release(permit);
 		this.runWindow(limiter, 9, 1, 70, false);
@@ -286,7 +308,7 @@ public class ServiceClientConcurrencyLimiterTest {
 			this.runWindows(limiter, ServiceClientConcurrencyLimiter.WARM_UP_WINDOWS, 70);
 			this.runWindows(limiter, 1, 4000);
 			Assertions.assertEquals(10, ServiceClientConcurrencyLimiterTest.getSnapshot(limiter).limit());
-			final List<ServiceClientConcurrencyLimiter.TargetLimit> permits = new ArrayList<>();
+			final List<ServiceClientConcurrencyLimiter.Permit> permits = new ArrayList<>();
 			for (int operationIndex = 0; operationIndex < 10; operationIndex++) {
 				permits.add(limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET));
 			}
@@ -399,7 +421,7 @@ public class ServiceClientConcurrencyLimiterTest {
 					long rejections = 0;
 					for (int operationIndex = 0; operationIndex < 50_000; operationIndex++) {
 						try {
-							final ServiceClientConcurrencyLimiter.TargetLimit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
+							final ServiceClientConcurrencyLimiter.Permit permit = limiter.acquire(ServiceClientConcurrencyLimiterTest.TARGET);
 							limiter.recordAttempt(permit, ThreadLocalRandom.current().nextLong(TimeUnit.MILLISECONDS.toNanos(500)), true,
 									ThreadLocalRandom.current().nextInt(20) == 0);
 							limiter.release(permit);

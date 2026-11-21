@@ -243,7 +243,7 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_LATENCY_CURRENT, limit, ServiceClientConcurrencyLimitView::getCurrentLatencySeconds)
 				.tags(tags).baseUnit("seconds").register(this.meterRegistry);
 		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_SUGGESTED, limit, ServiceClientConcurrencyLimitView::getSuggestedLimit).tags(tags).register(this.meterRegistry);
-		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_ENFORCED, limit, ServiceClientConcurrencyLimitView::getEnforced).tags(tags)
+		Gauge.builder(MicrometerServiceClientMetrics.LIMIT_ENFORCED, limit, enforcedLimit -> (enforcedLimit.isEnforced() ? 1 : 0)).tags(tags)
 				.register(this.meterRegistry);
 		FunctionCounter.builder(MicrometerServiceClientMetrics.LIMIT_ERRORS, limit, ServiceClientConcurrencyLimitView::getErrors).tags(tags)
 				.register(this.meterRegistry);

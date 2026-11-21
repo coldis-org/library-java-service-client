@@ -755,9 +755,9 @@ public class ServiceClientFailoverExecutor {
 	 * @return                      The limit of the target ({@code null} for none).
 	 * @throws IntegrationException If the limiter rejects the operation.
 	 */
-	private ServiceClientConcurrencyLimiter.TargetLimit acquireConcurrencyLimit(
+	private ServiceClientConcurrencyLimiter.Permit acquireConcurrencyLimit(
 			final String target) throws IntegrationException {
-		ServiceClientConcurrencyLimiter.TargetLimit targetLimit = null;
+		ServiceClientConcurrencyLimiter.Permit targetLimit = null;
 		try {
 			targetLimit = this.concurrencyLimiter.acquire(target);
 		}
@@ -785,9 +785,10 @@ public class ServiceClientFailoverExecutor {
 	 */
 	private void recordConcurrencyLimitAttempt(
 			final String target,
-			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit,
+			final ServiceClientConcurrencyLimiter.Permit targetLimit,
 			final Exception failure,
 			final long attemptStartNanos) {
+		// No permit: the outcome is not even classified.
 		if (targetLimit != null) {
 			try {
 				final boolean isLatencySample;
@@ -825,14 +826,12 @@ public class ServiceClientFailoverExecutor {
 	 */
 	private void releaseConcurrencyLimit(
 			final String target,
-			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) {
-		if (targetLimit != null) {
-			try {
-				this.concurrencyLimiter.release(targetLimit);
-			}
-			catch (final RuntimeException exception) {
-				this.concurrencyLimiter.recordFailure(target, exception);
-			}
+			final ServiceClientConcurrencyLimiter.Permit targetLimit) {
+		try {
+			this.concurrencyLimiter.release(targetLimit);
+		}
+		catch (final RuntimeException exception) {
+			this.concurrencyLimiter.recordFailure(target, exception);
 		}
 	}
 
@@ -868,7 +867,7 @@ public class ServiceClientFailoverExecutor {
 			final Boolean declaredIdempotent,
 			final Duration readTimeout,
 			final RestOperations restTemplate,
-			final ServiceClientConcurrencyLimiter.TargetLimit targetLimit) throws IntegrationException {
+			final ServiceClientConcurrencyLimiter.Permit targetLimit) throws IntegrationException {
 		final long startNanos = System.nanoTime();
 		final String target = ServiceClientTarget.getCurrent();
 		// With no endpoint in the list, a path that is an absolute URL is called as
@@ -988,7 +987,7 @@ public class ServiceClientFailoverExecutor {
 			final Duration readTimeout,
 			final RestOperations restTemplate) throws IntegrationException {
 		final String target = ServiceClientTarget.getCurrent();
-		final ServiceClientConcurrencyLimiter.TargetLimit targetLimit = this.acquireConcurrencyLimit(target);
+		final ServiceClientConcurrencyLimiter.Permit targetLimit = this.acquireConcurrencyLimit(target);
 		try {
 			return this.executeAttempts(endpoints, path, method, requestEntity, responseType, uriParameters, declaredIdempotent, readTimeout, restTemplate,
 					targetLimit);
