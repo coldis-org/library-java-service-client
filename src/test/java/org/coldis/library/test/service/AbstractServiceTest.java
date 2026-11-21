@@ -3,6 +3,7 @@ package org.coldis.library.test.service;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.coldis.library.helper.ReflectionHelper;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.test.StartTestWithContainerExtension;
 import org.coldis.library.test.StopTestWithContainerExtension;
 import org.coldis.library.test.TestHelper;
@@ -49,6 +50,12 @@ public abstract class AbstractServiceTest extends TestHelper {
 	private ServiceClientEndpointBalancer serviceClientEndpointBalancer;
 
 	/**
+	 * Endpoint resolver of the generated clients.
+	 */
+	@Autowired
+	private ServiceClientEndpointResolver serviceClientEndpointResolver;
+
+	/**
 	 * Generated service client.
 	 */
 	@Autowired
@@ -92,13 +99,15 @@ public abstract class AbstractServiceTest extends TestHelper {
 
 	/**
 	 * Puts the runtime test switches back to their defaults before each test, and
-	 * makes the balancer forget the requests and failures of earlier tests.
+	 * makes the balancer forget the requests and failures of earlier tests, and the
+	 * resolver the last endpoint lists.
 	 */
 	@BeforeEach
 	public void beforeEach() {
 		this.setAlwaysSync(false);
 		this.setService2ReadTimeoutSeconds(null);
 		this.serviceClientEndpointBalancer.clear();
+		this.serviceClientEndpointResolver.clear();
 	}
 
 }

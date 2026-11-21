@@ -18,6 +18,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -26,6 +29,7 @@ import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.NoHttpResponseException;
+import org.coldis.library.exception.IntegrationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -44,6 +48,16 @@ import org.springframework.web.client.RestOperations;
  * same service), failing over to another endpoint when a failure allows it. The
  * endpoint of each attempt is chosen by the {@link ServiceClientEndpointBalancer},
  * which this executor keeps informed of requests in flight and failures.
+ * <p>
+ * The endpoints of a call come from its {@link ServiceClientEndpointResolver}
+ * (the last good list of the target when its list is empty; no request when
+ * there is none).
+ * <p>
+ * The attempts of an operation share one time budget: no further attempt starts
+ * once it is spent, and the wait for a pooled connection and the wait for the
+ * connection of every attempt are each capped to what is left of it when the
+ * attempt starts (the read timeout is not). The waits before a request is sent
+ * so stay under the budget plus one connect timeout.
  */
 public class ServiceClientFailoverExecutor {
 
@@ -57,8 +71,15 @@ public class ServiceClientFailoverExecutor {
 	 * the read timeout scope of {@link ServiceClientRequestFactory} (a scope bean
 	 * does not reach it).
 	 */
-	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false,
-			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
+	public static final ServiceClientFailoverExecutor SINGLE_ATTEMPT = new ServiceClientFailoverExecutor(false, 1, null, null, null, false, Duration.ZERO,
+			new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS,
+			ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
+
+	/**
+	 * An absolute URL: its base (scheme, user information, host and port) and the
+	 * rest (path, query, fragment).
+	 */
+	private static final Pattern ABSOLUTE_URL = Pattern.compile("^([a-zA-Z][a-zA-Z0-9+.-]*://[^/?#\\s]+)(.*)$", Pattern.DOTALL);
 
 	/**
 	 * Failures that put the endpoint in its cooldown: the endpoint could not be
@@ -180,6 +201,17 @@ public class ServiceClientFailoverExecutor {
 	private final ServiceClientMetrics metrics;
 
 	/**
+	 * Time budget of an operation, over all its attempts (zero or negative for
+	 * none).
+	 */
+	private final Duration maxTotalTime;
+
+	/**
+	 * Endpoint resolver.
+	 */
+	private final ServiceClientEndpointResolver endpointResolver;
+
+	/**
 	 * Outcome of an operation: the response, or the failure of its last attempt.
 	 *
 	 * @param <ResponseType> Response type.
@@ -194,6 +226,58 @@ public class ServiceClientFailoverExecutor {
 
 	/**
 	 * Default constructor.
+	 *
+	 * @param isEnabled                If failover is enabled.
+	 * @param maxAttempts              Maximum attempts per operation.
+	 * @param idempotentMethods        Methods taken as idempotent when the
+	 *                                     operation does not say.
+	 * @param retryStatuses            Response statuses retried for idempotent
+	 *                                     operations.
+	 * @param cooldownStatuses         Response statuses that put the endpoint in
+	 *                                     its cooldown.
+	 * @param shouldRetryOnReadTimeout If read timeouts are retried for idempotent
+	 *                                     operations.
+	 * @param maxTotalTime             Time budget of an operation, over all its
+	 *                                     attempts ({@code null}, zero or
+	 *                                     negative for none).
+	 * @param balancer                 Endpoint balancer.
+	 * @param endpointResolver         Endpoint resolver.
+	 * @param readTimeoutScope         Scope that applies a call's own timeouts to
+	 *                                     its attempts.
+	 * @param metrics                  Metrics.
+	 */
+	public ServiceClientFailoverExecutor(
+			final boolean isEnabled,
+			final int maxAttempts,
+			final String[] idempotentMethods,
+			final String[] retryStatuses,
+			final String[] cooldownStatuses,
+			final boolean shouldRetryOnReadTimeout,
+			final Duration maxTotalTime,
+			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientEndpointResolver endpointResolver,
+			final ServiceClientReadTimeoutScope readTimeoutScope,
+			final ServiceClientMetrics metrics) {
+		super();
+		this.balancer = Objects.requireNonNull(balancer, "balancer");
+		this.endpointResolver = Objects.requireNonNull(endpointResolver, "endpointResolver");
+		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
+		this.metrics = Objects.requireNonNull(metrics, "metrics");
+		this.maxTotalTime = (maxTotalTime == null ? Duration.ZERO : maxTotalTime);
+		this.isEnabled = isEnabled;
+		this.maxAttempts = maxAttempts;
+		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
+				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
+		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
+		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
+		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+	}
+
+	/**
+	 * Constructor with no time budget and an endpoint resolver that keeps no last
+	 * list ({@link ServiceClientEndpointResolver#WITHOUT_LAST_ENDPOINTS}: a call with an empty
+	 * list fails at once, with no request), so an executor a service builds itself
+	 * does not start calling a last list unless it passes a resolver.
 	 *
 	 * @param isEnabled                If failover is enabled.
 	 * @param maxAttempts              Maximum attempts per operation.
@@ -220,17 +304,8 @@ public class ServiceClientFailoverExecutor {
 			final ServiceClientEndpointBalancer balancer,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ServiceClientMetrics metrics) {
-		super();
-		this.balancer = Objects.requireNonNull(balancer, "balancer");
-		this.readTimeoutScope = Objects.requireNonNull(readTimeoutScope, "readTimeoutScope");
-		this.metrics = Objects.requireNonNull(metrics, "metrics");
-		this.isEnabled = isEnabled;
-		this.maxAttempts = maxAttempts;
-		this.idempotentMethods = Arrays.stream(idempotentMethods == null ? new String[] {} : idempotentMethods).filter(StringUtils::isNotBlank)
-				.map(method -> HttpMethod.valueOf(method.trim().toUpperCase(Locale.ROOT))).collect(Collectors.toSet());
-		this.retryStatuses = ServiceClientFailoverExecutor.parseStatuses(retryStatuses);
-		this.cooldownStatuses = ServiceClientFailoverExecutor.parseStatuses(cooldownStatuses);
-		this.shouldRetryOnReadTimeout = shouldRetryOnReadTimeout;
+		this(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, Duration.ZERO, balancer,
+				ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, readTimeoutScope, metrics);
 	}
 
 	/**
@@ -287,17 +362,51 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Gets the endpoints of a list: trimmed, without blank or repeated ones, and a
-	 * single blank endpoint when none is left (the path is then the whole URL).
+	 * Gets the time budget of an operation, over all its attempts.
 	 *
-	 * @param  endpoints Endpoints of the list.
-	 * @return           The endpoints of the list.
+	 * @return The time budget of an operation (zero or negative for none).
 	 */
+	public Duration getMaxTotalTime() {
+		return this.maxTotalTime;
+	}
+
+	/**
+	 * Gets the endpoint resolver.
+	 *
+	 * @return The endpoint resolver.
+	 */
+	public ServiceClientEndpointResolver getEndpointResolver() {
+		return this.endpointResolver;
+	}
+
+	/**
+	 * Gets the endpoints of a list: trimmed, without blank or repeated ones, and a
+	 * single blank endpoint when none is left (the path is then the whole URL), as
+	 * before; the executor no longer uses it.
+	 *
+	 * @param      endpoints Endpoints of the list ({@code null} for none).
+	 * @return               The endpoints of the list.
+	 * @deprecated           Use
+	 *                           {@link ServiceClientEndpointResolver#getAvailableEndpoints(List)},
+	 *                           which returns an empty list when none is left.
+	 */
+	@Deprecated
 	public List<String> getAvailableEndpoints(
 			final List<String> endpoints) {
-		final List<String> availableEndpoints = (endpoints == null ? new ArrayList<>()
-				: endpoints.stream().filter(Objects::nonNull).map(String::trim).filter(StringUtils::isNotBlank).distinct().collect(Collectors.toList()));
+		final List<String> availableEndpoints = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints);
 		return (availableEndpoints.isEmpty() ? List.of("") : availableEndpoints);
+	}
+
+	/**
+	 * Gets what is left of an operation's time budget.
+	 *
+	 * @param  startNanos When the operation started ({@link System#nanoTime()}).
+	 * @return            What is left of the budget ({@code null} with no budget;
+	 *                    zero or negative when it is spent).
+	 */
+	private Duration getRemainingTime(
+			final long startNanos) {
+		return (this.maxTotalTime.isPositive() ? this.maxTotalTime.minusNanos(System.nanoTime() - startNanos) : null);
 	}
 
 	/**
@@ -497,15 +606,20 @@ public class ServiceClientFailoverExecutor {
 	 * Records the outcome of an attempt for the balancing: an endpoint that could
 	 * not be connected to or answered a cooldown status starts its cooldown, an
 	 * endpoint that answered anything else ends it (if the request was sent after
-	 * the cooldown started).
+	 * the cooldown started). An attempt that says nothing about the endpoint's
+	 * health (the base of an absolute path, which is no listed instance, or a
+	 * connect timeout of a later attempt, which the time budget may have cut)
+	 * starts none.
 	 *
-	 * @param target          Target of the call (for the metrics).
-	 * @param inFlightRequest The attempt's request.
-	 * @param failure         Attempt failure ({@code null} if it succeeded).
+	 * @param target           Target of the call (for the metrics).
+	 * @param inFlightRequest  The attempt's request.
+	 * @param canStartCooldown If the attempt can start the endpoint's cooldown.
+	 * @param failure          Attempt failure ({@code null} if it succeeded).
 	 */
 	private void recordOutcome(
 			final String target,
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest,
+			final boolean canStartCooldown,
 			final Exception failure) {
 		final boolean shouldStartCooldown;
 		if ((failure instanceof final RestClientResponseException responseFailure) && this.cooldownStatuses.contains(responseFailure.getStatusCode().value())) {
@@ -518,12 +632,49 @@ public class ServiceClientFailoverExecutor {
 		else {
 			shouldStartCooldown = ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.COOLDOWN_FAILURES);
 		}
-		if (shouldStartCooldown) {
+		if (shouldStartCooldown && canStartCooldown) {
 			this.balancer.startCooldown(inFlightRequest.getEndpoint());
 			this.recordMetrics(() -> this.metrics.recordCooldown(target));
 		}
 		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : ServiceClientFailoverExecutor.getFailureKind(failure).tagValue);
 		this.recordMetrics(() -> this.metrics.recordAttempt(target, outcome));
+	}
+
+	/**
+	 * Gets if an attempt failed on a connect timeout that may have been cut short
+	 * by the time budget: a later attempt of an operation with a budget, through a
+	 * scope that applies it (its waits are then capped to what is left of it). The first attempt's waits are never cut
+	 * (the budget starts with it, and the shipped one exceeds the pool wait plus
+	 * the connect timeout), so its connect timeout is the endpoint's; a refused
+	 * connection, no route or an unknown host are the endpoint's on any attempt.
+	 * This holds while the budget covers the pool wait plus the connect timeout
+	 * (warned about at startup otherwise).
+	 *
+	 * @param  failure       Attempt failure ({@code null} if it succeeded).
+	 * @param  attemptIndex  Index of the attempt (from zero).
+	 * @param  remainingTime Connection wait limit of the attempt ({@code null}
+	 *                           with no budget).
+	 * @return               If the attempt failed on a connect timeout the budget
+	 *                       may have cut.
+	 */
+	private boolean isConnectMaybeCutByBudget(
+			final Exception failure,
+			final int attemptIndex,
+			final Duration remainingTime) {
+		return (failure != null) && (attemptIndex > 0) && (remainingTime != null) && this.readTimeoutScope.appliesConnectionWaitLimit()
+				&& ServiceClientFailoverExecutor.isCausedBy(failure, List.of(ConnectTimeoutException.class));
+	}
+
+	/**
+	 * Gets if an operation's time budget is spent.
+	 *
+	 * @param  startNanos When the operation started ({@link System#nanoTime()}).
+	 * @return            If the operation has a time budget and it is spent.
+	 */
+	private boolean isTimeSpent(
+			final long startNanos) {
+		final Duration remainingTime = this.getRemainingTime(startNanos);
+		return (remainingTime != null) && (remainingTime.toNanos() < TimeUnit.MILLISECONDS.toNanos(1));
 	}
 
 	/**
@@ -533,7 +684,15 @@ public class ServiceClientFailoverExecutor {
 	 * are not doubled; a single attempt keeps them. A stream body gets a single
 	 * attempt when the template buffers it. Attempts, retries, cooldowns and
 	 * requests in flight are recorded in the {@link ServiceClientMetrics}, under the
-	 * current thread's {@link ServiceClientTarget}.
+	 * current thread's {@link ServiceClientTarget}. The endpoints come from
+	 * the {@link ServiceClientEndpointResolver} (no request when there are none),
+	 * except that a path that is an absolute URL, with no endpoint in the list, is
+	 * called as is (its host is then not put in cooldown: it is no listed
+	 * instance).
+	 * With a time budget, no further attempt starts once it is spent, and every
+	 * attempt waits for a pooled connection and for its connection no longer than
+	 * what is left of it (through the executor's
+	 * {@link ServiceClientReadTimeoutScope}).
 	 *
 	 * @param  <ResponseType> Response type.
 	 * @param  endpoints      Endpoints (base URLs).
@@ -550,6 +709,8 @@ public class ServiceClientFailoverExecutor {
 	 * @param  restTemplate   Template.
 	 * @return                The outcome: the response, or the failure of the last
 	 *                        attempt.
+	 * @throws IntegrationException If there is no endpoint to go to (see
+	 *                                  {@link ServiceClientEndpointResolver}).
 	 */
 	public <ResponseType> Outcome<ResponseType> executeOverEndpoints(
 			final List<String> endpoints,
@@ -560,26 +721,33 @@ public class ServiceClientFailoverExecutor {
 			final Map<String, Object> uriParameters,
 			final Boolean declaredIdempotent,
 			final Duration readTimeout,
-			final RestOperations restTemplate) {
-		final List<String> availableEndpoints = this.getAvailableEndpoints(endpoints);
+			final RestOperations restTemplate) throws IntegrationException {
+		final long startNanos = System.nanoTime();
+		final String target = ServiceClientTarget.getCurrent();
+		// With no endpoint in the list, a path that is an absolute URL is called as
+		// is (its base as the only endpoint); it is not the target's list.
+		final Matcher absoluteUrl = ServiceClientFailoverExecutor.ABSOLUTE_URL.matcher(Objects.toString(path, ""));
+		final boolean isAbsolutePathCall = ServiceClientEndpointResolver.getAvailableEndpoints(endpoints).isEmpty() && absoluteUrl.matches();
+		final List<String> availableEndpoints = (isAbsolutePathCall ? List.of(absoluteUrl.group(1)) : this.endpointResolver.resolve(target, endpoints));
+		final String actualPath = (isAbsolutePathCall ? absoluteUrl.group(2) : Objects.toString(path, ""));
 		final boolean isBodyRepeatable = ServiceClientFailoverExecutor.isRepeatableBody(requestEntity.getBody());
 		final int maxAttemptsForCall = (isBodyRepeatable || !ServiceClientFailoverExecutor.isBufferingTemplate(restTemplate)
 				? this.getMaxAttempts(availableEndpoints.size())
 				: 1);
 		final boolean isIdempotent = (declaredIdempotent == null ? this.isIdempotentMethod(method) : declaredIdempotent);
 		final List<String> triedEndpoints = new ArrayList<>();
-		final String target = ServiceClientTarget.getCurrent();
 		Outcome<ResponseType> outcome = null;
 		for (int attemptIndex = 0; outcome == null; attemptIndex++) {
 			final String endpoint = this.chooseEndpoint(availableEndpoints, triedEndpoints);
-			final String url = endpoint + path;
+			final String url = endpoint + actualPath;
 			triedEndpoints.add(endpoint);
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(endpoint);
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
+			final Duration remainingTime = this.getRemainingTime(startNanos);
 			try {
 				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
-				response = this.readTimeoutScope.runWithReadTimeout(restTemplate, readTimeout, () -> (maxAttemptsForCall > 1
+				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, remainingTime, () -> (maxAttemptsForCall > 1
 						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, requestEntity, responseType, uriParameters))
 						: restTemplate.exchange(url, method, requestEntity, responseType, uriParameters)));
 			}
@@ -591,12 +759,21 @@ public class ServiceClientFailoverExecutor {
 				this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
-			this.recordOutcome(target, inFlightRequest, attemptFailure);
+			this.recordOutcome(target, inFlightRequest,
+					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime), attemptFailure);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
 			else if (((attemptIndex + 1) >= maxAttemptsForCall) || !this.shouldRetry(attemptFailure, isIdempotent, isBodyRepeatable)) {
 				outcome = new Outcome<>(url, null, attemptFailure);
+			}
+			else if (this.isTimeSpent(startNanos)) {
+				outcome = new Outcome<>(url, null, attemptFailure);
+				final String spentReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				this.recordMetrics(() -> this.metrics.recordAttemptsStoppedByTimeLimit(target, spentReason));
+				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), and its time budget ({} ms) is spent: no other endpoint tried.",
+						method, ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, maxAttemptsForCall,
+						attemptFailure.getClass().getSimpleName(), this.maxTotalTime.toMillis());
 			}
 			else {
 				final String retryReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;

@@ -16,6 +16,8 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #ATTEMPTS} (counter; tags {@code target}, {@code outcome}).</li>
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
+ * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
+ * <li>{@value #CALLS_ON_LAST_ENDPOINTS} (counter; tag {@code target}).</li>
  * <li>{@value #IN_FLIGHT} (gauge; tag {@code target}).</li>
  * </ul>
  */
@@ -35,6 +37,18 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * Cooldowns counter.
 	 */
 	public static final String COOLDOWNS = "service.client.cooldowns";
+
+	/**
+	 * Counter of operations whose further attempts were stopped because their total
+	 * time limit (budget) was spent.
+	 */
+	public static final String ATTEMPTS_STOPPED_BY_TIME_LIMIT = "service.client.attempts.stopped.by.time.limit";
+
+	/**
+	 * Counter of calls that went to their target's last non-empty
+	 * endpoint list, as its current one was empty.
+	 */
+	public static final String CALLS_ON_LAST_ENDPOINTS = "service.client.calls.on.last.endpoints";
 
 	/**
 	 * Requests in flight gauge.
@@ -91,6 +105,25 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 			final String target,
 			final String reason) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.RETRIES, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordAttemptsStoppedByTimeLimit(String, String)
+	 */
+	@Override
+	public void recordAttemptsStoppedByTimeLimit(
+			final String target,
+			final String reason) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.ATTEMPTS_STOPPED_BY_TIME_LIMIT, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordCallOnLastEndpoints(String)
+	 */
+	@Override
+	public void recordCallOnLastEndpoints(
+			final String target) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.CALLS_ON_LAST_ENDPOINTS, "target", target).increment();
 	}
 
 	/**

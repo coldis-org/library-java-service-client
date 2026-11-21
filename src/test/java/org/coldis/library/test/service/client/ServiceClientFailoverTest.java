@@ -25,7 +25,10 @@ import org.coldis.library.exception.BusinessException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.model.FileResource;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -148,6 +151,18 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private ServiceClientFailoverExecutor failoverExecutor;
+
+	/**
+	 * Endpoint resolver of the context (used by the generated clients).
+	 */
+	@Autowired
+	private ServiceClientEndpointResolver contextEndpointResolver;
+
+	/**
+	 * Timeout scope of the context (used by the failover executor).
+	 */
+	@Autowired
+	private ServiceClientReadTimeoutScope contextReadTimeoutScope;
 
 	/**
 	 * Object mapper.
@@ -643,6 +658,107 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	}
 
 	/**
+	 * A generated client whose endpoint list has been empty since it started (as
+	 * when its target had no healthy instance when the service booted) fails at
+	 * once with the clear error naming its target, before any request, instead of
+	 * calling a URL with no host.
+	 */
+	@Test
+	public void testGeneratedClientNeverConfiguredFailsFast() {
+		for (final String emptyEndpoints : List.of("", " , ", ",")) {
+			this.testService2Properties.setEndpoint(emptyEndpoints);
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1(), emptyEndpoints);
+			Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode(), emptyEndpoints);
+			Assertions.assertTrue(exception.getInternalMessage().getContent().startsWith("No endpoints configured for "), exception.getInternalMessage()::getContent);
+			Assertions.assertFalse(exception.getInternalMessage().getContent().contains("no target client"), exception.getInternalMessage()::getContent);
+		}
+	}
+
+	/**
+	 * A generated client whose endpoint list gets empty (as when its target has no
+	 * healthy instance left) keeps calling its last non-empty list, then takes the
+	 * new list when it is back: a refusing instance as the last list makes the
+	 * calls in the empty period fail on it (not on a missing host), and the working
+	 * one, once back, makes them succeed.
+	 */
+	@Test
+	public void testGeneratedClientKeepsLastEndpoints() {
+		this.testService2Properties.setEndpoint("http://localhost:${local.server.port}");
+		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
+		for (final String emptyEndpoints : List.of("", " , ", ",")) {
+			this.testService2Properties.setEndpoint(emptyEndpoints);
+			Assertions.assertDoesNotThrow(() -> this.testService2Client.test1(), emptyEndpoints);
+		}
+		this.testService2Properties.setEndpoint(ServiceClientFailoverTest.REFUSED_ENDPOINT);
+		Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+		this.testService2Properties.setEndpoint(" , ");
+		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+		Assertions.assertEquals("rest.operation.execution.error", exception.getInternalMessage().getCode());
+		// It failed on the refusing endpoint: a refused connection, not a missing host.
+		boolean isRefused = false;
+		for (Throwable cause = exception; (cause != null) && !isRefused; cause = cause.getCause()) {
+			isRefused = (cause instanceof java.net.ConnectException);
+		}
+		Assertions.assertTrue(isRefused, exception::toString);
+		this.testService2Properties.setEndpoint(" , http://localhost:${local.server.port} ,");
+		Assertions.assertDoesNotThrow(() -> this.testService2Client.test1());
+	}
+
+	/**
+	 * Through a client over the library's own template (its request factory and
+	 * timeout scope), the time budget stops the attempts: read timeouts retried on
+	 * three slow instances stop after two attempts once a 500 ms budget is spent
+	 * (300 ms reads), and the operation cut short is counted.
+	 */
+	@Test
+	public void testBudgetStopsClientAttempts() {
+		final List<String> spentReasons = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor budgetExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true,
+				Duration.ofMillis(500), ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS,
+				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
+
+					@Override
+					public void recordAttemptsStoppedByTimeLimit(
+							final String target,
+							final String reason) {
+						spentReasons.add(reason);
+					}
+
+				});
+		final GenericRestServiceClient budgetClient = new GenericRestServiceClient() {
+			{
+				this.setObjectMapper(ServiceClientFailoverTest.this.objectMapper);
+			}
+		};
+		budgetClient.setRestTemplate(this.serviceClient.getRestTemplate());
+		budgetClient.setFailoverExecutor(budgetExecutor);
+		final List<String> endpoints = List.of(ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.FIRST_SERVER),
+				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.SECOND_SERVER),
+				ServiceClientFailoverTest.getEndpoint(ServiceClientFailoverTest.THIRD_SERVER));
+		final long startNanos = System.nanoTime();
+		Assertions.assertThrows(IntegrationException.class, () -> budgetClient.executeOperation(endpoints, "/slow", HttpMethod.GET, null, null, null,
+				ServiceClientFailoverTest.STRING_RESPONSE, null, Duration.ofMillis(300), "BudgetClient"));
+		Assertions.assertTrue(Duration.ofNanos(System.nanoTime() - startNanos).compareTo(Duration.ofSeconds(2)) < 0);
+		Assertions.assertEquals(2, ServiceClientFailoverTest.getTotalRequests() + ServiceClientFailoverTest.THIRD_SERVER_REQUESTS.get());
+		Assertions.assertEquals(1, spentReasons.size(), spentReasons::toString);
+	}
+
+	/**
+	 * The context's failover executor has the shipped time budget, and goes through
+	 * the context's endpoint resolver, which keeps a last list for the shipped 10
+	 * minutes.
+	 */
+	@Test
+	public void testShippedBudget() {
+		Assertions.assertEquals(Duration.ofSeconds(10), this.failoverExecutor.getMaxTotalTime());
+		Assertions.assertSame(this.contextEndpointResolver, this.failoverExecutor.getEndpointResolver());
+		Assertions.assertTrue(this.contextEndpointResolver.isKeepingLastEndpoints());
+		Assertions.assertEquals(Duration.ofMinutes(10), this.contextEndpointResolver.getLastEndpointsMaxAge());
+		// The context's timeout scope applies the budget's limit to each attempt.
+		Assertions.assertTrue(this.contextReadTimeoutScope.appliesConnectionWaitLimit());
+	}
+
+	/**
 	 * Under concurrent load, a slow instance gets fewer requests than the fast ones
 	 * (fewer requests in flight wins).
 	 *
@@ -761,9 +877,9 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	public void testAttemptLimits() {
 		final List<String> endpoints = List.of("http://first", "http://second", "http://third", "http://fourth");
 		final ServiceClientFailoverExecutor cappedExecutor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
-		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints).size()));
-		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(cappedExecutor.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
-		Assertions.assertEquals(List.of(""), cappedExecutor.getAvailableEndpoints(List.of(" ", "")));
+		Assertions.assertEquals(3, cappedExecutor.getMaxAttempts(ServiceClientEndpointResolver.getAvailableEndpoints(endpoints).size()));
+		Assertions.assertEquals(2, cappedExecutor.getMaxAttempts(ServiceClientEndpointResolver.getAvailableEndpoints(endpoints.subList(0, 2)).size()));
+		Assertions.assertEquals(List.of(), ServiceClientEndpointResolver.getAvailableEndpoints(List.of(" ", "")));
 		final ServiceClientFailoverExecutor disabledExecutor = new ServiceClientFailoverExecutor(false, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" },
 				false, ServiceClientFailoverTest.createBalancer(Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
 		Assertions.assertEquals(1, disabledExecutor.getMaxAttempts(endpoints.size()));

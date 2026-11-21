@@ -43,6 +43,32 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records an operation that failed and was not retried on another endpoint
+	 * because its time budget was spent.
+	 *
+	 * @param target Target.
+	 * @param reason Kind of the last failure ({@code not-connected},
+	 *                   {@code status}, {@code read-timeout} or
+	 *                   {@code dropped}).
+	 */
+	default void recordAttemptsStoppedByTimeLimit(
+			final String target,
+			final String reason) {
+		// Records nothing.
+	}
+
+	/**
+	 * Records a call that went to its target's last good endpoint list (its list
+	 * was empty).
+	 *
+	 * @param target Target.
+	 */
+	default void recordCallOnLastEndpoints(
+			final String target) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records an endpoint put in its cooldown.
 	 *
 	 * @param target Target.

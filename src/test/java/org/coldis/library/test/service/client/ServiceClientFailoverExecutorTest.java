@@ -8,17 +8,32 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
+import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.HttpRoute;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.io.ConnectionEndpoint;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.NoHttpResponseException;
+import org.apache.hc.core5.io.CloseMode;
+import org.apache.hc.core5.util.Timeout;
+import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientAutoConfiguration;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
@@ -26,7 +41,9 @@ import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.core.Ordered;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.InputStreamResource;
@@ -42,6 +59,10 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -199,9 +220,13 @@ public class ServiceClientFailoverExecutorTest {
 	 * endpoints.
 	 */
 	@Test
+	@SuppressWarnings("deprecation")
 	public void testRepeatedEndpoints() {
 		Assertions.assertEquals(List.of("http://first", "http://second"),
-				ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of("http://first", " http://first ", "http://second", "")));
+				ServiceClientEndpointResolver.getAvailableEndpoints(List.of("http://first", " http://first ", "http://second", "")));
+		// The deprecated executor method keeps its old result until it is removed.
+		Assertions.assertEquals(List.of("http://first"), ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of(" http://first ")));
+		Assertions.assertEquals(List.of(""), ServiceClientFailoverExecutorTest.EXECUTOR.getAvailableEndpoints(List.of(" ", "")));
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.execute(List.of("http://first", " http://first ", "http://second"), HttpMethod.GET, null,
 				new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE), attemptedUrls);
@@ -257,21 +282,703 @@ public class ServiceClientFailoverExecutorTest {
 	}
 
 	/**
-	 * A call with no endpoint list (the path is the whole URL) that fails to
-	 * connect puts nothing in cooldown.
+	 * Creates an executor with no time budget over a balancer with a cooldown,
+	 * whose resolver keeps last lists for the shipped 10 minutes.
+	 *
+	 * @param  balancer Balancer.
+	 * @return          The executor.
+	 */
+	private static ServiceClientFailoverExecutor createExecutor(
+			final ServiceClientEndpointBalancer balancer) {
+		return new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, Duration.ZERO, balancer,
+				new ServiceClientEndpointResolver(Duration.ofMinutes(10), ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				ServiceClientMetrics.NONE);
+	}
+
+	/**
+	 * An executor built with a constructor that takes no resolver (as a service's
+	 * own executor bean is) keeps no last list: an empty list after a non-empty
+	 * one fails at once, with no request.
 	 */
 	@Test
-	public void testBlankEndpointStartsNoCooldown() {
+	public void testCompatibleConstructorKeepsNoLastList() {
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
+				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
+		Assertions.assertSame(ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, executor.getEndpointResolver());
+		Assertions.assertFalse(executor.getEndpointResolver().isKeepingLastEndpoints());
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.executeFor(executor, "OwnExecutorClient", List.of("http://first"), attemptedUrls);
+		Assertions.assertThrows(IntegrationException.class,
+				() -> ServiceClientFailoverExecutorTest.executeFor(executor, "OwnExecutorClient", List.of(), attemptedUrls));
+		Assertions.assertEquals(List.of("http://first/path"), attemptedUrls);
+	}
+
+	/**
+	 * The resolver bean warns at startup when last lists have no maximum age, and
+	 * not with one.
+	 */
+	@Test
+	public void testNoMaxAgeWarning() {
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxAge : List.of("10m", "0")) {
+				Assertions.assertEquals(DurationStyle.detectAndParse(maxAge), new ServiceClientAutoConfiguration()
+						.serviceClientEndpointResolver(maxAge, new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class)).getLastEndpointsMaxAge());
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("0"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("no maximum age (0)") ? "0" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * Executes a call of a target that fails once (not retried), recording the
+	 * attempted URLs.
+	 *
+	 * @param  executor      Executor.
+	 * @param  target        Target of the call.
+	 * @param  endpoints     Endpoints of the list.
+	 * @param  attemptedUrls Where the attempted URLs are recorded.
+	 * @return               The outcome.
+	 */
+	private static ServiceClientFailoverExecutor.Outcome<String> executeFor(
+			final ServiceClientFailoverExecutor executor,
+			final String target,
+			final List<String> endpoints,
+			final List<String> attemptedUrls) {
+		return ServiceClientTarget.runFor(target,
+				() -> executor.executeOverEndpoints(endpoints, "/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
+						Map.of(), null, null, ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
+	}
+
+	/**
+	 * A target whose endpoint list never had an endpoint fails at once, with a clear
+	 * integration error and no request (and so does a call with no target, which
+	 * has no last list).
+	 */
+	@Test
+	public void testNeverConfiguredEndpointsFailFast() {
 		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 				Duration.ofSeconds(10));
-		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false,
-				balancer, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE);
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createExecutor(balancer);
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
-		executor.executeOverEndpoints(List.of(), "http://host/path", HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE,
-				Map.of(), null, null, ServiceClientFailoverExecutorTest
-						.createFailingTemplate(new ResourceAccessException("Refused.", new ConnectException("Refused.")), attemptedUrls));
-		Assertions.assertEquals(List.of("http://host/path"), attemptedUrls);
+		for (final List<String> endpoints : Arrays.<List<String>> asList(null, List.of(), List.of(" ", ""))) {
+			final IntegrationException exception = Assertions.assertThrows(IntegrationException.class,
+					() -> ServiceClientFailoverExecutorTest.executeFor(executor, "NeverConfiguredClient", endpoints, attemptedUrls));
+			Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode());
+			Assertions.assertEquals("No endpoints configured for NeverConfiguredClient.", exception.getInternalMessage().getContent());
+		}
+		ServiceClientFailoverExecutorTest.executeFor(executor, null, List.of("http://first"), attemptedUrls);
+		final IntegrationException noTargetException = Assertions.assertThrows(IntegrationException.class,
+				() -> ServiceClientFailoverExecutorTest.executeFor(executor, null, List.of(), attemptedUrls));
+		Assertions.assertEquals("No endpoints configured for a call with no target client.", noTargetException.getInternalMessage().getContent());
+		Assertions.assertThrows(IntegrationException.class, () -> ServiceClientFailoverExecutor.SINGLE_ATTEMPT.getEndpointResolver().resolve("Client", List.of()));
+		Assertions.assertEquals(List.of("http://first/path"), attemptedUrls);
+	}
+
+	/**
+	 * With no endpoint in the list, a path that is an absolute URL is called as is
+	 * (as before the last-list fallback), and it does not become the target's last
+	 * list.
+	 */
+	@Test
+	public void testAbsolutePathWithoutList() {
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createExecutor(
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientTarget.runFor("AbsoluteClient", () -> executor.executeOverEndpoints(List.of(" "), "https://user@host:8443/base/{id}?query={query}",
+				HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
+		ServiceClientTarget.runFor(null, () -> executor.executeOverEndpoints(null, "http://host", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
+		Assertions.assertEquals(List.of("https://user@host:8443/base/{id}?query={query}", "http://host"), attemptedUrls);
+		Assertions.assertThrows(IntegrationException.class, () -> executor.getEndpointResolver().resolve("AbsoluteClient", List.of()));
+		// The absolute URL wins over a last list the target has, and keeps it.
+		attemptedUrls.clear();
+		ServiceClientFailoverExecutorTest.executeFor(executor, "AbsoluteClient", List.of("http://first"), attemptedUrls);
+		ServiceClientTarget.runFor("AbsoluteClient", () -> executor.executeOverEndpoints(List.of(), "http://host/other", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new IllegalStateException("Failed."), attemptedUrls)));
+		Assertions.assertEquals(List.of("http://first/path", "http://host/other"), attemptedUrls);
+		Assertions.assertEquals(List.of("http://first"), executor.getEndpointResolver().resolve("AbsoluteClient", List.of()));
+		// A refused connection to such a URL puts its host in no cooldown: it is no
+		// listed instance.
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final List<String> refusedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.createExecutor(balancer).executeOverEndpoints(List.of(), "http://host/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createFailingTemplate(new ResourceAccessException("Refused.", new ConnectException("Refused.")), refusedUrls));
+		Assertions.assertEquals(List.of("http://host/path"), refusedUrls);
 		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+	}
+
+	/**
+	 * A maximum age of zero, negative or none keeps a last list with no limit: it
+	 * still stands in for an empty list after a while.
+	 *
+	 * @throws InterruptedException If the wait is interrupted.
+	 */
+	@Test
+	public void testLastEndpointsNoMaxAge() throws InterruptedException {
+		for (final Duration maxAge : Arrays.asList(Duration.ZERO, Duration.ofSeconds(-1), null)) {
+			final ServiceClientEndpointResolver resolver = new ServiceClientEndpointResolver(maxAge, ServiceClientMetrics.NONE);
+			Assertions.assertFalse(resolver.getLastEndpointsMaxAge().isPositive());
+			resolver.resolve("UnlimitedClient", List.of("http://first"));
+			Thread.sleep(50);
+			Assertions.assertEquals(List.of("http://first"), resolver.resolve("UnlimitedClient", List.of()), Objects.toString(maxAge));
+		}
+	}
+
+	/**
+	 * A last list stands in for an empty one for at most its maximum age, then the
+	 * call fails at once; each call on a last list is counted.
+	 *
+	 * @throws InterruptedException If the wait is interrupted.
+	 */
+	@Test
+	public void testLastEndpointsMaxAge() throws InterruptedException {
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientEndpointResolver resolver = new ServiceClientEndpointResolver(Duration.ofMillis(200),
+				new MicrometerServiceClientMetrics(meterRegistry));
+		resolver.resolve("AgedClient", List.of("http://first"));
+		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of()));
+		Assertions.assertEquals(List.of("http://first"), resolver.resolve("AgedClient", List.of(" ")));
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.CALLS_ON_LAST_ENDPOINTS).tag("target", "AgedClient").counter().count());
+		Thread.sleep(300);
+		final IntegrationException exception = Assertions.assertThrows(IntegrationException.class, () -> resolver.resolve("AgedClient", List.of()));
+		Assertions.assertEquals(ServiceClientEndpointResolver.NO_ENDPOINTS_CODE, exception.getInternalMessage().getCode());
+		Assertions.assertTrue(exception.getInternalMessage().getContent().contains("older than"), exception.getInternalMessage()::getContent);
+		// A new list makes it current again; clearing forgets it.
+		Assertions.assertEquals(List.of("http://second"), resolver.resolve("AgedClient", List.of("http://second")));
+		Assertions.assertEquals(List.of("http://second"), resolver.resolve("AgedClient", List.of()));
+		resolver.clear();
+		Assertions.assertThrows(IntegrationException.class, () -> resolver.resolve("AgedClient", List.of()));
+	}
+
+	/**
+	 * Executes a GET over two endpoints, with a time budget (or none), whose
+	 * attempts fail in turn with the given failures, and gets the endpoints put in
+	 * cooldown.
+	 *
+	 * @param  maxTotalTime Time budget ({@code null} for none).
+	 * @param  scope        Timeout scope.
+	 * @param  failures     Failure of each attempt.
+	 * @return              The endpoints attempted, each with if it is in cooldown
+	 *                      (in the order of the attempts).
+	 */
+	private static List<Map.Entry<String, Boolean>> executeFailingAttempts(
+			final Duration maxTotalTime,
+			final ServiceClientReadTimeoutScope scope,
+			final List<RuntimeException> failures) {
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false, maxTotalTime,
+				balancer, ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, scope, ServiceClientMetrics.NONE);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				throw failures.get(attemptedUrls.size() - 1);
+			}
+		};
+		executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, template);
+		return attemptedUrls.stream().map(url -> url.replace("/path", "")).map(endpoint -> Map.entry(endpoint, balancer.isCoolingDown(endpoint))).toList();
+	}
+
+	/**
+	 * Creates a connect timeout failure.
+	 *
+	 * @return The failure.
+	 */
+	private static RuntimeException createConnectTimeout() {
+		return new ResourceAccessException("Connect timed out.", new ConnectTimeoutException("Connect timed out."));
+	}
+
+	/**
+	 * Creates a refused connection failure.
+	 *
+	 * @return The failure.
+	 */
+	private static RuntimeException createRefused() {
+		return new ResourceAccessException("Refused.", new ConnectException("Refused."));
+	}
+
+	/**
+	 * With a time budget, only the first attempt of an operation (whose waits the
+	 * budget never cuts) starts an endpoint's cooldown on a connect timeout; a later
+	 * attempt's connect timeout, which the budget may have cut, starts none. A
+	 * refused connection starts it on any attempt; with no budget, or a scope that
+	 * does not apply it (so never cuts a wait), a later attempt's connect timeout
+	 * does too.
+	 */
+	@Test
+	public void testConnectTimeoutCooldownOnFirstAttemptOnly() {
+		final List<Map.Entry<String, Boolean>> timeouts = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, false), timeouts.stream().map(Map.Entry::getValue).toList(), timeouts::toString);
+		final List<Map.Entry<String, Boolean>> laterRefused = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				List.of(ServiceClientFailoverExecutorTest.createConnectTimeout(), ServiceClientFailoverExecutorTest.createRefused()));
+		Assertions.assertEquals(List.of(true, true), laterRefused.stream().map(Map.Entry::getValue).toList(), laterRefused::toString);
+		final List<Map.Entry<String, Boolean>> noBudget = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ZERO, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				List.of(ServiceClientFailoverExecutorTest.createRefused(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, true), noBudget.stream().map(Map.Entry::getValue).toList(), noBudget::toString);
+		Assertions.assertEquals(2, noBudget.stream().map(Map.Entry::getKey).distinct().count());
+		final List<Map.Entry<String, Boolean>> uncappedScope = ServiceClientFailoverExecutorTest.executeFailingAttempts(Duration.ofSeconds(10),
+				ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
+				List.of(ServiceClientFailoverExecutorTest.createRefused(), ServiceClientFailoverExecutorTest.createConnectTimeout()));
+		Assertions.assertEquals(List.of(true, true), uncappedScope.stream().map(Map.Entry::getValue).toList(), uncappedScope::toString);
+	}
+
+	/**
+	 * An empty (or blank) endpoint list after a non-empty one keeps the calls on the
+	 * last non-empty list, and a new non-empty list replaces it; blank entries of a
+	 * list are ignored. The lists are kept per target.
+	 */
+	@Test
+	public void testEmptyEndpointsKeepLastList() {
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createExecutor(
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", List.of(" ", "", " http://first "), attemptedUrls);
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", List.of(), attemptedUrls);
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", List.of(" ", ""), attemptedUrls);
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", null, attemptedUrls);
+		Assertions.assertEquals(List.of("http://first/path", "http://first/path", "http://first/path", "http://first/path"), attemptedUrls);
+		// The list recovers, and becomes the last good one.
+		attemptedUrls.clear();
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", List.of("http://second"), attemptedUrls);
+		ServiceClientFailoverExecutorTest.executeFor(executor, "Client", List.of(), attemptedUrls);
+		Assertions.assertEquals(List.of("http://second/path", "http://second/path"), attemptedUrls);
+		Assertions.assertEquals(List.of("http://second"), executor.getEndpointResolver().resolve("Client", List.of()));
+		// Another target has no last list of its own.
+		Assertions.assertThrows(IntegrationException.class, () -> executor.getEndpointResolver().resolve("OtherClient", List.of()));
+	}
+
+	/**
+	 * Calls on the last list are warned about once per transition to an empty list,
+	 * not once per call.
+	 */
+	@Test
+	public void testEmptyEndpointsWarnedOncePerTransition() {
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createExecutor(
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO));
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientEndpointResolver.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			executor.getEndpointResolver().resolve("WarnedClient", List.of("http://first"));
+			for (int callIndex = 0; callIndex < 3; callIndex++) {
+				executor.getEndpointResolver().resolve("WarnedClient", List.of());
+			}
+			executor.getEndpointResolver().resolve("WarnedClient", List.of("http://first"));
+			executor.getEndpointResolver().resolve("WarnedClient", List.of(""));
+			executor.getEndpointResolver().resolve("WarnedClient", List.of(""));
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(2, appender.list.stream()
+				.filter(event -> (event.getLevel() == Level.WARN) && event.getFormattedMessage().contains("Endpoint list of WarnedClient is empty")).count());
+		Assertions.assertEquals(1, appender.list.stream()
+				.filter(event -> (event.getLevel() == Level.INFO) && event.getFormattedMessage().contains("Endpoint list of WarnedClient is back")).count());
+	}
+
+	/**
+	 * Creates a template whose every call waits, then fails without connecting (no
+	 * pooled connection in time).
+	 *
+	 * @param  wait          Wait of each call.
+	 * @param  attemptedUrls Where the URLs are recorded.
+	 * @return               The template.
+	 */
+	private static RestTemplate createSlowPoolTemplate(
+			final Duration wait,
+			final List<String> attemptedUrls) {
+		return new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				try {
+					Thread.sleep(wait.toMillis());
+				}
+				catch (final InterruptedException exception) {
+					Thread.currentThread().interrupt();
+				}
+				throw new ResourceAccessException("Pool exhausted.", new ConnectionRequestTimeoutException("Pool exhausted."));
+			}
+		};
+	}
+
+	/**
+	 * Creates a scope that records the connection wait limit of each attempt.
+	 *
+	 * @param  connectionWaitLimits Where the limits are recorded.
+	 * @return                      The scope.
+	 */
+	private static ServiceClientReadTimeoutScope createLimitRecordingScope(
+			final List<Optional<Duration>> connectionWaitLimits) {
+		return new ServiceClientReadTimeoutScope() {
+
+			@Override
+			public <ResultType> ResultType runWithReadTimeout(
+					final RestOperations template,
+					final Duration readTimeout,
+					final Supplier<ResultType> action) {
+				return action.get();
+			}
+
+			@Override
+			public <ResultType> ResultType runWithTimeouts(
+					final RestOperations template,
+					final Duration readTimeout,
+					final Duration connectionWaitLimit,
+					final Supplier<ResultType> action) {
+				connectionWaitLimits.add(Optional.ofNullable(connectionWaitLimit));
+				return action.get();
+			}
+
+		};
+	}
+
+	/**
+	 * Creates an executor of up to five attempts with a time budget.
+	 *
+	 * @param  maxTotalTime Time budget.
+	 * @param  scope        Timeout scope.
+	 * @return              The executor.
+	 */
+	private static ServiceClientFailoverExecutor createBudgetExecutor(
+			final Duration maxTotalTime,
+			final ServiceClientReadTimeoutScope scope) {
+		return ServiceClientFailoverExecutorTest.createBudgetExecutor(maxTotalTime, scope, ServiceClientMetrics.NONE);
+	}
+
+	/**
+	 * Creates an executor of up to five attempts with a time budget and metrics.
+	 *
+	 * @param  maxTotalTime Time budget.
+	 * @param  scope        Timeout scope.
+	 * @param  metrics      Metrics.
+	 * @return              The executor.
+	 */
+	private static ServiceClientFailoverExecutor createBudgetExecutor(
+			final Duration maxTotalTime,
+			final ServiceClientReadTimeoutScope scope,
+			final ServiceClientMetrics metrics) {
+		return new ServiceClientFailoverExecutor(true, 5, new String[] { "GET" }, null, null, false, maxTotalTime,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
+				new ServiceClientEndpointResolver(Duration.ZERO, metrics), scope, metrics);
+	}
+
+	/**
+	 * Attempts that each wait for a pooled connection stop once the time budget is
+	 * spent, not at the attempt limit, and each attempt's connection wait is capped
+	 * to what is left of the budget; the operation cut short is counted.
+	 */
+	@Test
+	public void testBudgetStopsAttempts() {
+		final List<Optional<Duration>> connectionWaitLimits = new CopyOnWriteArrayList<>();
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createBudgetExecutor(Duration.ofMillis(1000),
+				ServiceClientFailoverExecutorTest.createLimitRecordingScope(connectionWaitLimits), new MicrometerServiceClientMetrics(meterRegistry));
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(
+				List.of("http://first", "http://second", "http://third", "http://fourth", "http://fifth"), "/path", HttpMethod.POST, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+				ServiceClientFailoverExecutorTest.createSlowPoolTemplate(Duration.ofMillis(400), attemptedUrls));
+		Assertions.assertNotNull(outcome.failure());
+		// 400 ms each over a 1 s budget: three attempts (two if the machine is slow), not five.
+		Assertions.assertTrue((attemptedUrls.size() >= 2) && (attemptedUrls.size() <= 3), attemptedUrls::toString);
+		Assertions.assertEquals(attemptedUrls.size(), connectionWaitLimits.size());
+		Duration previousLimit = Duration.ofMillis(1000);
+		for (final Optional<Duration> connectionWaitLimit : connectionWaitLimits) {
+			Assertions.assertTrue(connectionWaitLimit.isPresent());
+			Assertions.assertTrue(connectionWaitLimit.get().compareTo(previousLimit) <= 0, connectionWaitLimits::toString);
+			previousLimit = connectionWaitLimit.get();
+		}
+		Assertions.assertTrue(connectionWaitLimits.get(connectionWaitLimits.size() - 1).get().compareTo(Duration.ofMillis(600)) <= 0);
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.ATTEMPTS_STOPPED_BY_TIME_LIMIT).tag("target", ServiceClientTarget.NONE)
+				.tag("reason", "not-connected").counter().count());
+	}
+
+	/**
+	 * The budget property is read as a duration: {@code 10s} is ten seconds and
+	 * {@code 0} turns it off.
+	 */
+	@Test
+	public void testBudgetProperty() {
+		for (final Map.Entry<String, Duration> budget : Map.of("10s", Duration.ofSeconds(10), "0", Duration.ZERO, "1500ms", Duration.ofMillis(1500)).entrySet()) {
+			Assertions.assertEquals(budget.getValue(), new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null,
+					false, budget.getKey(), 9L, 3L, 5L, new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+					new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class)).getMaxTotalTime());
+		}
+	}
+
+	/**
+	 * Retrying read timeouts with a budget under twice the read timeout is warned
+	 * about when the executor is created; a budget large enough, or none, is not.
+	 */
+	@Test
+	public void testReadTimeoutRetryBudgetWarning() {
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxTotalTime : List.of("10s", "18s", "0")) {
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, true, maxTotalTime, 9L, 3L, 5L,
+						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("10s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("time budget (10s)") ? "10s" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * A budget with a timeout scope of the service's own (not the library's) is
+	 * warned about when the executor is created, as the scope may not cap the
+	 * connection waits; with no budget it is not.
+	 */
+	@Test
+	public void testOwnScopeBudgetWarning() {
+		Assertions.assertTrue(ServiceClientRequestFactory.READ_TIMEOUT_SCOPE.appliesConnectionWaitLimit());
+		Assertions.assertFalse(ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()).appliesConnectionWaitLimit());
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxTotalTime : List.of("10s", "0")) {
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
+						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE),
+						ServiceClientFailoverExecutorTest.createLimitRecordingScope(new CopyOnWriteArrayList<>()),
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("10s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("its own timeout scope") ? "10s" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * A budget under the pool wait plus the connect timeout (which could cut a first
+	 * attempt's waits) is warned about when the executor is created; one that
+	 * covers them, or none, is not.
+	 */
+	@Test
+	public void testShortBudgetWarning() {
+		final Logger logger = (Logger) LoggerFactory.getLogger(ServiceClientAutoConfiguration.class);
+		final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			for (final String maxTotalTime : List.of("1s", "8s", "0")) {
+				new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, maxTotalTime, 9L, 3L, 5L,
+						new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+						new DefaultListableBeanFactory().getBeanProvider(ServiceClientMetrics.class));
+			}
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+		Assertions.assertEquals(List.of("1s"), appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+				.map(event -> event.getFormattedMessage().contains("time budget (1s) is under the pool wait") ? "1s" : event.getFormattedMessage()).toList());
+	}
+
+	/**
+	 * A budget of zero (or none) disables it: every attempt is made, with the
+	 * template's own connection waits.
+	 */
+	@Test
+	public void testBudgetDisabledWhenZero() {
+		for (final Duration maxTotalTime : Arrays.asList(Duration.ZERO, null)) {
+			final List<Optional<Duration>> connectionWaitLimits = new CopyOnWriteArrayList<>();
+			final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createBudgetExecutor(maxTotalTime,
+					ServiceClientFailoverExecutorTest.createLimitRecordingScope(connectionWaitLimits));
+			final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+			executor.executeOverEndpoints(List.of("http://first", "http://second", "http://third", "http://fourth", "http://fifth"), "/path", HttpMethod.POST,
+					HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+					ServiceClientFailoverExecutorTest.createSlowPoolTemplate(Duration.ofMillis(50), attemptedUrls));
+			Assertions.assertEquals(5, attemptedUrls.size());
+			Assertions.assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+					Optional.empty()), connectionWaitLimits);
+		}
+	}
+
+	/**
+	 * A fast success is not changed by the budget: one attempt, its response, and a
+	 * connection wait limit of (about) the whole budget.
+	 */
+	@Test
+	public void testBudgetLeavesFastSuccess() {
+		final List<Optional<Duration>> connectionWaitLimits = new CopyOnWriteArrayList<>();
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createBudgetExecutor(Duration.ofSeconds(10),
+				ServiceClientFailoverExecutorTest.createLimitRecordingScope(connectionWaitLimits));
+		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+			@Override
+			@SuppressWarnings("unchecked")
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				return (ResponseEntity<ResponseType>) ResponseEntity.ok(url);
+			}
+		};
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(List.of("http://first", "http://second"), "/path",
+				HttpMethod.GET, HttpEntity.EMPTY, ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, template);
+		Assertions.assertNull(outcome.failure());
+		Assertions.assertEquals(outcome.url(), outcome.response().getBody());
+		Assertions.assertEquals(1, connectionWaitLimits.size());
+		Assertions.assertTrue(connectionWaitLimits.get(0).get().compareTo(Duration.ofSeconds(9)) > 0);
+		Assertions.assertTrue(connectionWaitLimits.get(0).get().compareTo(Duration.ofSeconds(10)) <= 0);
+	}
+
+	/**
+	 * Request factory that exposes its request configuration.
+	 */
+	private static class ExposedRequestFactory extends ServiceClientRequestFactory {
+
+		/**
+		 * HTTP client.
+		 */
+		private final CloseableHttpClient client;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param client HTTP client.
+		 */
+		ExposedRequestFactory(final CloseableHttpClient client) {
+			super(client);
+			this.client = client;
+		}
+
+		/**
+		 * Gets the request configuration of a request made now.
+		 *
+		 * @return The request configuration.
+		 */
+		@SuppressWarnings("deprecation")
+		RequestConfig getRequestConfig() {
+			return this.createRequestConfig(this.client);
+		}
+
+	}
+
+	/**
+	 * The library's request factory caps the wait for a pooled connection and the
+	 * connect timeout to the connection wait limit (keeping shorter ones of its
+	 * own), and leaves the read timeout as it is.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	@SuppressWarnings("deprecation")
+	public void testRequestFactoryCapsConnectionWaits() throws Exception {
+		try (CloseableHttpClient client = HttpClients.createDefault()) {
+			final ExposedRequestFactory factory = new ExposedRequestFactory(client);
+			factory.setConnectionRequestTimeout(Duration.ofSeconds(5));
+			factory.setConnectTimeout(Duration.ofSeconds(3));
+			factory.setReadTimeout(Duration.ofSeconds(9));
+			final RequestConfig ownConfig = factory.getRequestConfig();
+			Assertions.assertEquals(Timeout.ofSeconds(5).toMilliseconds(), ownConfig.getConnectionRequestTimeout().toMilliseconds());
+			Assertions.assertEquals(Timeout.ofSeconds(3).toMilliseconds(), ownConfig.getConnectTimeout().toMilliseconds());
+			final RequestConfig cappedConfig = ServiceClientRequestFactory.runWithConnectionWaitLimit(Duration.ofMillis(1500), factory::getRequestConfig);
+			Assertions.assertEquals(1500, cappedConfig.getConnectionRequestTimeout().toMilliseconds());
+			Assertions.assertEquals(1500, cappedConfig.getConnectTimeout().toMilliseconds());
+			Assertions.assertEquals(9000, cappedConfig.getResponseTimeout().toMilliseconds());
+			final RequestConfig partlyCappedConfig = ServiceClientRequestFactory.runWithConnectionWaitLimit(Duration.ofSeconds(4), factory::getRequestConfig);
+			Assertions.assertEquals(4000, partlyCappedConfig.getConnectionRequestTimeout().toMilliseconds());
+			Assertions.assertEquals(3000, partlyCappedConfig.getConnectTimeout().toMilliseconds());
+			final RequestConfig spentConfig = ServiceClientRequestFactory.runWithConnectionWaitLimit(Duration.ofMillis(-5), factory::getRequestConfig);
+			Assertions.assertEquals(1, spentConfig.getConnectionRequestTimeout().toMilliseconds());
+			// Outside the scope, the factory's own waits are back.
+			Assertions.assertEquals(5000, factory.getRequestConfig().getConnectionRequestTimeout().toMilliseconds());
+		}
+	}
+
+	/**
+	 * With a real exhausted connection pool (5 s pool wait, the shipped default),
+	 * three attempts would wait about 15 s; with a 1 s budget the call gives up
+	 * after about 1 s, on the pool wait.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testBudgetCapsRealPoolWait() throws Exception {
+		final PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+		connectionManager.setMaxTotal(1);
+		connectionManager.setDefaultMaxPerRoute(1);
+		final ConnectionEndpoint heldConnection = connectionManager.lease("held", new HttpRoute(new HttpHost("localhost", 1)), Timeout.ofSeconds(1), null)
+				.get(Timeout.ofSeconds(1));
+		try (CloseableHttpClient client = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true).build()) {
+			final ServiceClientRequestFactory factory = new ServiceClientRequestFactory(client);
+			factory.setConnectionRequestTimeout(Duration.ofSeconds(5));
+			factory.setConnectTimeout(Duration.ofSeconds(3));
+			final List<String> outcomes = new CopyOnWriteArrayList<>();
+			final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
+					Duration.ofSeconds(1), new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ZERO),
+					ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new ServiceClientMetrics() {
+
+						@Override
+						public void recordAttempt(
+								final String target,
+								final String outcome) {
+							outcomes.add(outcome);
+						}
+
+					});
+			final long startNanos = System.nanoTime();
+			final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(
+					List.of("http://localhost:2", "http://localhost:3", "http://localhost:4"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
+					ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, new RestTemplate(factory));
+			final Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+			Assertions.assertNotNull(outcome.failure());
+			Assertions.assertTrue(elapsed.compareTo(Duration.ofMillis(900)) > 0, elapsed::toString);
+			// Well under the 5 s of a single uncapped pool wait (15 s for three).
+			Assertions.assertTrue(elapsed.compareTo(Duration.ofMillis(4500)) < 0, elapsed::toString);
+			Assertions.assertFalse(outcomes.isEmpty());
+			Assertions.assertTrue(outcomes.stream().allMatch("not-connected"::equals), outcomes::toString);
+		}
+		finally {
+			heldConnection.close(CloseMode.IMMEDIATE);
+			connectionManager.close(CloseMode.IMMEDIATE);
+		}
 	}
 
 	/**
@@ -346,8 +1053,9 @@ public class ServiceClientFailoverExecutorTest {
 	 */
 	private static ServiceClientFailoverExecutor createExecutorBean(
 			final DefaultListableBeanFactory beanFactory) {
-		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false,
-				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+		return new ServiceClientAutoConfiguration().serviceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, "10s", 9L, 3L, 5L,
+				new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.RANDOM, Duration.ZERO),
+						new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
 				beanFactory.getBeanProvider(ServiceClientMetrics.class));
 	}
 

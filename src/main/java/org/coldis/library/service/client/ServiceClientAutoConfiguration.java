@@ -1,6 +1,7 @@
 package org.coldis.library.service.client;
 
 import java.time.Duration;
+import java.util.Objects;
 
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -274,6 +275,33 @@ public class ServiceClientAutoConfiguration {
 	}
 
 	/**
+	 * Creates the service client endpoint resolver (a service may declare its
+	 * own).
+	 *
+	 * @param  lastEndpointsMaxAge How long a target's last good endpoint list
+	 *                                 stands in for an empty one (e.g.
+	 *                                 {@code 10m}; {@code 0} for no limit).
+	 * @param  metricsProvider     Metrics provider (the first by order; none
+	 *                                 without Micrometer).
+	 * @return                     The service client endpoint resolver.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public ServiceClientEndpointResolver serviceClientEndpointResolver(
+			@Value(value = "${org.coldis.library.service-client.failover.last-endpoints-max-age:10m}")
+			final String lastEndpointsMaxAge,
+			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
+		final Duration actualLastEndpointsMaxAge = DurationStyle.detectAndParse(lastEndpointsMaxAge);
+		// With no limit, an emptied list never stops the calls to its last addresses.
+		if (!actualLastEndpointsMaxAge.isPositive()) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client last endpoint lists have no maximum age ({}): a target whose list gets empty keeps being called on its last addresses, which service discovery no longer lists, until its list is back or the service restarts.",
+					lastEndpointsMaxAge);
+		}
+		return new ServiceClientEndpointResolver(actualLastEndpointsMaxAge, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+	}
+
+	/**
 	 * Creates the scope that applies a generated client's own read timeout: the
 	 * one of {@link ServiceClientRequestFactory}, the default template's factory.
 	 * The scope and the template's request factory come as a pair: a replacement
@@ -299,9 +327,21 @@ public class ServiceClientAutoConfiguration {
 	 *                                      its cooldown (none by default).
 	 * @param  shouldRetryOnReadTimeout If read timeouts are retried for idempotent
 	 *                                      operations.
+	 * @param  maxTotalTime             Time budget of an operation, over all its
+	 *                                      attempts (e.g. {@code 10s}; {@code 0}
+	 *                                      for none).
+	 * @param  readTimeoutSeconds       Read timeout of the default template
+	 *                                      (seconds; to warn when the budget leaves
+	 *                                      no room for a read timeout retry).
+	 * @param  connectTimeoutSeconds    Connect timeout of the default template
+	 *                                      (seconds; to warn when the budget can
+	 *                                      cut a first attempt's waits).
+	 * @param  connectionRequestTimeoutSeconds Wait for a pooled connection of the
+	 *                                      default template (seconds; same).
 	 * @param  balancer                 Endpoint balancer.
-	 * @param  readTimeoutScope         Scope that applies a call's own read
-	 *                                      timeout to its attempts.
+	 * @param  endpointResolver         Endpoint resolver.
+	 * @param  readTimeoutScope         Scope that applies a call's own timeouts
+	 *                                      to its attempts.
 	 * @param  metricsProvider          Metrics provider (the first by order; none
 	 *                                      without Micrometer).
 	 * @return                          The service client failover executor.
@@ -321,11 +361,44 @@ public class ServiceClientAutoConfiguration {
 			final String[] cooldownStatuses,
 			@Value(value = "${org.coldis.library.service-client.failover.retry-on-read-timeout:false}")
 			final Boolean shouldRetryOnReadTimeout,
+			@Value(value = "${org.coldis.library.service-client.failover.max-total-time:10s}")
+			final String maxTotalTime,
+			@Value(value = "${org.coldis.library.service-client.timeout}")
+			final Long readTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connect-timeout}")
+			final Long connectTimeoutSeconds,
+			@Value(value = "${org.coldis.library.service-client.connection-request-timeout}")
+			final Long connectionRequestTimeoutSeconds,
 			final ServiceClientEndpointBalancer balancer,
+			final ServiceClientEndpointResolver endpointResolver,
 			final ServiceClientReadTimeoutScope readTimeoutScope,
 			final ObjectProvider<ServiceClientMetrics> metricsProvider) {
-		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout, balancer,
-				readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
+		final Duration actualMaxTotalTime = DurationStyle.detectAndParse(maxTotalTime);
+		// The per-attempt cap of the budget needs a scope that applies the limit.
+		if (actualMaxTotalTime.isPositive() && !readTimeoutScope.appliesConnectionWaitLimit()) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover uses its own timeout scope ({}), which does not apply the connection wait limit: its time budget ({}) stops further attempts, but does not cap an attempt's connection waits (override runWithTimeouts and appliesConnectionWaitLimit).",
+					readTimeoutScope.getClass().getName(), maxTotalTime);
+		}
+		// A first attempt's waits are taken as never cut by the budget (only its
+		// connect timeout starts a cooldown): the budget must cover them.
+		final Duration firstAttemptWaits = Duration.ofSeconds(Objects.requireNonNullElse(connectTimeoutSeconds, 0L))
+				.plusSeconds(Objects.requireNonNullElse(connectionRequestTimeoutSeconds, 0L));
+		if (actualMaxTotalTime.isPositive() && (actualMaxTotalTime.compareTo(firstAttemptWaits) < 0)) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover time budget ({}) is under the pool wait plus the connect timeout ({}s): it can cut a first attempt's connect timeout, which then puts a healthy endpoint in cooldown. Raise org.coldis.library.service-client.failover.max-total-time, or set it to 0.",
+					maxTotalTime, firstAttemptWaits.toSeconds());
+		}
+		// A read timeout retry needs room for two reads in the budget (only the
+		// shared read timeout is checked, not a client's own).
+		if (Boolean.TRUE.equals(shouldRetryOnReadTimeout) && actualMaxTotalTime.isPositive() && (readTimeoutSeconds != null)
+				&& (actualMaxTotalTime.compareTo(Duration.ofSeconds(readTimeoutSeconds).multipliedBy(2)) < 0)) {
+			ServiceClientAutoConfiguration.LOGGER.warn(
+					"Service client failover retries read timeouts, but its time budget ({}) is under twice the read timeout ({}s): a read timeout spends most of it and is rarely retried. Raise org.coldis.library.service-client.failover.max-total-time, or set it to 0.",
+					maxTotalTime, readTimeoutSeconds);
+		}
+		return new ServiceClientFailoverExecutor(isEnabled, maxAttempts, idempotentMethods, retryStatuses, cooldownStatuses, shouldRetryOnReadTimeout,
+				actualMaxTotalTime, balancer, endpointResolver, readTimeoutScope, metricsProvider.orderedStream().findFirst().orElse(ServiceClientMetrics.NONE));
 	}
 
 	/**
