@@ -63,9 +63,7 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	public static final String ATTEMPTS_STOPPED_BY_TIME_LIMIT = "service.client.attempts.stopped.by.time.limit";
 
 	/**
-	 * Counter of calls stopped because the request's deadline was spent (also the
-	 * message code of their failure,
-	 * {@link ServiceClientFailoverExecutor#DEADLINE_EXPIRED_CODE}).
+	 * Counter of calls stopped because the request's deadline was spent.
 	 */
 	public static final String DEADLINE_EXPIRED = "service.client.deadline.expired";
 

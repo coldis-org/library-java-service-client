@@ -100,6 +100,12 @@ public class ServiceClientFailoverExecutor {
 			ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, ServiceClientMetrics.NONE);
 
 	/**
+	 * Margin under an attempt's deadline limit within which a connect timeout is
+	 * taken as the deadline's, not the endpoint's.
+	 */
+	private static final Duration DEADLINE_CUT_MARGIN = Duration.ofMillis(50);
+
+	/**
 	 * Least remaining time for another attempt.
 	 */
 	private static final Duration LEAST_REMAINING_TIME = Duration.ofMillis(1);
@@ -107,7 +113,7 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Message code of a call not made because the request's deadline is spent.
 	 */
-	public static final String DEADLINE_EXPIRED_CODE = MicrometerServiceClientMetrics.DEADLINE_EXPIRED;
+	public static final String DEADLINE_EXPIRED_CODE = "service.client.deadline.expired";
 
 	/**
 	 * Status of the failure of a call not made because the request's deadline is
@@ -839,12 +845,6 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
-	 * Margin under an attempt's deadline limit within which a connect timeout is
-	 * taken as the deadline's, not the endpoint's.
-	 */
-	private static final Duration DEADLINE_CUT_MARGIN = Duration.ofMillis(50);
-
-	/**
 	 * Gets if an attempt failed on a connect timeout cut short by the request's
 	 * deadline: through a scope that applies the limit, it took (about) all the
 	 * time the deadline left it, so the deadline, not the endpoint's own connect
@@ -1079,7 +1079,8 @@ public class ServiceClientFailoverExecutor {
 			Exception attemptFailure = null;
 			// The request's deadline caps the attempt's waits, and so the budget.
 			final Duration deadlineRemainingTime = (attemptIndex == 0 ? firstDeadlineRemainingTime : this.deadlinePolicy.getRemainingTime());
-			final Duration remainingTime = ServiceClientFailoverExecutor.getShorter(this.getRemainingTime(startNanos), deadlineRemainingTime);
+			final Duration budgetRemainingTime = this.getRemainingTime(startNanos);
+			final Duration remainingTime = ServiceClientFailoverExecutor.getShorter(budgetRemainingTime, deadlineRemainingTime);
 			final HttpEntity<?> attemptEntity = ((deadlineRemainingTime == null) || isAbsolutePathCall ? requestEntity
 					: this.deadlinePolicy.withHeader(requestEntity, readTimeout, deadlineRemainingTime));
 			final long attemptStartNanos = System.nanoTime();
@@ -1098,7 +1099,7 @@ public class ServiceClientFailoverExecutor {
 			}
 			// Records the outcome after the attempt, so the bookkeeping cannot change it.
 			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, remainingTime)
+					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
 							&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
 					attemptFailure);
 			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos);

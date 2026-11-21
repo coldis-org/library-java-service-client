@@ -665,6 +665,15 @@ public class ServiceClientRequestDeadlineTest {
 		Assertions.assertNotNull(executor.executeOverEndpoints(List.of("http://dead"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
 				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, connectTimingOutTemplate).failure());
 		Assertions.assertTrue(balancer.isCoolingDown("http://dead"));
+		// On a retry too: with a long deadline and no budget, a connect timeout on
+		// the second attempt is the endpoint's.
+		final ServiceClientFailoverExecutor retryingExecutor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, null, false,
+				Duration.ZERO, balancer, ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				ServiceClientMetrics.NONE, ServiceClientConcurrencyLimiter.NONE, new ServiceClientRequestDeadlinePolicy(true, Duration.ofMillis(100), null));
+		Assertions.assertNotNull(retryingExecutor.executeOverEndpoints(List.of("http://dead-first", "http://dead-second"), "/path", HttpMethod.GET,
+				HttpEntity.EMPTY, ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, connectTimingOutTemplate).failure());
+		Assertions.assertTrue(balancer.isCoolingDown("http://dead-first"));
+		Assertions.assertTrue(balancer.isCoolingDown("http://dead-second"));
 		ServiceClientRequestDeadline.setDeadlineNanos(null);
 		Assertions.assertNotNull(executor.executeOverEndpoints(List.of("http://slow"), "/path", HttpMethod.GET, HttpEntity.EMPTY,
 				ServiceClientRequestDeadlineTest.STRING_RESPONSE, Map.of(), null, null, connectTimingOutTemplate).failure());

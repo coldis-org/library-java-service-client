@@ -59,6 +59,13 @@ import org.springframework.web.client.HttpServerErrorException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.springframework.http.HttpEntity;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
+import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.coldis.library.service.client.MicrometerServiceClientMetrics;
 
 /**
  * Service client failover test.
@@ -184,6 +191,12 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private RestTemplateBuilder restTemplateBuilder;
+
+	/**
+	 * Meter registry of the context.
+	 */
+	@Autowired
+	private MeterRegistry meterRegistry;
 
 	/**
 	 * Shipped value of the request deadline switch.
@@ -1236,6 +1249,54 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		finally {
 			ServiceClientRequestDeadline.setDeadlineNanos(null);
 			this.failoverExecutor.getDeadlinePolicy().setEnabled(true);
+		}
+	}
+
+	/**
+	 * Through a generated client and the context's executor and metrics, the
+	 * failover stops once the request's deadline is spent: attempts that each
+	 * wait 300 ms for a pooled connection (always retried) over three endpoints,
+	 * with 400 ms of deadline left, stop before the third, and the stop is
+	 * counted (stage retry).
+	 */
+	@Test
+	public void testGeneratedClientFailoverStopsAtDeadline() {
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final GenericRestServiceClient slowPoolClient = new GenericRestServiceClient();
+		slowPoolClient.setFailoverExecutor(this.failoverExecutor);
+		slowPoolClient.setRestTemplate(new RestTemplate() {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				try {
+					Thread.sleep(300);
+				}
+				catch (final InterruptedException exception) {
+					Thread.currentThread().interrupt();
+				}
+				throw new ResourceAccessException("Pool exhausted.", new ConnectionRequestTimeoutException("Pool exhausted."));
+			}
+		});
+		final double stoppedBefore = this.meterRegistry.find(MicrometerServiceClientMetrics.DEADLINE_EXPIRED).tag("stage", "retry").counters().stream()
+				.mapToDouble(Counter::count).sum();
+		this.testService2Properties.setEndpoint("http://first-slow-pool,http://second-slow-pool,http://third-slow-pool");
+		this.testService2Client.setServiceClient(slowPoolClient);
+		ServiceClientRequestDeadline.setDeadlineNanos(ServiceClientRequestDeadline.getDeadlineNanosIn(500));
+		try {
+			Assertions.assertThrows(IntegrationException.class, () -> this.testService2Client.test1());
+			Assertions.assertTrue((attemptedUrls.size() >= 1) && (attemptedUrls.size() < 3), attemptedUrls::toString);
+			Assertions.assertEquals(stoppedBefore + 1, this.meterRegistry.find(MicrometerServiceClientMetrics.DEADLINE_EXPIRED).tag("stage", "retry").counters()
+					.stream().mapToDouble(Counter::count).sum());
+		}
+		finally {
+			ServiceClientRequestDeadline.setDeadlineNanos(null);
+			this.testService2Client.setServiceClient(this.serviceClient);
 		}
 	}
 
