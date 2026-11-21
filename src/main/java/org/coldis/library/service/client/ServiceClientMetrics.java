@@ -58,6 +58,21 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records a call stopped because the deadline of the request it was made for
+	 * was spent (see {@link ServiceClientRequestDeadline}).
+	 *
+	 * @param target Target.
+	 * @param stage  When it was stopped: {@code call} (before its first attempt,
+	 *                   so with no request) or {@code retry} (after a failed
+	 *                   attempt, instead of trying another endpoint).
+	 */
+	default void recordDeadlineExpired(
+			final String target,
+			final String stage) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records a call that went to its target's last good endpoint list (its list
 	 * was empty).
 	 *
