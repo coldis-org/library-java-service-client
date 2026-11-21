@@ -234,6 +234,11 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	public void testConcurrencyLimitMeters() throws Exception {
 		Assertions.assertSame(this.concurrencyLimiter, this.failoverExecutor.getConcurrencyLimiter());
 		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Mode.OBSERVE, this.concurrencyLimiter.getSettings().mode());
+		// The shipped properties reach the bean: the same as the defaults in code.
+		Assertions.assertEquals(ServiceClientConcurrencyLimiter.Settings.DEFAULTS, this.concurrencyLimiter.getSettings());
+		Assertions.assertTrue(this.concurrencyLimiter.isOverloadStatus(429));
+		Assertions.assertTrue(this.concurrencyLimiter.isOverloadStatus(503));
+		Assertions.assertFalse(this.concurrencyLimiter.isOverloadStatus(500));
 		this.testService2Client.test1();
 		final Gauge limit = this.meterRegistry.find(MicrometerServiceClientMetrics.LIMIT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(limit);
