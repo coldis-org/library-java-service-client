@@ -588,7 +588,7 @@ public class ServiceClientEndpointBalancer {
 	 * ended and no probe holds it, the request is its probe; when one does, the
 	 * request still starts (as an ordinary one), so this method alone does not
 	 * keep an endpoint to a single probe: to choose and start a request with that
-	 * rule, use {@link #startRequest(List, Collection)}.
+	 * rule, use {@link #chooseAndStartRequest(List, Collection)}.
 	 *
 	 * @param  endpoint Endpoint.
 	 * @return          The request in flight.
@@ -609,7 +609,7 @@ public class ServiceClientEndpointBalancer {
 	 * @param  triedEndpoints Endpoints already tried for this operation.
 	 * @return                The request in flight.
 	 */
-	public InFlightRequest startRequest(
+	public InFlightRequest chooseAndStartRequest(
 			final List<String> endpoints,
 			final Collection<String> triedEndpoints) {
 		InFlightRequest request = this.tryStartRequest(this.choose(endpoints, triedEndpoints), false);

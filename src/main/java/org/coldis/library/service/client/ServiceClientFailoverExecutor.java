@@ -619,7 +619,7 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Chooses the endpoint of the next attempt, among the endpoints not tried yet
 	 * (see {@link ServiceClientEndpointBalancer}). The attempts themselves choose
-	 * through {@link ServiceClientEndpointBalancer#startRequest(List, Collection)},
+	 * through {@link ServiceClientEndpointBalancer#chooseAndStartRequest(List, Collection)},
 	 * which also takes the probe slot of an endpoint whose cooldown ended.
 	 *
 	 * @param      endpoints      Endpoints (not empty).
@@ -629,7 +629,7 @@ public class ServiceClientFailoverExecutor {
 	 *                                {@link ServiceClientEndpointBalancer#startRequest(String)}
 	 *                                does not keep an endpoint whose cooldown
 	 *                                ended to a single probe; use
-	 *                                {@link ServiceClientEndpointBalancer#startRequest(List, Collection)}.
+	 *                                {@link ServiceClientEndpointBalancer#chooseAndStartRequest(List, Collection)}.
 	 */
 	@Deprecated
 	public String chooseEndpoint(
@@ -1150,7 +1150,7 @@ public class ServiceClientFailoverExecutor {
 		final List<String> triedEndpoints = new ArrayList<>();
 		Outcome<ResponseType> outcome = null;
 		for (int attemptIndex = 0; outcome == null; attemptIndex++) {
-			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.startRequest(availableEndpoints, triedEndpoints);
+			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest = this.balancer.chooseAndStartRequest(availableEndpoints, triedEndpoints);
 			final String endpoint = inFlightRequest.getEndpoint();
 			final String url = endpoint + actualPath;
 			triedEndpoints.add(endpoint);

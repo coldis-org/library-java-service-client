@@ -231,18 +231,6 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	}
 
 	/**
-	 * Records a cooldown with reason {@value #UNKNOWN_COOLDOWN_REASON} (the meter
-	 * always has both tags).
-	 *
-	 * @see ServiceClientMetrics#recordCooldown(String)
-	 */
-	@Override
-	public void recordCooldown(
-			final String target) {
-		this.recordCooldown(target, MicrometerServiceClientMetrics.UNKNOWN_COOLDOWN_REASON);
-	}
-
-	/**
 	 * @see ServiceClientMetrics#recordCooldown(String, String)
 	 */
 	@Override
@@ -250,6 +238,19 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 			final String target,
 			final String reason) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.COOLDOWNS, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * Records a cooldown with reason {@value #UNKNOWN_COOLDOWN_REASON} (the meter
+	 * always has both tags). The executor records cooldowns with their reason
+	 * only: a subclass overrides {@link #recordCooldown(String, String)}.
+	 *
+	 * @see ServiceClientMetrics#recordCooldown(String)
+	 */
+	@Override
+	public void recordCooldown(
+			final String target) {
+		this.recordCooldown(target, MicrometerServiceClientMetrics.UNKNOWN_COOLDOWN_REASON);
 	}
 
 	/**

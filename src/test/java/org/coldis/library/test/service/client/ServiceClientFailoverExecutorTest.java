@@ -1332,4 +1332,33 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
 	}
 
+	/**
+	 * A cooldown status is counted with reason {@code status}; the one-argument
+	 * record counts reason {@code unknown}; and an implementation with the
+	 * one-argument method only still counts the cooldowns recorded with a reason.
+	 */
+	@Test
+	public void testCooldownReasons() {
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 2, new String[] { "GET" }, null, new String[] { "503" }, false,
+				Duration.ZERO, new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, Duration.ofSeconds(10)),
+				ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new MicrometerServiceClientMetrics(meterRegistry));
+		ServiceClientFailoverExecutorTest.executeForTarget(executor, List.of("http://first"),
+				HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE, "", null, null, null), new CopyOnWriteArrayList<>());
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").tag("reason", "status").counter().count());
+		new MicrometerServiceClientMetrics(meterRegistry).recordCooldown("target");
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").tag("reason", "unknown").counter().count());
+		final List<String> recordedTargets = new CopyOnWriteArrayList<>();
+		final ServiceClientMetrics olderMetrics = new ServiceClientMetrics() {
+
+			@Override
+			public void recordCooldown(
+					final String target) {
+				recordedTargets.add(target);
+			}
+		};
+		olderMetrics.recordCooldown("target", "connect-timeout");
+		Assertions.assertEquals(List.of("target"), recordedTargets);
+	}
+
 }

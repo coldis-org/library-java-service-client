@@ -289,14 +289,14 @@ public class ServiceClientEndpointBalancerTest {
 		Assertions.assertFalse(balancer.isCoolingDown("http://first"));
 		Assertions.assertFalse(balancer.isSkipped("http://first"));
 		// The first request is the probe; while it is out, the endpoint is skipped.
-		final InFlightRequest probe = balancer.startRequest(ServiceClientEndpointBalancerTest.ENDPOINTS.subList(0, 1), List.of());
+		final InFlightRequest probe = balancer.chooseAndStartRequest(ServiceClientEndpointBalancerTest.ENDPOINTS.subList(0, 1), List.of());
 		Assertions.assertEquals("http://first", probe.getEndpoint());
 		Assertions.assertTrue(probe.isProbe());
 		Assertions.assertTrue(balancer.isSkipped("http://first"));
 		Assertions.assertFalse(
 				ServiceClientEndpointBalancerTest.countChoices(balancer, ServiceClientEndpointBalancerTest.ENDPOINTS, List.of()).containsKey("http://first"));
 		// A request started on it anyway (every endpoint skipped) is no probe.
-		final InFlightRequest otherRequest = balancer.startRequest(ServiceClientEndpointBalancerTest.ENDPOINTS.subList(0, 1), List.of());
+		final InFlightRequest otherRequest = balancer.chooseAndStartRequest(ServiceClientEndpointBalancerTest.ENDPOINTS.subList(0, 1), List.of());
 		Assertions.assertEquals("http://first", otherRequest.getEndpoint());
 		Assertions.assertFalse(otherRequest.isProbe());
 		otherRequest.close();
@@ -343,7 +343,7 @@ public class ServiceClientEndpointBalancerTest {
 		final InFlightRequest secondRequest = balancer.startRequest("http://second");
 		Assertions.assertEquals(Set.copyOf(endpoints), ServiceClientEndpointBalancerTest.countChoices(balancer, endpoints, List.of()).keySet());
 		for (Integer requestIndex = 0; requestIndex < 100; requestIndex++) {
-			final InFlightRequest request = balancer.startRequest(endpoints, List.of());
+			final InFlightRequest request = balancer.chooseAndStartRequest(endpoints, List.of());
 			Assertions.assertFalse(request.isProbe());
 			request.close();
 		}
@@ -440,6 +440,24 @@ public class ServiceClientEndpointBalancerTest {
 		Assertions.assertFalse(balancer.isSkipped("http://first"));
 		Assertions.assertNull(balancer.getCooldownDuration("http://first"));
 		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
+	}
+
+	/**
+	 * The older {@code startCooldown(String)} counts as a refused connection of a
+	 * request sent now: called again after the cooldown ended, it doubles it, and
+	 * it never makes a list skipped after a connect timeout.
+	 */
+	@Test
+	public void testEndpointOnlyCooldownGrowsAsRefused() {
+		final AtomicLong clock = new AtomicLong(1_000_000_000L);
+		final ServiceClientEndpointBalancer balancer = ServiceClientEndpointBalancerTest.createClockedBalancer(clock);
+		balancer.startCooldown("http://first");
+		Assertions.assertEquals(Duration.ofSeconds(10), balancer.getCooldownDuration("http://first"));
+		ServiceClientEndpointBalancerTest.advance(clock, Duration.ofSeconds(10));
+		balancer.startCooldown("http://first");
+		Assertions.assertEquals(Duration.ofSeconds(20), balancer.getCooldownDuration("http://first"));
+		Assertions.assertTrue(balancer.isCoolingDown("http://first"));
+		Assertions.assertFalse(balancer.isEverySkippedAfterConnectTimeout(List.of("http://first")));
 	}
 
 }
