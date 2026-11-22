@@ -264,9 +264,12 @@ public class ServiceClientAutoConfiguration {
 	 *
 	 * @param  strategy        Balancing strategy ({@code least-in-flight} or
 	 *                             {@code random}).
-	 * @param  failureCooldown How long an endpoint that failed is skipped (e.g.
-	 *                             {@code 10s}).
-	 * @return                 The service client endpoint balancer.
+	 * @param  failureCooldown    Base cooldown of an endpoint that failed (e.g.
+	 *                                {@code 10s}).
+	 * @param  failureCooldownMax Maximum cooldown of an endpoint that keeps
+	 *                                failing as soon as it comes back (e.g.
+	 *                                {@code 120s}; the base disables growth).
+	 * @return                    The service client endpoint balancer.
 	 */
 	@Bean
 	@ConditionalOnMissingBean
@@ -274,8 +277,11 @@ public class ServiceClientAutoConfiguration {
 			@Value(value = "${org.coldis.library.service-client.balancing.strategy:least-in-flight}")
 			final String strategy,
 			@Value(value = "${org.coldis.library.service-client.balancing.failure-cooldown:10s}")
-			final String failureCooldown) {
-		return new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.fromPropertyValue(strategy), DurationStyle.detectAndParse(failureCooldown));
+			final String failureCooldown,
+			@Value(value = "${org.coldis.library.service-client.balancing.failure-cooldown-max:120s}")
+			final String failureCooldownMax) {
+		return new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.fromPropertyValue(strategy), DurationStyle.detectAndParse(failureCooldown),
+				DurationStyle.detectAndParse(failureCooldownMax));
 	}
 
 	/**

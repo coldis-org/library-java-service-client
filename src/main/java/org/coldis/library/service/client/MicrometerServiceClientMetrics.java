@@ -17,7 +17,12 @@ import io.micrometer.core.instrument.Tags;
  * <ul>
  * <li>{@value #ATTEMPTS} (counter; tags {@code target}, {@code outcome}).</li>
  * <li>{@value #RETRIES} (counter; tags {@code target}, {@code reason}).</li>
- * <li>{@value #COOLDOWNS} (counter; tag {@code target}).</li>
+ * <li>{@value #COOLDOWNS} (counter; tags {@code target}, {@code reason}:
+ * {@code connect-timeout}, {@code not-connected} or {@code status}; or
+ * {@code unknown} when recorded without one).</li>
+ * <li>{@value #COOLDOWN_PROBES} (counter; tag {@code target}).</li>
+ * <li>{@value #SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS} (counter; tag
+ * {@code target}).</li>
  * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #CALLS_ON_LAST_ENDPOINTS} (counter; tag {@code target}).</li>
  * <li>{@value #DEADLINE_EXPIRED} (counter; tags {@code target},
@@ -55,6 +60,22 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * Cooldowns counter.
 	 */
 	public static final String COOLDOWNS = "service.client.cooldowns";
+
+	/**
+	 * Counter of requests sent as the probe of an endpoint whose cooldown ended.
+	 */
+	public static final String COOLDOWN_PROBES = "service.client.cooldown.probes";
+
+	/**
+	 * Counter of operations limited to a single attempt because every endpoint
+	 * of their list was cooling down after a connect timeout.
+	 */
+	public static final String SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS = "service.client.attempts.single.after.connect.timeouts";
+
+	/**
+	 * Reason tag value of a cooldown recorded without a reason.
+	 */
+	public static final String UNKNOWN_COOLDOWN_REASON = "unknown";
 
 	/**
 	 * Counter of operations whose further attempts were stopped because their total
@@ -210,12 +231,44 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	}
 
 	/**
+	 * @see ServiceClientMetrics#recordCooldown(String, String)
+	 */
+	@Override
+	public void recordCooldown(
+			final String target,
+			final String reason) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.COOLDOWNS, "target", target, "reason", reason).increment();
+	}
+
+	/**
+	 * Records a cooldown with reason {@value #UNKNOWN_COOLDOWN_REASON} (the meter
+	 * always has both tags). The executor records cooldowns with their reason
+	 * only: a subclass overrides {@link #recordCooldown(String, String)}.
+	 *
 	 * @see ServiceClientMetrics#recordCooldown(String)
 	 */
 	@Override
 	public void recordCooldown(
 			final String target) {
-		this.meterRegistry.counter(MicrometerServiceClientMetrics.COOLDOWNS, "target", target).increment();
+		this.recordCooldown(target, MicrometerServiceClientMetrics.UNKNOWN_COOLDOWN_REASON);
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordCooldownProbe(String)
+	 */
+	@Override
+	public void recordCooldownProbe(
+			final String target) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.COOLDOWN_PROBES, "target", target).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordSingleAttemptAfterConnectTimeouts(String)
+	 */
+	@Override
+	public void recordSingleAttemptAfterConnectTimeouts(
+			final String target) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS, "target", target).increment();
 	}
 
 	/**

@@ -139,16 +139,18 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	 *
 	 * @param  name     Counter name.
 	 * @param  tagKey   Second tag key (after the target).
-	 * @param  tagValue Second tag value ({@code null} for none).
+	 * @param  tagValue Second tag value ({@code null} for none: every counter of
+	 *                      the target, summed).
 	 * @return          The count of the counter.
 	 */
 	private double count(
 			final String name,
 			final String tagKey,
 			final String tagValue) {
-		final Counter counter = (tagValue == null ? this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).counter()
-				: this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).tag(tagKey, tagValue).counter());
-		return (counter == null ? 0 : counter.count());
+		// With no second tag, the counters of every value of the other tags are summed.
+		return (tagValue == null ? this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).counters()
+				: this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).tag(tagKey, tagValue).counters()).stream().mapToDouble(Counter::count)
+				.sum();
 	}
 
 	/**
@@ -206,6 +208,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		final double notConnected = this.count(MicrometerServiceClientMetrics.ATTEMPTS, "outcome", "not-connected");
 		final double retries = this.count(MicrometerServiceClientMetrics.RETRIES, "reason", "not-connected");
 		final double cooldowns = this.count(MicrometerServiceClientMetrics.COOLDOWNS, null, null);
+		final double notConnectedCooldowns = this.count(MicrometerServiceClientMetrics.COOLDOWNS, "reason", "not-connected");
 		// The balancer cleared before each call, so the refused endpoint is chosen
 		// first about half of the time.
 		for (Integer callIndex = 0; callIndex < ServiceClientMetricsTest.REPEATED_CALLS; callIndex++) {
@@ -217,9 +220,43 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		Assertions.assertTrue(newNotConnected > 0);
 		Assertions.assertEquals(retries + newNotConnected, this.count(MicrometerServiceClientMetrics.RETRIES, "reason", "not-connected"));
 		Assertions.assertEquals(cooldowns + newNotConnected, this.count(MicrometerServiceClientMetrics.COOLDOWNS, null, null));
+		Assertions.assertEquals(notConnectedCooldowns + newNotConnected, this.count(MicrometerServiceClientMetrics.COOLDOWNS, "reason", "not-connected"));
 		final Gauge inFlight = this.meterRegistry.find(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(inFlight);
 		Assertions.assertEquals(0, inFlight.value());
+	}
+
+	/**
+	 * Through a generated client and the context's balancer: with every endpoint
+	 * cooling down after a connect timeout, a call makes a single attempt (counted)
+	 * instead of one per endpoint.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testSingleAttemptAfterConnectTimeouts() throws Exception {
+		final String firstEndpoint;
+		final String secondEndpoint;
+		try (ServerSocket firstSocket = new ServerSocket(0); ServerSocket secondSocket = new ServerSocket(0)) {
+			firstEndpoint = "http://localhost:" + firstSocket.getLocalPort();
+			secondEndpoint = "http://localhost:" + secondSocket.getLocalPort();
+		}
+		this.testService2Properties.setEndpoint(firstEndpoint + "," + secondEndpoint);
+		for (final String endpoint : List.of(firstEndpoint, secondEndpoint)) {
+			final ServiceClientEndpointBalancer.InFlightRequest request = this.contextBalancer.startRequest(endpoint);
+			request.close();
+			this.contextBalancer.startCooldown(request, ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		}
+		final double singleAttempts = this.count(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS, null, null);
+		final double notConnected = this.count(MicrometerServiceClientMetrics.ATTEMPTS, "outcome", "not-connected");
+		Assertions.assertThrows(Exception.class, () -> this.testService2Client.test1());
+		Assertions.assertEquals(singleAttempts + 1, this.count(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS, null, null));
+		Assertions.assertEquals(notConnected + 1, this.count(MicrometerServiceClientMetrics.ATTEMPTS, "outcome", "not-connected"));
+		// The refused attempt restarts that endpoint's cooldown, now as refused: the
+		// next call makes the usual attempts (one per endpoint).
+		Assertions.assertThrows(Exception.class, () -> this.testService2Client.test1());
+		Assertions.assertEquals(singleAttempts + 1, this.count(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS, null, null));
+		Assertions.assertEquals(notConnected + 3, this.count(MicrometerServiceClientMetrics.ATTEMPTS, "outcome", "not-connected"));
 	}
 
 	/**
