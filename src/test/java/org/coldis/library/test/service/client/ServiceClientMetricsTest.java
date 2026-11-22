@@ -139,16 +139,18 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 	 *
 	 * @param  name     Counter name.
 	 * @param  tagKey   Second tag key (after the target).
-	 * @param  tagValue Second tag value ({@code null} for none).
+	 * @param  tagValue Second tag value ({@code null} for none: every counter of
+	 *                      the target, summed).
 	 * @return          The count of the counter.
 	 */
 	private double count(
 			final String name,
 			final String tagKey,
 			final String tagValue) {
-		final Counter counter = (tagValue == null ? this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).counter()
-				: this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).tag(tagKey, tagValue).counter());
-		return (counter == null ? 0 : counter.count());
+		// With no second tag, the counters of every value of the other tags are summed.
+		return (tagValue == null ? this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).counters()
+				: this.meterRegistry.find(name).tag("target", ServiceClientMetricsTest.TARGET).tag(tagKey, tagValue).counters()).stream().mapToDouble(Counter::count)
+				.sum();
 	}
 
 	/**
@@ -206,6 +208,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		final double notConnected = this.count(MicrometerServiceClientMetrics.ATTEMPTS, "outcome", "not-connected");
 		final double retries = this.count(MicrometerServiceClientMetrics.RETRIES, "reason", "not-connected");
 		final double cooldowns = this.count(MicrometerServiceClientMetrics.COOLDOWNS, null, null);
+		final double notConnectedCooldowns = this.count(MicrometerServiceClientMetrics.COOLDOWNS, "reason", "not-connected");
 		// The balancer cleared before each call, so the refused endpoint is chosen
 		// first about half of the time.
 		for (Integer callIndex = 0; callIndex < ServiceClientMetricsTest.REPEATED_CALLS; callIndex++) {
@@ -217,6 +220,7 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		Assertions.assertTrue(newNotConnected > 0);
 		Assertions.assertEquals(retries + newNotConnected, this.count(MicrometerServiceClientMetrics.RETRIES, "reason", "not-connected"));
 		Assertions.assertEquals(cooldowns + newNotConnected, this.count(MicrometerServiceClientMetrics.COOLDOWNS, null, null));
+		Assertions.assertEquals(notConnectedCooldowns + newNotConnected, this.count(MicrometerServiceClientMetrics.COOLDOWNS, "reason", "not-connected"));
 		final Gauge inFlight = this.meterRegistry.find(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", ServiceClientMetricsTest.TARGET).gauge();
 		Assertions.assertNotNull(inFlight);
 		Assertions.assertEquals(0, inFlight.value());

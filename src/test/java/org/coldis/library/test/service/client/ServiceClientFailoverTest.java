@@ -671,6 +671,7 @@ public class ServiceClientFailoverTest extends AbstractServiceTest {
 		// least in flight, and the refusing endpoint is in its cooldown.
 		Assertions.assertEquals(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT, this.contextBalancer.getStrategy());
 		Assertions.assertEquals(Duration.ofSeconds(10), this.contextBalancer.getFailureCooldown());
+		Assertions.assertEquals(Duration.ofSeconds(120), this.contextBalancer.getFailureCooldownMax());
 		Assertions.assertTrue(this.contextBalancer.isCoolingDown(ServiceClientFailoverTest.REFUSED_ENDPOINT));
 		Assertions.assertFalse(this.contextBalancer.isCoolingDown("http://localhost:" + this.localServerPort));
 		// Still through the auto-configured client (streamed body), the balancer

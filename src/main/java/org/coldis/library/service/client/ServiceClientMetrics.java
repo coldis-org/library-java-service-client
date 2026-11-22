@@ -94,6 +94,43 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records an endpoint put in its cooldown, with the reason (by default, as
+	 * {@link #recordCooldown(String)}).
+	 *
+	 * @param target Target.
+	 * @param reason Why the cooldown started ({@code connect-timeout},
+	 *                   {@code not-connected} or {@code status}; see
+	 *                   {@link ServiceClientEndpointBalancer.CooldownReason}).
+	 */
+	default void recordCooldown(
+			final String target,
+			final String reason) {
+		this.recordCooldown(target);
+	}
+
+	/**
+	 * Records a request sent as the probe of an endpoint whose cooldown ended (the
+	 * single request it gets until it answers).
+	 *
+	 * @param target Target.
+	 */
+	default void recordCooldownProbe(
+			final String target) {
+		// Records nothing.
+	}
+
+	/**
+	 * Records an operation limited to a single attempt because every endpoint of
+	 * its list was cooling down after a connect timeout.
+	 *
+	 * @param target Target.
+	 */
+	default void recordSingleAttemptAfterConnectTimeouts(
+			final String target) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records a request started (in flight until {@link #recordRequestEnded}).
 	 *
 	 * @param target Target.

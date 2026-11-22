@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import org.apache.hc.client5.http.ConnectTimeoutException;
@@ -1043,7 +1044,9 @@ public class ServiceClientFailoverExecutorTest {
 			Assertions.assertEquals(retries, meterRegistry.find(MicrometerServiceClientMetrics.RETRIES).tag("target", "target").tag("reason", kind).counters()
 					.stream().mapToDouble(Counter::count).sum(), kind);
 		});
-		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").counter().count());
+		// The two refused connections (no cooldown status), with their reason.
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").counters().stream().mapToDouble(Counter::count).sum());
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").tag("reason", "not-connected").counter().count());
 		Assertions.assertEquals(0, meterRegistry.get(MicrometerServiceClientMetrics.IN_FLIGHT).tag("target", "target").gauge().value());
 	}
 
@@ -1184,6 +1187,133 @@ public class ServiceClientFailoverExecutorTest {
 			return ServiceClientTarget.getCurrent();
 		}));
 		Assertions.assertEquals(ServiceClientTarget.NONE, ServiceClientTarget.getCurrent());
+	}
+
+	/**
+	 * Executes a GET under target {@code target} through a template whose every
+	 * call fails with the given failure (or succeeds, with none), recording the
+	 * URL of each call.
+	 *
+	 * @param  executor      Executor.
+	 * @param  endpoints     Endpoints.
+	 * @param  failure       Failure of every call ({@code null} for none).
+	 * @param  attemptedUrls Where the URLs are recorded.
+	 * @return               The outcome.
+	 */
+	private static ServiceClientFailoverExecutor.Outcome<String> executeForTarget(
+			final ServiceClientFailoverExecutor executor,
+			final List<String> endpoints,
+			final RuntimeException failure,
+			final List<String> attemptedUrls) {
+		final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				if (failure != null) {
+					throw failure;
+				}
+				return ResponseEntity.ok().build();
+			}
+		};
+		return ServiceClientTarget.runFor("target", () -> executor.executeOverEndpoints(endpoints, "/path", HttpMethod.GET, HttpEntity.EMPTY,
+				ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null, template));
+	}
+
+	/**
+	 * Creates an executor (3 attempts, no time budget) recording its metrics,
+	 * over a balancer with a cooldown (base 10 s, maximum 40 s) on a test clock.
+	 *
+	 * @param  balancer      Balancer.
+	 * @param  meterRegistry Meter registry.
+	 * @return               The executor.
+	 */
+	private static ServiceClientFailoverExecutor createCooldownExecutor(
+			final ServiceClientEndpointBalancer balancer,
+			final MeterRegistry meterRegistry) {
+		return new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, Duration.ZERO, balancer,
+				ServiceClientEndpointResolver.WITHOUT_LAST_ENDPOINTS, ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, new MicrometerServiceClientMetrics(meterRegistry));
+	}
+
+	/**
+	 * When every endpoint of the list is cooling down after a connect timeout, an
+	 * operation makes a single attempt (not zero); with a refused endpoint among
+	 * them, or one not cooling down, it makes the usual attempts. Cooldowns are
+	 * counted with their reason.
+	 */
+	@Test
+	public void testSingleAttemptWhenEveryEndpointCoolsDownAfterConnectTimeouts() {
+		final AtomicLong clock = new AtomicLong(1_000_000_000L);
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10), Duration.ofSeconds(40), clock::get);
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createCooldownExecutor(balancer, meterRegistry);
+		final List<String> endpoints = List.of("http://first", "http://second", "http://third");
+		// Every attempt of the first operation times out connecting: three attempts,
+		// each endpoint put in cooldown after a connect timeout.
+		final List<String> firstUrls = new CopyOnWriteArrayList<>();
+		Assertions.assertNotNull(
+				ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createConnectTimeout(), firstUrls).failure());
+		Assertions.assertEquals(3, firstUrls.size());
+		Assertions.assertEquals(3, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWNS).tag("target", "target").tag("reason", "connect-timeout").counter().count());
+		// The next one makes a single attempt.
+		final List<String> secondUrls = new CopyOnWriteArrayList<>();
+		Assertions.assertNotNull(
+				ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createConnectTimeout(), secondUrls).failure());
+		Assertions.assertEquals(1, secondUrls.size());
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS).tag("target", "target").counter().count());
+		Assertions.assertEquals(0, balancer.getInFlightRequests(secondUrls.get(0).replace("/path", "")));
+		// One endpoint refused instead: the usual attempts.
+		balancer.clear();
+		balancer.startCooldown(balancer.startRequest("http://first"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		balancer.startCooldown(balancer.startRequest("http://second"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		balancer.startCooldown(balancer.startRequest("http://third"), ServiceClientEndpointBalancer.CooldownReason.NOT_CONNECTED);
+		final List<String> mixedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createRefused(), mixedUrls);
+		Assertions.assertEquals(3, mixedUrls.size());
+		// One endpoint not cooling down: the usual attempts.
+		balancer.clear();
+		balancer.startCooldown(balancer.startRequest("http://first"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		balancer.startCooldown(balancer.startRequest("http://second"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		final List<String> partialUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createConnectTimeout(), partialUrls);
+		Assertions.assertEquals(3, partialUrls.size());
+		Assertions.assertEquals("http://third/path", partialUrls.get(0));
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS).tag("target", "target").counter().count());
+	}
+
+	/**
+	 * After its cooldown, an endpoint gets a probe; a probe failing to connect
+	 * starts a cooldown twice as long, a probe answered brings the endpoint fully
+	 * back (no cooldown, the next at the base). Probes are counted.
+	 */
+	@Test
+	public void testProbeAfterCooldownGrowsOrEndsIt() {
+		final AtomicLong clock = new AtomicLong(1_000_000_000L);
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10), Duration.ofSeconds(40), clock::get);
+		final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorTest.createCooldownExecutor(balancer, meterRegistry);
+		final List<String> endpoints = List.of("http://first");
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createRefused(), attemptedUrls);
+		Assertions.assertEquals(Duration.ofSeconds(10), balancer.getCooldownDuration("http://first"));
+		clock.addAndGet(Duration.ofSeconds(10).toNanos());
+		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createRefused(), attemptedUrls);
+		Assertions.assertEquals(Duration.ofSeconds(20), balancer.getCooldownDuration("http://first"));
+		Assertions.assertEquals(1, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWN_PROBES).tag("target", "target").counter().count());
+		clock.addAndGet(Duration.ofSeconds(20).toNanos());
+		Assertions.assertNull(ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, null, attemptedUrls).failure());
+		Assertions.assertNull(balancer.getCooldownDuration("http://first"));
+		Assertions.assertFalse(balancer.isSkipped("http://first"));
+		Assertions.assertEquals(2, meterRegistry.get(MicrometerServiceClientMetrics.COOLDOWN_PROBES).tag("target", "target").counter().count());
+		Assertions.assertEquals(3, attemptedUrls.size());
+		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
 	}
 
 }
