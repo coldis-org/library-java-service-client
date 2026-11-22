@@ -550,8 +550,9 @@ public class ServiceClientEndpointBalancer {
 	}
 
 	/**
-	 * Starts a request to an endpoint, as its probe when its cooldown ended and no
-	 * probe holds it.
+	 * Tries to start a request to an endpoint, as its probe when its cooldown ended
+	 * and no probe holds it; when another probe holds it, starts nothing (returns
+	 * {@code null}, nothing counted) unless the request may join it.
 	 *
 	 * @param  endpoint         Endpoint.
 	 * @param  mayJoinOtherProbe If the request starts even when another probe
@@ -559,7 +560,7 @@ public class ServiceClientEndpointBalancer {
 	 * @return                  The request in flight ({@code null} if another probe
 	 *                          holds the endpoint and the request may not join it).
 	 */
-	private InFlightRequest startRequest(
+	private InFlightRequest tryStartRequest(
 			final String endpoint,
 			final boolean mayJoinOtherProbe) {
 		final long now = this.nanoClock.getAsLong();
@@ -582,17 +583,19 @@ public class ServiceClientEndpointBalancer {
 	}
 
 	/**
-	 * Starts a request to an endpoint (close the returned request, e.g. with
-	 * try-with-resources, when it ends). When the endpoint's cooldown ended and no
-	 * probe holds it, the request is its probe; when one does, the request still
-	 * starts (as an ordinary one).
+	 * Starts a request to an endpoint already chosen (close the returned request,
+	 * e.g. with try-with-resources, when it ends). When the endpoint's cooldown
+	 * ended and no probe holds it, the request is its probe; when one does, the
+	 * request still starts (as an ordinary one), so this method alone does not
+	 * keep an endpoint to a single probe: to choose and start a request with that
+	 * rule, use {@link #startRequest(List, Collection)}.
 	 *
 	 * @param  endpoint Endpoint.
 	 * @return          The request in flight.
 	 */
 	public InFlightRequest startRequest(
 			final String endpoint) {
-		return this.startRequest(endpoint, true);
+		return this.tryStartRequest(endpoint, true);
 	}
 
 	/**
@@ -609,9 +612,9 @@ public class ServiceClientEndpointBalancer {
 	public InFlightRequest startRequest(
 			final List<String> endpoints,
 			final Collection<String> triedEndpoints) {
-		InFlightRequest request = this.startRequest(this.choose(endpoints, triedEndpoints), false);
+		InFlightRequest request = this.tryStartRequest(this.choose(endpoints, triedEndpoints), false);
 		if (request == null) {
-			request = this.startRequest(this.choose(endpoints, triedEndpoints), true);
+			request = this.tryStartRequest(this.choose(endpoints, triedEndpoints), true);
 		}
 		return request;
 	}
@@ -619,7 +622,7 @@ public class ServiceClientEndpointBalancer {
 	/**
 	 * Gets the length of the cooldown an endpoint that failed starts.
 	 *
-	 * @param  previous          The endpoint's last cooldown ({@code null} for
+	 * @param  previousCooldown  The endpoint's last cooldown ({@code null} for
 	 *                               none).
 	 * @param  requestStartNanos When the failed request started.
 	 * @param  now               Current {@link System#nanoTime()}.
@@ -630,18 +633,18 @@ public class ServiceClientEndpointBalancer {
 	 *                           cooldown, or of a request sent before it ended).
 	 */
 	private long getNextCooldownNanos(
-			final Cooldown previous,
+			final Cooldown previousCooldown,
 			final long requestStartNanos,
 			final long now) {
 		final long cooldownNanos;
-		if ((previous == null) || previous.isForgotten(now, this.failureCooldownMaxNanos)) {
+		if ((previousCooldown == null) || previousCooldown.isForgotten(now, this.failureCooldownMaxNanos)) {
 			cooldownNanos = this.failureCooldownNanos;
 		}
-		else if (!previous.isActive(now) && ((requestStartNanos - previous.endNanos) >= 0)) {
-			cooldownNanos = (previous.durationNanos > (this.failureCooldownMaxNanos / 2) ? this.failureCooldownMaxNanos : previous.durationNanos * 2);
+		else if (!previousCooldown.isActive(now) && ((requestStartNanos - previousCooldown.endNanos) >= 0)) {
+			cooldownNanos = (previousCooldown.durationNanos > (this.failureCooldownMaxNanos / 2) ? this.failureCooldownMaxNanos : previousCooldown.durationNanos * 2);
 		}
 		else {
-			cooldownNanos = previous.durationNanos;
+			cooldownNanos = previousCooldown.durationNanos;
 		}
 		return cooldownNanos;
 	}
@@ -663,17 +666,17 @@ public class ServiceClientEndpointBalancer {
 			this.pruneIdleEndpoints();
 			this.cooldowns.values().removeIf(cooldown -> cooldown.isForgotten(now, this.failureCooldownMaxNanos));
 			// Lock-free replacement: retried only if another failure replaced it first.
-			Cooldown previous = null;
-			Cooldown next = null;
+			Cooldown previousCooldown = null;
+			Cooldown nextCooldown = null;
 			boolean isStored = false;
 			while (!isStored) {
-				previous = this.cooldowns.get(endpoint);
-				next = new Cooldown(now, this.getNextCooldownNanos(previous, requestStartNanos, now), reason);
-				isStored = (previous == null ? this.cooldowns.putIfAbsent(endpoint, next) == null : this.cooldowns.replace(endpoint, previous, next));
+				previousCooldown = this.cooldowns.get(endpoint);
+				nextCooldown = new Cooldown(now, this.getNextCooldownNanos(previousCooldown, requestStartNanos, now), reason);
+				isStored = (previousCooldown == null ? this.cooldowns.putIfAbsent(endpoint, nextCooldown) == null : this.cooldowns.replace(endpoint, previousCooldown, nextCooldown));
 			}
-			if ((previous == null) || !previous.isActive(now)) {
+			if ((previousCooldown == null) || !previousCooldown.isActive(now)) {
 				ServiceClientEndpointBalancer.LOGGER.info("Endpoint {} skipped for {} ms after a failure ({}).", ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint),
-						Duration.ofNanos(next.durationNanos).toMillis(), reason.getTagValue());
+						Duration.ofNanos(nextCooldown.durationNanos).toMillis(), reason.getTagValue());
 			}
 		}
 	}
@@ -694,9 +697,13 @@ public class ServiceClientEndpointBalancer {
 	}
 
 	/**
-	 * Records that an endpoint failed to connect (as a failure of a request sent
-	 * now): it is skipped for the cooldown. Idle counters and forgotten cooldowns
-	 * are pruned.
+	 * Records that an endpoint failed to connect, as a refused connection of a
+	 * request sent now: it is skipped for the cooldown. Unlike before the growing
+	 * cooldown, a call after the endpoint's cooldown ended (and before it is
+	 * forgotten) doubles it, as any failure of a request sent after it ended does;
+	 * and as the reason is not a connect timeout, it never makes an operation a
+	 * single attempt (use {@link #startCooldown(InFlightRequest, CooldownReason)}
+	 * for that). Idle counters and forgotten cooldowns are pruned.
 	 *
 	 * @param endpoint Endpoint.
 	 */

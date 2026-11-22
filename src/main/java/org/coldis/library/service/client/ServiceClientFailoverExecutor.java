@@ -622,10 +622,16 @@ public class ServiceClientFailoverExecutor {
 	 * through {@link ServiceClientEndpointBalancer#startRequest(List, Collection)},
 	 * which also takes the probe slot of an endpoint whose cooldown ended.
 	 *
-	 * @param  endpoints      Endpoints (not empty).
-	 * @param  triedEndpoints Endpoints already tried.
-	 * @return                The endpoint of the next attempt.
+	 * @param      endpoints      Endpoints (not empty).
+	 * @param      triedEndpoints Endpoints already tried.
+	 * @return                    The endpoint of the next attempt.
+	 * @deprecated                A choice followed by
+	 *                                {@link ServiceClientEndpointBalancer#startRequest(String)}
+	 *                                does not keep an endpoint whose cooldown
+	 *                                ended to a single probe; use
+	 *                                {@link ServiceClientEndpointBalancer#startRequest(List, Collection)}.
 	 */
+	@Deprecated
 	public String chooseEndpoint(
 			final List<String> endpoints,
 			final List<String> triedEndpoints) {
@@ -1160,24 +1166,31 @@ public class ServiceClientFailoverExecutor {
 			final HttpEntity<?> attemptEntity = ((deadlineRemainingTime == null) || isAbsolutePathCall ? requestEntity
 					: this.deadlinePolicy.withHeader(requestEntity, readTimeout, deadlineRemainingTime));
 			final long attemptStartNanos = System.nanoTime();
+			// The request ends (and frees the probe slot it may hold) only once its
+			// outcome is recorded, so no other request probes the endpoint between a
+			// failed probe and the cooldown it starts; it ends however the attempt ends.
 			try {
-				this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
-				response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, deadlineRemainingTime, remainingTime, () -> (maxAttemptsForCall > 1
-						? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters))
-						: restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters)));
-			}
-			catch (final Exception exception) {
-				attemptFailure = exception;
+				try {
+					this.recordMetrics(() -> this.metrics.recordRequestStarted(target));
+					response = this.readTimeoutScope.runWithTimeouts(restTemplate, readTimeout, deadlineRemainingTime, remainingTime, () -> (maxAttemptsForCall > 1
+							? ServiceClientRetryStrategy.runWithoutRetries(() -> restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters))
+							: restTemplate.exchange(url, method, attemptEntity, responseType, uriParameters)));
+				}
+				catch (final Exception exception) {
+					attemptFailure = exception;
+				}
+				finally {
+					this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
+				}
+				// Records the outcome after the attempt, so the bookkeeping cannot change it.
+				this.recordOutcome(target, inFlightRequest,
+						!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
+								&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
+						attemptFailure);
 			}
 			finally {
 				inFlightRequest.close();
-				this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
 			}
-			// Records the outcome after the attempt, so the bookkeeping cannot change it.
-			this.recordOutcome(target, inFlightRequest,
-					!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
-							&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
-					attemptFailure);
 			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);

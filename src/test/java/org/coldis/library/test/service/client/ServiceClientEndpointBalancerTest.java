@@ -413,4 +413,33 @@ public class ServiceClientEndpointBalancerTest {
 		Assertions.assertEquals(2, balancer.getCooldownEndpointsCount());
 	}
 
+	/**
+	 * A probe's outcome recorded before it ends (as the failover executor does)
+	 * leaves no moment with the endpoint neither cooling down nor held: a failed
+	 * probe's new cooldown starts while it holds the slot, and its end then frees
+	 * nothing; an answered probe's end frees the slot of a cooldown already gone.
+	 */
+	@Test
+	public void testProbeOutcomeRecordedBeforeItEnds() {
+		final AtomicLong clock = new AtomicLong(1_000_000_000L);
+		final ServiceClientEndpointBalancer balancer = ServiceClientEndpointBalancerTest.createClockedBalancer(clock);
+		ServiceClientEndpointBalancerTest.failRequest(balancer, "http://first", CooldownReason.CONNECT_TIMEOUT);
+		ServiceClientEndpointBalancerTest.advance(clock, Duration.ofSeconds(10));
+		final InFlightRequest failedProbe = balancer.startRequest("http://first");
+		Assertions.assertTrue(failedProbe.isProbe());
+		balancer.startCooldown(failedProbe, CooldownReason.CONNECT_TIMEOUT);
+		Assertions.assertTrue(balancer.isCoolingDown("http://first"));
+		failedProbe.close();
+		Assertions.assertTrue(balancer.isCoolingDown("http://first"));
+		Assertions.assertEquals(Duration.ofSeconds(20), balancer.getCooldownDuration("http://first"));
+		ServiceClientEndpointBalancerTest.advance(clock, Duration.ofSeconds(20));
+		final InFlightRequest answeredProbe = balancer.startRequest("http://first");
+		Assertions.assertTrue(answeredProbe.isProbe());
+		balancer.endCooldown(answeredProbe);
+		answeredProbe.close();
+		Assertions.assertFalse(balancer.isSkipped("http://first"));
+		Assertions.assertNull(balancer.getCooldownDuration("http://first"));
+		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
+	}
+
 }

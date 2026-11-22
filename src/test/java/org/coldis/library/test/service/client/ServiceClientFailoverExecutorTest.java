@@ -1241,6 +1241,22 @@ public class ServiceClientFailoverExecutorTest {
 	}
 
 	/**
+	 * Puts an endpoint in cooldown, as the failure of a request that ended.
+	 *
+	 * @param balancer Balancer.
+	 * @param endpoint Endpoint.
+	 * @param reason   Why the cooldown starts.
+	 */
+	private static void seedCooldown(
+			final ServiceClientEndpointBalancer balancer,
+			final String endpoint,
+			final ServiceClientEndpointBalancer.CooldownReason reason) {
+		final ServiceClientEndpointBalancer.InFlightRequest request = balancer.startRequest(endpoint);
+		request.close();
+		balancer.startCooldown(request, reason);
+	}
+
+	/**
 	 * When every endpoint of the list is cooling down after a connect timeout, an
 	 * operation makes a single attempt (not zero); with a refused endpoint among
 	 * them, or one not cooling down, it makes the usual attempts. Cooldowns are
@@ -1270,16 +1286,16 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertEquals(0, balancer.getInFlightRequests(secondUrls.get(0).replace("/path", "")));
 		// One endpoint refused instead: the usual attempts.
 		balancer.clear();
-		balancer.startCooldown(balancer.startRequest("http://first"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
-		balancer.startCooldown(balancer.startRequest("http://second"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
-		balancer.startCooldown(balancer.startRequest("http://third"), ServiceClientEndpointBalancer.CooldownReason.NOT_CONNECTED);
+		ServiceClientFailoverExecutorTest.seedCooldown(balancer, "http://first", ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		ServiceClientFailoverExecutorTest.seedCooldown(balancer, "http://second", ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		ServiceClientFailoverExecutorTest.seedCooldown(balancer, "http://third", ServiceClientEndpointBalancer.CooldownReason.NOT_CONNECTED);
 		final List<String> mixedUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createRefused(), mixedUrls);
 		Assertions.assertEquals(3, mixedUrls.size());
 		// One endpoint not cooling down: the usual attempts.
 		balancer.clear();
-		balancer.startCooldown(balancer.startRequest("http://first"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
-		balancer.startCooldown(balancer.startRequest("http://second"), ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		ServiceClientFailoverExecutorTest.seedCooldown(balancer, "http://first", ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
+		ServiceClientFailoverExecutorTest.seedCooldown(balancer, "http://second", ServiceClientEndpointBalancer.CooldownReason.CONNECT_TIMEOUT);
 		final List<String> partialUrls = new CopyOnWriteArrayList<>();
 		ServiceClientFailoverExecutorTest.executeForTarget(executor, endpoints, ServiceClientFailoverExecutorTest.createConnectTimeout(), partialUrls);
 		Assertions.assertEquals(3, partialUrls.size());
