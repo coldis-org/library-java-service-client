@@ -23,6 +23,7 @@ import org.apache.hc.client5.http.HttpRoute;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.classic.RequestFailedException;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.io.ConnectionEndpoint;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
@@ -153,7 +154,8 @@ public class ServiceClientFailoverExecutorTest {
 	/**
 	 * Retry decisions of the shipped defaults: 502 and 504 like 503 (idempotent
 	 * only), no pooled connection in time and an unknown host for any method
-	 * (nothing was sent), a 400 never.
+	 * (nothing was sent), a 400 never, nor a thread interrupted while it waited
+	 * for a pooled connection (its caller gave up).
 	 */
 	@Test
 	public void testRetryDecisions() {
@@ -166,6 +168,8 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertTrue(
 				executor.shouldRetry(new ResourceAccessException("No pooled connection.", new ConnectionRequestTimeoutException("Timeout.")), false, false));
 		Assertions.assertTrue(executor.shouldRetry(new ResourceAccessException("Unknown host.", new UnknownHostException("host")), false, false));
+		Assertions.assertFalse(executor.shouldRetry(
+				new ResourceAccessException("Request aborted.", new RequestFailedException("Request aborted", new InterruptedException())), true, true));
 	}
 
 	/**

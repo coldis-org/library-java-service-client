@@ -18,6 +18,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,6 +27,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.impl.classic.RequestFailedException;
 import org.apache.hc.core5.http.ConnectionClosedException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.NoHttpResponseException;
@@ -86,6 +89,13 @@ import org.springframework.web.client.RestOperations;
  * timeout that took all the time the deadline left puts no endpoint in
  * cooldown (one well within it does). Nothing
  * running is interrupted: the deadline is only checked when an attempt starts.
+ * <p>
+ * An attempt whose thread is interrupted (by its caller) while it acquires a
+ * pooled connection fails with nothing sent: it is not retried (the interrupt
+ * stays set), puts no endpoint in cooldown (it is not the endpoint's failure),
+ * and is a pool wait overload outcome of the concurrency limit, unless the
+ * thread was already interrupted when the attempt started (it then never
+ * waited).
  */
 public class ServiceClientFailoverExecutor {
 
@@ -673,6 +683,27 @@ public class ServiceClientFailoverExecutor {
 	}
 
 	/**
+	 * Gets if a failure (or any of its causes) meets a condition.
+	 *
+	 * @param  failure          Failure.
+	 * @param  failureCondition Condition.
+	 * @return                  If the failure (or any of its causes) meets the
+	 *                          condition.
+	 */
+	private static boolean isCausedBy(
+			final Throwable failure,
+			final Predicate<Throwable> failureCondition) {
+		boolean isCaused = false;
+		final Set<Throwable> visitedFailures = Collections.newSetFromMap(new IdentityHashMap<>());
+		Throwable currentFailure = failure;
+		while ((currentFailure != null) && !isCaused && visitedFailures.add(currentFailure)) {
+			isCaused = failureCondition.test(currentFailure);
+			currentFailure = currentFailure.getCause();
+		}
+		return isCaused;
+	}
+
+	/**
 	 * Gets if a failure (or any of its causes) is of one of the given types.
 	 *
 	 * @param  failure      Failure.
@@ -683,19 +714,41 @@ public class ServiceClientFailoverExecutor {
 	protected static boolean isCausedBy(
 			final Throwable failure,
 			final List<Class<? extends Throwable>> failureTypes) {
-		boolean isCaused = false;
-		final Set<Throwable> visitedFailures = Collections.newSetFromMap(new IdentityHashMap<>());
-		Throwable currentFailure = failure;
-		while ((currentFailure != null) && !isCaused && visitedFailures.add(currentFailure)) {
-			final Throwable checkedFailure = currentFailure;
-			isCaused = failureTypes.stream().anyMatch(failureType -> failureType.isInstance(checkedFailure));
-			currentFailure = currentFailure.getCause();
-		}
-		return isCaused;
+		return ServiceClientFailoverExecutor.isCausedBy(failure,
+				checkedFailure -> failureTypes.stream().anyMatch(failureType -> failureType.isInstance(checkedFailure)));
 	}
 
 	/**
-	 * Gets the kind of an attempt failure.
+	 * Gets if an attempt failed because the current thread was interrupted while
+	 * it acquired a pooled connection (so nothing was sent). The HTTP client fails
+	 * such an attempt in one of two ways, and sets the thread's interrupt again in
+	 * both:
+	 * <ul>
+	 * <li>Interrupted while it waits for a pooled connection: a
+	 * {@link RequestFailedException} ("Request aborted", wrapped by the template in
+	 * a {@code ResourceAccessException}) whose cause is the
+	 * {@link InterruptedException} (the only failure of the client with that
+	 * cause).</li>
+	 * <li>Interrupted when it takes the pool's lock (or already interrupted then):
+	 * the pool cancels the lease, and its {@link CancellationException} reaches the
+	 * caller as is. A cancellation with the thread not interrupted (e.g. the pool
+	 * closed) is not one.</li>
+	 * </ul>
+	 *
+	 * @param  failure Attempt failure.
+	 * @return         If the attempt failed because the current thread was
+	 *                 interrupted while it acquired a pooled connection.
+	 */
+	private static boolean isInterruptedConnectionRequest(
+			final Exception failure) {
+		return ServiceClientFailoverExecutor.isCausedBy(failure,
+				checkedFailure -> (checkedFailure instanceof RequestFailedException) && (checkedFailure.getCause() instanceof InterruptedException))
+				|| (Thread.currentThread().isInterrupted() && ServiceClientFailoverExecutor.isCausedBy(failure, List.of(CancellationException.class)));
+	}
+
+	/**
+	 * Gets the kind of an attempt failure (a thread interrupted while it acquired
+	 * a pooled connection is not connected: nothing was sent).
 	 *
 	 * @param  failure Attempt failure.
 	 * @return         The kind of the failure.
@@ -703,7 +756,8 @@ public class ServiceClientFailoverExecutor {
 	private static FailureKind getFailureKind(
 			final Exception failure) {
 		final FailureKind failureKind;
-		if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)) {
+		if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)
+				|| ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
 			failureKind = FailureKind.NOT_CONNECTED;
 		}
 		else if (failure instanceof RestClientResponseException) {
@@ -724,6 +778,8 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Gets if a failed attempt should be retried on another endpoint.
 	 * <ul>
+	 * <li>Thread interrupted while it acquired a pooled connection: never (its
+	 * caller gave up), though nothing was sent.</li>
 	 * <li>Connection never established (refused, connect timeout, no route,
 	 * unknown host, no pooled connection in time): always, nothing was sent.</li>
 	 * <li>A body that can be written only once: nothing else (it was read).</li>
@@ -745,7 +801,10 @@ public class ServiceClientFailoverExecutor {
 			final boolean isBodyRepeatable) {
 		final FailureKind failureKind = ServiceClientFailoverExecutor.getFailureKind(failure);
 		final boolean isRetriable;
-		if (failureKind == FailureKind.NOT_CONNECTED) {
+		if (ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
+			isRetriable = false;
+		}
+		else if (failureKind == FailureKind.NOT_CONNECTED) {
 			isRetriable = true;
 		}
 		else if (!isIdempotent || !isBodyRepeatable) {
@@ -813,7 +872,9 @@ public class ServiceClientFailoverExecutor {
 	 * after the cooldown started). An attempt that says nothing about the endpoint's
 	 * health (the base of an absolute path, which is no listed instance, or a
 	 * connect timeout of a later attempt, which the time budget may have cut)
-	 * starts none.
+	 * starts none; neither does any other failure (e.g. no pooled connection in
+	 * time, or a thread interrupted while it acquired one: local, not the
+	 * endpoint's).
 	 *
 	 * @param target           Target of the call (for the metrics).
 	 * @param inFlightRequest  The attempt's request.
@@ -1011,11 +1072,13 @@ public class ServiceClientFailoverExecutor {
 	/**
 	 * Records an attempt in the concurrency limit. A latency sample: the target
 	 * answered (any status), or did not in the read timeout. An overload outcome: a
-	 * read timeout, no pooled connection in time, or an overload status. Anything
-	 * else (connect failures, a dropped connection, a connect cut by the budget,
-	 * a read timeout or pool wait cut by the request's deadline: the caller's
-	 * time, not the target's) records nothing. A failure inside the limiter is
-	 * counted and ignored.
+	 * read timeout, no pooled connection in time (or the thread interrupted while
+	 * it waited for one: its caller gave up on the pool), or an overload status.
+	 * Anything else (connect failures, a dropped connection, a connect cut by the
+	 * budget, a read timeout or pool wait cut by the request's deadline: the
+	 * caller's time, not the target's; a thread already interrupted when the
+	 * attempt started, which never waited) records nothing. A failure inside the
+	 * limiter is counted and ignored.
 	 *
 	 * @param target                Target of the operation.
 	 * @param concurrencyPermit     Permit of the operation ({@code null} for
@@ -1027,13 +1090,16 @@ public class ServiceClientFailoverExecutor {
 	 * @param deadlineRemainingTime What was left of the request's deadline when
 	 *                                  the attempt started ({@code null} for
 	 *                                  none).
+	 * @param isInterruptedAtStart  If the thread was already interrupted when the
+	 *                                  attempt started.
 	 */
 	private void recordConcurrencyLimitAttempt(
 			final String target,
 			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
 			final Exception failure,
 			final long attemptStartNanos,
-			final Duration deadlineRemainingTime) {
+			final Duration deadlineRemainingTime,
+			final boolean isInterruptedAtStart) {
 		// No permit: the outcome is not even classified.
 		if (concurrencyPermit != null) {
 			try {
@@ -1055,6 +1121,10 @@ public class ServiceClientFailoverExecutor {
 				else if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.POOL_WAIT_FAILURES)) {
 					isLatencySample = false;
 					isOverload = true;
+				}
+				else if (ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
+					isLatencySample = false;
+					isOverload = !isInterruptedAtStart;
 				}
 				else {
 					isLatencySample = (ServiceClientFailoverExecutor.getFailureKind(failure) == FailureKind.READ_TIMEOUT);
@@ -1166,6 +1236,8 @@ public class ServiceClientFailoverExecutor {
 			final HttpEntity<?> attemptEntity = ((deadlineRemainingTime == null) || isAbsolutePathCall ? requestEntity
 					: this.deadlinePolicy.withHeader(requestEntity, readTimeout, deadlineRemainingTime));
 			final long attemptStartNanos = System.nanoTime();
+			// A thread interrupted before the attempt never waits for the pool.
+			final boolean isInterruptedAtStart = Thread.currentThread().isInterrupted();
 			// The request ends (and frees the probe slot it may hold) only once its
 			// outcome is recorded, so no other request probes the endpoint between a
 			// failed probe and the cooldown it starts; it ends however the attempt ends.
@@ -1191,7 +1263,7 @@ public class ServiceClientFailoverExecutor {
 			finally {
 				inFlightRequest.close();
 			}
-			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime);
+			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime, isInterruptedAtStart);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
