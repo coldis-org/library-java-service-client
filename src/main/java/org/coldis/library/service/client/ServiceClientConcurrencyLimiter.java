@@ -30,7 +30,8 @@ import org.springframework.core.env.PropertyResolver;
  * It measures, per target, the operations in flight (one permit per operation,
  * held across its failover attempts) and, per window (1 s and at least 10
  * samples), the mean latency of the attempts and the share of overload outcomes
- * (read timeouts, no pooled connection in time, statuses 429 and 503). The
+ * (read timeouts, no pooled connection in time or the thread interrupted while
+ * it waited for one, statuses 429 and 503). The
  * baseline latency falls fast and rises slowly; a window is overloaded when its
  * mean latency is over the tolerance (3x) times the baseline, or at least 10% of
  * its outcomes are overload outcomes. An overloaded window lowers the limit (at

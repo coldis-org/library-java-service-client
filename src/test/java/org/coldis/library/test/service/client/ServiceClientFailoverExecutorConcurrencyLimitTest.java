@@ -8,13 +8,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.HttpRoute;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.classic.RequestFailedException;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.io.ConnectionEndpoint;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.NoHttpResponseException;
+import org.apache.hc.core5.io.CloseMode;
+import org.apache.hc.core5.util.Timeout;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
@@ -23,6 +35,7 @@ import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
+import org.coldis.library.test.TestHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
@@ -301,8 +314,10 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	/**
 	 * What each attempt outcome feeds the limiter: a latency sample when the
 	 * target answered (any status) or did not in the read timeout; an overload
-	 * outcome for a read timeout, no pooled connection in time, 429 and 503;
-	 * nothing for connect failures, a dropped connection or other failures.
+	 * outcome for a read timeout, no pooled connection in time (or a thread
+	 * interrupted while it waited for one), 429 and 503; nothing for connect
+	 * failures, a dropped connection or other failures (a cancellation with the
+	 * thread not interrupted included).
 	 */
 	@Test
 	public void testOutcomes() {
@@ -313,6 +328,9 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 				new ExpectedEvent(new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE), "attempt sample overload"),
 				new ExpectedEvent(new ResourceAccessException("Read timeout.", new SocketTimeoutException("Read timed out")), "attempt sample overload"),
 				new ExpectedEvent(new ResourceAccessException("Pool.", new ConnectionRequestTimeoutException("Timeout.")), "attempt no-sample overload"),
+				new ExpectedEvent(new ResourceAccessException("Aborted.", new RequestFailedException("Request aborted", new InterruptedException())),
+						"attempt no-sample overload"),
+				new ExpectedEvent(new CancellationException("Cancelled."), "attempt no-sample normal"),
 				new ExpectedEvent(new ResourceAccessException("Refused.", new ConnectException("Refused.")), "attempt no-sample normal"),
 				new ExpectedEvent(new ResourceAccessException("Connect timeout.", new ConnectTimeoutException("Connect timed out")), "attempt no-sample normal"),
 				new ExpectedEvent(new ResourceAccessException("Unknown host.", new UnknownHostException("host")), "attempt no-sample normal"),
@@ -443,6 +461,224 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 		Assertions.assertEquals(1, observedUrls.size());
 		Assertions.assertEquals(1, observingLimiter.getSnapshot(ServiceClientFailoverExecutorConcurrencyLimitTest.TARGET).orElseThrow().overLimitCalls());
 		observedPermits.forEach(observingLimiter::release);
+	}
+
+	/**
+	 * Outcome of a call on a thread interrupted while it acquires a pooled
+	 * connection.
+	 *
+	 * @param outcome             Outcome of the call.
+	 * @param attemptedUrls       URLs of the attempts.
+	 * @param limiterEvents       Events of the limiter.
+	 * @param attemptOutcomes     Attempt outcomes recorded in the metrics.
+	 * @param cooldownEndpoints   Endpoints in cooldown after the call.
+	 * @param isInterruptedAfter  If the thread was still interrupted after the
+	 *                                call.
+	 */
+	private record InterruptedCall(
+			ServiceClientFailoverExecutor.Outcome<String> outcome,
+			List<String> attemptedUrls,
+			List<String> limiterEvents,
+			List<String> attemptOutcomes,
+			int cooldownEndpoints,
+			boolean isInterruptedAfter) {}
+
+	/**
+	 * Creates an executor (failover on, 3 attempts, GET idempotent, 503 retried
+	 * and a cooldown status, no budget) over a balancer with a cooldown, recording
+	 * the attempt outcomes of its metrics.
+	 *
+	 * @param  limiter         Limiter.
+	 * @param  balancer        Balancer.
+	 * @param  attemptOutcomes Where the attempt outcomes are recorded.
+	 * @return                 The executor.
+	 */
+	private static ServiceClientFailoverExecutor createExecutor(
+			final ServiceClientConcurrencyLimiter limiter,
+			final ServiceClientEndpointBalancer balancer,
+			final List<String> attemptOutcomes) {
+		return new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" }, new String[] { "503" }, false, Duration.ZERO, balancer,
+				new ServiceClientEndpointResolver(Duration.ZERO, ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				new ServiceClientMetrics() {
+
+					@Override
+					public void recordAttempt(
+							final String target,
+							final String outcome) {
+						attemptOutcomes.add(outcome);
+					}
+
+				}, limiter);
+	}
+
+	/**
+	 * Makes a GET over three endpoints, on a thread of its own, through a real
+	 * pool whose only connection is held: the thread is interrupted before the
+	 * call, or else once it waits for a pooled connection (a 30 s wait).
+	 *
+	 * @param  isInterruptedBeforeCall If the thread is interrupted before the
+	 *                                     call.
+	 * @return                         The call.
+	 * @throws Exception               If the test fails.
+	 */
+	private static InterruptedCall executeInterruptedOnExhaustedPool(
+			final boolean isInterruptedBeforeCall) throws Exception {
+		final PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+		connectionManager.setMaxTotal(1);
+		connectionManager.setDefaultMaxPerRoute(1);
+		final ConnectionEndpoint heldConnection = connectionManager.lease("held", new HttpRoute(new HttpHost("localhost", 1)), Timeout.ofSeconds(1), null)
+				.get(Timeout.ofSeconds(1));
+		try (CloseableHttpClient client = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true).build()) {
+			final ServiceClientRequestFactory factory = new ServiceClientRequestFactory(client);
+			factory.setConnectionRequestTimeout(Duration.ofSeconds(30));
+			final RecordingLimiter limiter = new RecordingLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE);
+			final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+					Duration.ofSeconds(10));
+			final List<String> attemptOutcomes = new CopyOnWriteArrayList<>();
+			final ServiceClientFailoverExecutor executor = ServiceClientFailoverExecutorConcurrencyLimitTest.createExecutor(limiter, balancer, attemptOutcomes);
+			final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+			final RestTemplate template = new RestTemplate(factory) {
+
+				@Override
+				public <ResponseType> ResponseEntity<ResponseType> exchange(
+						final String url,
+						final HttpMethod method,
+						final HttpEntity<?> requestEntity,
+						final ParameterizedTypeReference<ResponseType> responseType,
+						final Map<String, ?> uriVariables) {
+					attemptedUrls.add(url);
+					return super.exchange(url, method, requestEntity, responseType, uriVariables);
+				}
+			};
+			final AtomicReference<ServiceClientFailoverExecutor.Outcome<String>> outcome = new AtomicReference<>();
+			final AtomicBoolean isInterruptedAfter = new AtomicBoolean();
+			final Thread callerThread = new Thread(() -> {
+				if (isInterruptedBeforeCall) {
+					Thread.currentThread().interrupt();
+				}
+				outcome.set(ServiceClientFailoverExecutorConcurrencyLimitTest.execute(executor,
+						List.of("http://localhost:2", "http://localhost:3", "http://localhost:4"), template));
+				isInterruptedAfter.set(Thread.currentThread().isInterrupted());
+			});
+			callerThread.start();
+			if (!isInterruptedBeforeCall) {
+				// Waits for the thread to wait for a pooled connection.
+				Assertions.assertTrue(TestHelper.waitUntilValid(callerThread::getState,
+						callerState -> !attemptedUrls.isEmpty() && (callerState == Thread.State.TIMED_WAITING), TestHelper.LONG_WAIT, 10));
+				callerThread.interrupt();
+			}
+			callerThread.join(TimeUnit.SECONDS.toMillis(10));
+			Assertions.assertFalse(callerThread.isAlive());
+			return new InterruptedCall(outcome.get(), attemptedUrls, limiter.events, attemptOutcomes, balancer.getCooldownEndpointsCount(),
+					isInterruptedAfter.get());
+		}
+		finally {
+			heldConnection.close(CloseMode.IMMEDIATE);
+			connectionManager.close(CloseMode.IMMEDIATE);
+		}
+	}
+
+	/**
+	 * A thread interrupted while it waits for a pooled connection (the client's
+	 * aborted request, caused by the interruption): the attempt is not connected,
+	 * an overload outcome with no latency sample, not retried on another endpoint
+	 * (the interrupt stays set), and puts no endpoint in cooldown.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testInterruptedPoolWait() throws Exception {
+		final InterruptedCall call = ServiceClientFailoverExecutorConcurrencyLimitTest.executeInterruptedOnExhaustedPool(false);
+		Assertions.assertInstanceOf(ResourceAccessException.class, call.outcome().failure());
+		Assertions.assertInstanceOf(RequestFailedException.class, call.outcome().failure().getCause());
+		Assertions.assertInstanceOf(InterruptedException.class, call.outcome().failure().getCause().getCause());
+		Assertions.assertEquals(1, call.attemptedUrls().size(), call.attemptedUrls()::toString);
+		Assertions.assertEquals(List.of("acquire", "attempt no-sample overload", "release"), call.limiterEvents());
+		Assertions.assertEquals(List.of("not-connected"), call.attemptOutcomes());
+		Assertions.assertEquals(0, call.cooldownEndpoints());
+		Assertions.assertTrue(call.isInterruptedAfter());
+	}
+
+	/**
+	 * A thread already interrupted when the call starts (the pool cancels its
+	 * lease): the attempt is not connected, not retried (the interrupt stays set),
+	 * puts no endpoint in cooldown, and records nothing in the limiter (it never
+	 * waited for the pool).
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testInterruptedBeforePoolWait() throws Exception {
+		final InterruptedCall call = ServiceClientFailoverExecutorConcurrencyLimitTest.executeInterruptedOnExhaustedPool(true);
+		Assertions.assertInstanceOf(CancellationException.class, call.outcome().failure());
+		Assertions.assertEquals(1, call.attemptedUrls().size(), call.attemptedUrls()::toString);
+		Assertions.assertEquals(List.of("acquire", "attempt no-sample normal", "release"), call.limiterEvents());
+		Assertions.assertEquals(List.of("not-connected"), call.attemptOutcomes());
+		Assertions.assertEquals(0, call.cooldownEndpoints());
+		Assertions.assertTrue(call.isInterruptedAfter());
+	}
+
+	/**
+	 * Case of a cancelled lease.
+	 *
+	 * @param isInterrupted If the thread is interrupted during the attempt.
+	 * @param limiterEvent  Expected event of the limiter.
+	 * @param failureKind   Expected attempt outcome of the metrics.
+	 */
+	private record CancelledLeaseCase(
+			boolean isInterrupted,
+			String limiterEvent,
+			String failureKind) {}
+
+	/**
+	 * A lease cancelled because the thread was interrupted during the attempt
+	 * (the pool's cancellation, with the interrupt set again) is an overload
+	 * outcome, not connected and not retried; a cancellation with the thread not
+	 * interrupted is any other failure (not retried, nothing in the limiter).
+	 */
+	@Test
+	public void testCancelledLease() {
+		final List<CancelledLeaseCase> cases = List.of(new CancelledLeaseCase(true, "attempt no-sample overload", "not-connected"),
+				new CancelledLeaseCase(false, "attempt no-sample normal", "other"));
+		for (final CancelledLeaseCase testCase : cases) {
+			final boolean isInterrupted = testCase.isInterrupted();
+			final RecordingLimiter limiter = new RecordingLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE);
+			final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+					Duration.ofSeconds(10));
+			final List<String> attemptOutcomes = new CopyOnWriteArrayList<>();
+			final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+			final RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory()) {
+
+				@Override
+				public <ResponseType> ResponseEntity<ResponseType> exchange(
+						final String url,
+						final HttpMethod method,
+						final HttpEntity<?> requestEntity,
+						final ParameterizedTypeReference<ResponseType> responseType,
+						final Map<String, ?> uriVariables) {
+					attemptedUrls.add(url);
+					if (isInterrupted) {
+						Thread.currentThread().interrupt();
+					}
+					throw new CancellationException();
+				}
+			};
+			try {
+				final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientFailoverExecutorConcurrencyLimitTest.execute(
+						ServiceClientFailoverExecutorConcurrencyLimitTest.createExecutor(limiter, balancer, attemptOutcomes),
+						List.of("http://first", "http://second", "http://third"), template);
+				Assertions.assertInstanceOf(CancellationException.class, outcome.failure());
+				Assertions.assertEquals(isInterrupted, Thread.currentThread().isInterrupted());
+			}
+			finally {
+				// Clears the interrupt of the test's thread.
+				Thread.interrupted();
+			}
+			Assertions.assertEquals(1, attemptedUrls.size(), testCase::toString);
+			Assertions.assertEquals(List.of("acquire", testCase.limiterEvent(), "release"), limiter.events, testCase::toString);
+			Assertions.assertEquals(List.of(testCase.failureKind()), attemptOutcomes, testCase::toString);
+			Assertions.assertEquals(0, balancer.getCooldownEndpointsCount(), testCase::toString);
+		}
 	}
 
 }
