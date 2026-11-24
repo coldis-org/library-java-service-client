@@ -35,6 +35,7 @@ import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
+import org.coldis.library.test.TestHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
@@ -562,11 +563,8 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 			callerThread.start();
 			if (!isInterruptedBeforeCall) {
 				// Waits for the thread to wait for a pooled connection.
-				final long waitDeadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-				while ((attemptedUrls.isEmpty() || (callerThread.getState() != Thread.State.TIMED_WAITING)) && (System.nanoTime() < waitDeadlineNanos)) {
-					Thread.sleep(10);
-				}
-				Assertions.assertEquals(Thread.State.TIMED_WAITING, callerThread.getState());
+				Assertions.assertTrue(TestHelper.waitUntilValid(callerThread::getState,
+						callerState -> !attemptedUrls.isEmpty() && (callerState == Thread.State.TIMED_WAITING), TestHelper.LONG_WAIT, 10));
 				callerThread.interrupt();
 			}
 			callerThread.join(TimeUnit.SECONDS.toMillis(10));
@@ -621,6 +619,18 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	}
 
 	/**
+	 * Case of a cancelled lease.
+	 *
+	 * @param isInterrupted If the thread is interrupted during the attempt.
+	 * @param limiterEvent  Expected event of the limiter.
+	 * @param failureKind   Expected attempt outcome of the metrics.
+	 */
+	private record CancelledLeaseCase(
+			boolean isInterrupted,
+			String limiterEvent,
+			String failureKind) {}
+
+	/**
 	 * A lease cancelled because the thread was interrupted during the attempt
 	 * (the pool's cancellation, with the interrupt set again) is an overload
 	 * outcome, not connected and not retried; a cancellation with the thread not
@@ -628,10 +638,10 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 	 */
 	@Test
 	public void testCancelledLease() {
-		final List<Map.Entry<Boolean, List<String>>> cases = List.of(Map.entry(true, List.of("attempt no-sample overload", "not-connected")),
-				Map.entry(false, List.of("attempt no-sample normal", "other")));
-		for (final Map.Entry<Boolean, List<String>> testCase : cases) {
-			final boolean isInterrupted = testCase.getKey();
+		final List<CancelledLeaseCase> cases = List.of(new CancelledLeaseCase(true, "attempt no-sample overload", "not-connected"),
+				new CancelledLeaseCase(false, "attempt no-sample normal", "other"));
+		for (final CancelledLeaseCase testCase : cases) {
+			final boolean isInterrupted = testCase.isInterrupted();
 			final RecordingLimiter limiter = new RecordingLimiter(ServiceClientConcurrencyLimiter.Mode.OBSERVE);
 			final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
 					Duration.ofSeconds(10));
@@ -665,8 +675,8 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 				Thread.interrupted();
 			}
 			Assertions.assertEquals(1, attemptedUrls.size(), testCase::toString);
-			Assertions.assertEquals(List.of("acquire", testCase.getValue().get(0), "release"), limiter.events, testCase::toString);
-			Assertions.assertEquals(List.of(testCase.getValue().get(1)), attemptOutcomes, testCase::toString);
+			Assertions.assertEquals(List.of("acquire", testCase.limiterEvent(), "release"), limiter.events, testCase::toString);
+			Assertions.assertEquals(List.of(testCase.failureKind()), attemptOutcomes, testCase::toString);
 			Assertions.assertEquals(0, balancer.getCooldownEndpointsCount(), testCase::toString);
 		}
 	}

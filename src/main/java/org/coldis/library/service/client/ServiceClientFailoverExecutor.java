@@ -750,14 +750,18 @@ public class ServiceClientFailoverExecutor {
 	 * Gets the kind of an attempt failure (a thread interrupted while it acquired
 	 * a pooled connection is not connected: nothing was sent).
 	 *
-	 * @param  failure Attempt failure.
-	 * @return         The kind of the failure.
+	 * @param  failure                        Attempt failure.
+	 * @param  isInterruptedConnectionRequest If the attempt failed because the
+	 *                                            thread was interrupted while it
+	 *                                            acquired a pooled connection (see
+	 *                                            {@link #isInterruptedConnectionRequest(Exception)}).
+	 * @return                                The kind of the failure.
 	 */
 	private static FailureKind getFailureKind(
-			final Exception failure) {
+			final Exception failure,
+			final boolean isInterruptedConnectionRequest) {
 		final FailureKind failureKind;
-		if (ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)
-				|| ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
+		if (isInterruptedConnectionRequest || ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.NOT_CONNECTED_FAILURES)) {
 			failureKind = FailureKind.NOT_CONNECTED;
 		}
 		else if (failure instanceof RestClientResponseException) {
@@ -773,6 +777,49 @@ public class ServiceClientFailoverExecutor {
 			failureKind = FailureKind.OTHER;
 		}
 		return failureKind;
+	}
+
+	/**
+	 * Gets if a failed attempt, already classified, should be retried on another
+	 * endpoint (see {@link #shouldRetry(Exception, boolean, boolean)}).
+	 *
+	 * @param  failure                        Attempt failure.
+	 * @param  failureKind                    Kind of the failure.
+	 * @param  isInterruptedConnectionRequest If the attempt failed because the
+	 *                                            thread was interrupted while it
+	 *                                            acquired a pooled connection.
+	 * @param  isIdempotent                   If the operation is idempotent.
+	 * @param  isBodyRepeatable               If the body can be written more
+	 *                                            than once.
+	 * @return                                If the attempt should be retried on
+	 *                                        another endpoint.
+	 */
+	private boolean shouldRetry(
+			final Exception failure,
+			final FailureKind failureKind,
+			final boolean isInterruptedConnectionRequest,
+			final boolean isIdempotent,
+			final boolean isBodyRepeatable) {
+		final boolean isRetriable;
+		if (isInterruptedConnectionRequest) {
+			isRetriable = false;
+		}
+		else if (failureKind == FailureKind.NOT_CONNECTED) {
+			isRetriable = true;
+		}
+		else if (!isIdempotent || !isBodyRepeatable) {
+			isRetriable = false;
+		}
+		else if (failureKind == FailureKind.STATUS) {
+			isRetriable = this.retryStatuses.contains(((RestClientResponseException) failure).getStatusCode().value());
+		}
+		else if (failureKind == FailureKind.READ_TIMEOUT) {
+			isRetriable = this.shouldRetryOnReadTimeout;
+		}
+		else {
+			isRetriable = (failureKind == FailureKind.DROPPED);
+		}
+		return isRetriable;
 	}
 
 	/**
@@ -799,27 +846,9 @@ public class ServiceClientFailoverExecutor {
 			final Exception failure,
 			final boolean isIdempotent,
 			final boolean isBodyRepeatable) {
-		final FailureKind failureKind = ServiceClientFailoverExecutor.getFailureKind(failure);
-		final boolean isRetriable;
-		if (ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
-			isRetriable = false;
-		}
-		else if (failureKind == FailureKind.NOT_CONNECTED) {
-			isRetriable = true;
-		}
-		else if (!isIdempotent || !isBodyRepeatable) {
-			isRetriable = false;
-		}
-		else if (failureKind == FailureKind.STATUS) {
-			isRetriable = this.retryStatuses.contains(((RestClientResponseException) failure).getStatusCode().value());
-		}
-		else if (failureKind == FailureKind.READ_TIMEOUT) {
-			isRetriable = this.shouldRetryOnReadTimeout;
-		}
-		else {
-			isRetriable = (failureKind == FailureKind.DROPPED);
-		}
-		return isRetriable;
+		final boolean isInterruptedConnectionRequest = ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure);
+		return this.shouldRetry(failure, ServiceClientFailoverExecutor.getFailureKind(failure, isInterruptedConnectionRequest), isInterruptedConnectionRequest,
+				isIdempotent, isBodyRepeatable);
 	}
 
 	/**
@@ -880,12 +909,15 @@ public class ServiceClientFailoverExecutor {
 	 * @param inFlightRequest  The attempt's request.
 	 * @param canStartCooldown If the attempt can start the endpoint's cooldown.
 	 * @param failure          Attempt failure ({@code null} if it succeeded).
+	 * @param failureKind      Kind of the failure ({@code null} if it
+	 *                             succeeded).
 	 */
 	private void recordOutcome(
 			final String target,
 			final ServiceClientEndpointBalancer.InFlightRequest inFlightRequest,
 			final boolean canStartCooldown,
-			final Exception failure) {
+			final Exception failure,
+			final FailureKind failureKind) {
 		final ServiceClientEndpointBalancer.CooldownReason cooldownReason;
 		if ((failure instanceof final RestClientResponseException responseFailure) && this.cooldownStatuses.contains(responseFailure.getStatusCode().value())) {
 			cooldownReason = ServiceClientEndpointBalancer.CooldownReason.STATUS;
@@ -907,7 +939,7 @@ public class ServiceClientFailoverExecutor {
 			this.balancer.startCooldown(inFlightRequest, cooldownReason);
 			this.recordMetrics(() -> this.metrics.recordCooldown(target, cooldownReason.getTagValue()));
 		}
-		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : ServiceClientFailoverExecutor.getFailureKind(failure).tagValue);
+		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : failureKind.tagValue);
 		this.recordMetrics(() -> this.metrics.recordAttempt(target, outcome));
 	}
 
@@ -1085,6 +1117,11 @@ public class ServiceClientFailoverExecutor {
 	 *                                  none).
 	 * @param failure               Attempt failure ({@code null} if it
 	 *                                  succeeded).
+	 * @param failureKind           Kind of the failure ({@code null} if it
+	 *                                  succeeded).
+	 * @param isInterruptedConnectionRequest If the attempt failed because the
+	 *                                  thread was interrupted while it acquired a
+	 *                                  pooled connection.
 	 * @param attemptStartNanos     When the attempt started
 	 *                                  ({@link System#nanoTime()}).
 	 * @param deadlineRemainingTime What was left of the request's deadline when
@@ -1097,6 +1134,8 @@ public class ServiceClientFailoverExecutor {
 			final String target,
 			final ServiceClientConcurrencyLimiter.Permit concurrencyPermit,
 			final Exception failure,
+			final FailureKind failureKind,
+			final boolean isInterruptedConnectionRequest,
 			final long attemptStartNanos,
 			final Duration deadlineRemainingTime,
 			final boolean isInterruptedAtStart) {
@@ -1122,12 +1161,12 @@ public class ServiceClientFailoverExecutor {
 					isLatencySample = false;
 					isOverload = true;
 				}
-				else if (ServiceClientFailoverExecutor.isInterruptedConnectionRequest(failure)) {
+				else if (isInterruptedConnectionRequest) {
 					isLatencySample = false;
 					isOverload = !isInterruptedAtStart;
 				}
 				else {
-					isLatencySample = (ServiceClientFailoverExecutor.getFailureKind(failure) == FailureKind.READ_TIMEOUT);
+					isLatencySample = (failureKind == FailureKind.READ_TIMEOUT);
 					isOverload = isLatencySample;
 				}
 				this.concurrencyLimiter.recordAttempt(concurrencyPermit, System.nanoTime() - attemptStartNanos, isLatencySample, isOverload);
@@ -1229,6 +1268,10 @@ public class ServiceClientFailoverExecutor {
 			}
 			ResponseEntity<ResponseType> response = null;
 			Exception attemptFailure = null;
+			// The failure is classified once, so every decision of the attempt reads
+			// the same answer (the interrupt is read once).
+			boolean isInterruptedConnectionRequest = false;
+			FailureKind failureKind = null;
 			// The request's deadline caps the attempt's waits, and so the budget.
 			final Duration deadlineRemainingTime = (attemptIndex == 0 ? firstDeadlineRemainingTime : this.deadlinePolicy.getRemainingTime());
 			final Duration budgetRemainingTime = this.getRemainingTime(startNanos);
@@ -1254,25 +1297,30 @@ public class ServiceClientFailoverExecutor {
 				finally {
 					this.recordMetrics(() -> this.metrics.recordRequestEnded(target));
 				}
+				if (attemptFailure != null) {
+					isInterruptedConnectionRequest = ServiceClientFailoverExecutor.isInterruptedConnectionRequest(attemptFailure);
+					failureKind = ServiceClientFailoverExecutor.getFailureKind(attemptFailure, isInterruptedConnectionRequest);
+				}
 				// Records the outcome after the attempt, so the bookkeeping cannot change it.
 				this.recordOutcome(target, inFlightRequest,
 						!isAbsolutePathCall && !this.isConnectMaybeCutByBudget(attemptFailure, attemptIndex, budgetRemainingTime)
 								&& !this.isConnectCutByDeadline(attemptFailure, deadlineRemainingTime, attemptStartNanos),
-						attemptFailure);
+						attemptFailure, failureKind);
 			}
 			finally {
 				inFlightRequest.close();
 			}
-			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, attemptStartNanos, deadlineRemainingTime, isInterruptedAtStart);
+			this.recordConcurrencyLimitAttempt(target, concurrencyPermit, attemptFailure, failureKind, isInterruptedConnectionRequest, attemptStartNanos,
+					deadlineRemainingTime, isInterruptedAtStart);
 			if (attemptFailure == null) {
 				outcome = new Outcome<>(url, response, null);
 			}
-			else if (((attemptIndex + 1) >= attemptsForCall) || !this.shouldRetry(attemptFailure, isIdempotent, isBodyRepeatable)) {
+			else if (((attemptIndex + 1) >= attemptsForCall) || !this.shouldRetry(attemptFailure, failureKind, isInterruptedConnectionRequest, isIdempotent, isBodyRepeatable)) {
 				outcome = new Outcome<>(url, null, attemptFailure);
 			}
 			else if (this.isTimeSpent(startNanos)) {
 				outcome = new Outcome<>(url, null, attemptFailure);
-				final String spentReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				final String spentReason = failureKind.tagValue;
 				this.recordMetrics(() -> this.metrics.recordAttemptsStoppedByTimeLimit(target, spentReason));
 				ServiceClientFailoverExecutor.LOGGER.warn("REST operation {} on {} failed on attempt {} of {} ({}), and its time budget ({} ms) is spent: no other endpoint tried.",
 						method, ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, attemptsForCall,
@@ -1286,7 +1334,7 @@ public class ServiceClientFailoverExecutor {
 						ServiceClientFailoverExecutor.getLoggableEndpoint(endpoint), attemptIndex + 1, attemptsForCall, attemptFailure.getClass().getSimpleName());
 			}
 			else {
-				final String retryReason = ServiceClientFailoverExecutor.getFailureKind(attemptFailure).tagValue;
+				final String retryReason = failureKind.tagValue;
 				this.recordMetrics(() -> this.metrics.recordRetry(target, retryReason));
 				// Logs the endpoint's scheme, host and port only, not the URL nor the
 				// message (they may carry path parameters or credentials).
