@@ -8,7 +8,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 /**
  * Metrics of the JMS send throttle, recorded in a meter registry:
  * <ul>
- * <li>{@value #SKIPPED} (counter; tag {@code destination}).</li>
+ * <li>{@value #SKIPPED_SENDS_COUNTER_NAME} (counter; tag {@code destination}).</li>
  * </ul>
  */
 public class MicrometerJmsSendThrottleMetrics implements JmsSendThrottleMetrics {
@@ -16,7 +16,7 @@ public class MicrometerJmsSendThrottleMetrics implements JmsSendThrottleMetrics 
 	/**
 	 * Skipped sends counter.
 	 */
-	public static final String SKIPPED = "jms.throttle.skipped";
+	public static final String SKIPPED_SENDS_COUNTER_NAME = "jms.throttle.skipped";
 
 	/**
 	 * Meter registry.
@@ -38,7 +38,7 @@ public class MicrometerJmsSendThrottleMetrics implements JmsSendThrottleMetrics 
 	@Override
 	public void recordSkipped(
 			final String destination) {
-		Counter.builder(MicrometerJmsSendThrottleMetrics.SKIPPED).description("JMS sends skipped by the send throttle.").tag("destination", destination)
+		Counter.builder(MicrometerJmsSendThrottleMetrics.SKIPPED_SENDS_COUNTER_NAME).description("JMS sends skipped by the send throttle.").tag("destination", destination)
 				.register(this.meterRegistry).increment();
 	}
 

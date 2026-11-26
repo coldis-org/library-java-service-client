@@ -57,7 +57,7 @@ public class JmsTemplateServiceTest extends AbstractServiceTest {
 	 */
 	private double getThrottleSkippedCount(
 			final String destination) {
-		return this.meterRegistry.find(MicrometerJmsSendThrottleMetrics.SKIPPED).tag("destination", destination).counters().stream()
+		return this.meterRegistry.find(MicrometerJmsSendThrottleMetrics.SKIPPED_SENDS_COUNTER_NAME).tag("destination", destination).counters().stream()
 				.mapToDouble(counter -> counter.count()).sum();
 	}
 

@@ -82,23 +82,6 @@ public class JmsTemplateTestService {
 	}
 
 	/**
-	 * Sends a throttled message.
-	 *
-	 * @param destination      Destination.
-	 * @param message          Message.
-	 * @param throttleKey      Throttle key.
-	 * @param throttleInterval Throttle interval.
-	 */
-	@Transactional
-	public void sendThrottledMessage(
-			final String destination,
-			final Object message,
-			final String throttleKey,
-			final Duration throttleInterval) {
-		this.sendThrottledMessage(this.jmsTemplate, destination, message, throttleKey, throttleInterval);
-	}
-
-	/**
 	 * Sends a throttled message with a given template.
 	 *
 	 * @param template         JMS template.

@@ -117,7 +117,7 @@ public class JmsSendThrottleTest {
 	 */
 	private double getSkippedCount(
 			final String destination) {
-		return this.meterRegistry.find(MicrometerJmsSendThrottleMetrics.SKIPPED).tag("destination", destination).counters().stream()
+		return this.meterRegistry.find(MicrometerJmsSendThrottleMetrics.SKIPPED_SENDS_COUNTER_NAME).tag("destination", destination).counters().stream()
 				.mapToDouble(counter -> counter.count()).sum();
 	}
 
@@ -252,7 +252,7 @@ public class JmsSendThrottleTest {
 	@Test
 	@DisplayName("A throttled key is sent again once its interval passed")
 	public void testSendsAgainAfterTheInterval() throws Exception {
-		final Duration shortInterval = Duration.ofMillis(300);
+		final Duration shortInterval = Duration.ofMillis(1500);
 		this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "key").withThrottleInterval(shortInterval));
 		this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "key").withThrottleInterval(shortInterval));
 		Assertions.assertEquals(1, this.jmsTemplate.sentDestinations.size());

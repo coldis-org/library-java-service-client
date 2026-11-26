@@ -132,7 +132,11 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	 * as the message is rolled back with it. A send that is not transactional
 	 * keeps the key: the message reached the broker whatever the transaction does.
 	 * A message skipped while that transaction was open is not replayed: the next
-	 * same-key send goes out.
+	 * same-key send goes out. Two accepted limits: a send that throws gives its key
+	 * back even if the broker may have stored the message (at most one extra
+	 * trigger); and a session commit that fails after the main transaction
+	 * committed keeps the key although the message was lost (the key waits out its
+	 * interval).
 	 *
 	 * @param template                JMS template.
 	 * @param message                 Message.
