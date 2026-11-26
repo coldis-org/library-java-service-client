@@ -568,6 +568,33 @@ public class ServiceClientConnectionManagerTest {
 	}
 
 	/**
+	 * A very large ratio bounds nothing in practice: its cap does not overflow
+	 * into a small one.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testVeryLargeRatio() throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(new BigDecimal("1E10"));
+		connectionManager.setDefaultMaxPerRoute(32);
+		final HttpRoute route = ServiceClientConnectionManagerTest.getRoute();
+		final List<LeaseRequest> leaseRequests = new ArrayList<>();
+		try {
+			for (Integer leaseIndex = 0; leaseIndex < 64; leaseIndex++) {
+				leaseRequests.add(connectionManager.lease("large-" + leaseIndex, route, Timeout.ofSeconds(1), null));
+			}
+			Assertions.assertEquals(64, connectionManager.getRequested(route));
+			Assertions.assertEquals(0, connectionManager.getRefusedLeases());
+		}
+		finally {
+			for (final LeaseRequest leaseRequest : leaseRequests) {
+				leaseRequest.cancel();
+			}
+			connectionManager.close();
+		}
+	}
+
+	/**
 	 * A negative or missing ratio is refused.
 	 */
 	@Test

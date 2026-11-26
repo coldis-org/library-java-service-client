@@ -69,6 +69,12 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	public static final int MIN_PENDING = 1;
 
 	/**
+	 * Most requests waiting a route may allow (a larger cap, from a very large
+	 * ratio, is this one, so it never overflows).
+	 */
+	private static final BigDecimal MAX_PENDING = BigDecimal.valueOf(Integer.MAX_VALUE);
+
+	/**
 	 * Leases of a route.
 	 */
 	private static final class RouteLeases {
@@ -202,7 +208,7 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	}
 
 	/**
-	 * Requests waiting allowed per connection leased on the route (0 for no
+	 * Requests waiting allowed per connection of the route's maximum (0 for no
 	 * bound).
 	 */
 	private final BigDecimal maxPendingRatio;
@@ -242,8 +248,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	/**
 	 * Constructor.
 	 *
-	 * @param maxPendingRatio Requests waiting allowed per connection leased on
-	 *                            the route (0 for no bound; at least
+	 * @param maxPendingRatio Requests waiting allowed per connection of the
+	 *                            route's maximum (0 for no bound; at least
 	 *                            {@value #MIN_PENDING} may always wait).
 	 */
 	public ServiceClientConnectionManager(final BigDecimal maxPendingRatio) {
@@ -257,7 +263,7 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	}
 
 	/**
-	 * Gets the requests waiting allowed per connection leased on the route.
+	 * Gets the requests waiting allowed per connection of the route's maximum.
 	 *
 	 * @return The ratio (0 for no bound).
 	 */
@@ -314,7 +320,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	private int getMaxPending(
 			final int routeMaxConnections) {
 		return Math.max(ServiceClientConnectionManager.MIN_PENDING,
-				BigDecimal.valueOf(routeMaxConnections).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING).intValue());
+				BigDecimal.valueOf(routeMaxConnections).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING)
+						.min(ServiceClientConnectionManager.MAX_PENDING).intValue());
 	}
 
 	/**
