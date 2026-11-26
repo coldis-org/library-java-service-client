@@ -3,7 +3,9 @@ package org.coldis.library.service.jms;
 import org.springframework.jms.core.JmsTemplate;
 
 /**
- * JMS template service.
+ * JMS template service. Implementations apply every option of the
+ * {@link JmsMessage}, the send throttle ({@link JmsMessage#getThrottleKey()})
+ * included.
  */
 public interface JmsTemplateHelper {
 
