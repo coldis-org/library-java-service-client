@@ -2,12 +2,15 @@ package org.coldis.library.test.service.client;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,15 +29,26 @@ import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.coldis.library.service.client.ServiceClientConnectionManager;
+import org.coldis.library.service.client.ServiceClientEndpointBalancer;
+import org.coldis.library.service.client.ServiceClientEndpointResolver;
+import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
+import org.coldis.library.service.client.ServiceClientRequestFactory;
+import org.coldis.library.service.client.ServiceClientTarget;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 /**
@@ -91,6 +105,15 @@ public class ServiceClientConnectionManagerTest {
 				responseBody.write(response);
 			}
 		});
+		ServiceClientConnectionManagerTest.HOLDING_SERVER.createContext("/answer", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			final byte[] response = "answered".getBytes(StandardCharsets.UTF_8);
+			exchange.sendResponseHeaders(200, response.length);
+			try (OutputStream responseBody = exchange.getResponseBody()) {
+				responseBody.write(response);
+			}
+		});
+		ServiceClientConnectionManagerTest.HOLDING_SERVER.createContext("/drop", HttpExchange::close);
 		ServiceClientConnectionManagerTest.HOLDING_SERVER.start();
 	}
 
@@ -374,6 +397,133 @@ public class ServiceClientConnectionManagerTest {
 		finally {
 			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
 			callers.shutdownNow();
+			connectionManager.close();
+		}
+	}
+
+	/**
+	 * Requests that fail after they got their connection (the connection dropped
+	 * with no response, or no response in the read timeout) no longer count as in
+	 * use: afterwards, exactly as many requests as before may wait.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testFailedRequestsNoLongerCount() throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
+		connectionManager.setDefaultMaxPerRoute(2);
+		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
+		final CloseableHttpClient shortReadHttpClient = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true)
+				.build();
+		final HttpComponentsClientHttpRequestFactory shortReadRequestFactory = new HttpComponentsClientHttpRequestFactory(shortReadHttpClient);
+		shortReadRequestFactory.setReadTimeout(Duration.ofMillis(200));
+		final RestTemplate shortReadTemplate = new RestTemplate(shortReadRequestFactory);
+		ServiceClientConnectionManagerTest.RELEASE.set(new CountDownLatch(1));
+		try {
+			for (Integer callIndex = 0; callIndex < 3; callIndex++) {
+				Assertions.assertThrows(ResourceAccessException.class,
+						() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl().replace("/hold", "/drop"), String.class));
+				final ResourceAccessException readTimeout = Assertions.assertThrows(ResourceAccessException.class,
+						() -> shortReadTemplate.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
+				Assertions.assertTrue(ExceptionUtils.indexOfType(readTimeout, SocketTimeoutException.class) >= 0, () -> "Not a read timeout: " + readTimeout);
+			}
+			Assertions.assertEquals(0, connectionManager.getLeased(ServiceClientConnectionManagerTest.getRoute()));
+			Assertions.assertEquals(0, connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()));
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			ServiceClientConnectionManagerTest.assertWaitingBoundOnce(connectionManager, template, 2, 2, 0);
+		}
+		finally {
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			shortReadHttpClient.close();
+			connectionManager.close();
+		}
+	}
+
+	/**
+	 * Through the failover executor, a POST whose attempt is refused on an
+	 * endpoint whose requests waiting are at their bound goes to the other
+	 * endpoint and is answered there; the refused endpoint is not put in cooldown,
+	 * and each refusal is counted once for the client. The two endpoints are the
+	 * same server under two host names (two routes). The first endpoint is chosen
+	 * at random, so calls are made until one first tried the full endpoint.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testRefusedAttemptFailsOverThroughExecutor() throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
+		connectionManager.setDefaultMaxPerRoute(1);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final CloseableHttpClient httpClient = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true).build();
+		final HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+		requestFactory.setConnectionRequestTimeout(ServiceClientConnectionManagerTest.MAX_WAIT);
+		final RestTemplate recordingTemplate = new RestTemplate(requestFactory) {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				attemptedUrls.add(url);
+				return super.exchange(url, method, requestEntity, responseType, uriVariables);
+			}
+		};
+		final List<String> refusedTargets = new CopyOnWriteArrayList<>();
+		final ServiceClientMetrics metrics = new ServiceClientMetrics() {
+
+			@Override
+			public void recordPendingLeaseRefused(
+					final String target) {
+				refusedTargets.add(target);
+			}
+		};
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, null, null, false, Duration.ZERO,
+				balancer, new ServiceClientEndpointResolver(Duration.ofMinutes(10), ServiceClientMetrics.NONE), ServiceClientRequestFactory.READ_TIMEOUT_SCOPE,
+				metrics);
+		final int port = ServiceClientConnectionManagerTest.HOLDING_SERVER.getAddress().getPort();
+		final String fullEndpoint = "http://localhost:" + port;
+		final String freeEndpoint = "http://127.0.0.1:" + port;
+		final ExecutorService callers = Executors.newCachedThreadPool();
+		ServiceClientConnectionManagerTest.RELEASE.set(new CountDownLatch(1));
+		ServiceClientConnectionManagerTest.RECEIVED_REQUESTS.set(0);
+		try {
+			// The full endpoint: its connection held, and one request waiting.
+			final List<Future<String>> calls = new ArrayList<>();
+			calls.add(callers.submit(() -> recordingTemplate.getForObject(fullEndpoint + "/hold", String.class)));
+			ServiceClientConnectionManagerTest.awaitValue(ServiceClientConnectionManagerTest.RECEIVED_REQUESTS::get, 1, "Held requests");
+			calls.add(callers.submit(() -> recordingTemplate.getForObject(fullEndpoint + "/hold", String.class)));
+			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 1,
+					"Waiting requests");
+			attemptedUrls.clear();
+			Integer callCount = 0;
+			while ((callCount < 50) && attemptedUrls.stream().noneMatch(url -> url.startsWith(fullEndpoint))) {
+				final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientTarget.runFor("PendingLeaseTestClient",
+						() -> executor.executeOverEndpoints(List.of(fullEndpoint, freeEndpoint), "/answer", HttpMethod.POST, new HttpEntity<>("body"),
+								new ParameterizedTypeReference<String>() {}, Map.of(), null, null, recordingTemplate));
+				Assertions.assertNull(outcome.failure(), () -> "Call failed: " + outcome.failure());
+				Assertions.assertEquals("answered", outcome.response().getBody());
+				Assertions.assertTrue(outcome.url().startsWith(freeEndpoint), outcome.url());
+				callCount++;
+			}
+			final long fullEndpointAttempts = attemptedUrls.stream().filter(url -> url.startsWith(fullEndpoint)).count();
+			Assertions.assertTrue(fullEndpointAttempts > 0, "No attempt on the full endpoint");
+			Assertions.assertEquals(fullEndpointAttempts, refusedTargets.size());
+			Assertions.assertTrue(refusedTargets.stream().allMatch("PendingLeaseTestClient"::equals), refusedTargets::toString);
+			Assertions.assertEquals(fullEndpointAttempts, connectionManager.getRefusedLeases());
+			Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			for (final Future<String> call : calls) {
+				Assertions.assertEquals("ok", call.get(ServiceClientConnectionManagerTest.MAX_WAIT.toSeconds(), TimeUnit.SECONDS));
+			}
+		}
+		finally {
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			callers.shutdownNow();
+			httpClient.close();
 			connectionManager.close();
 		}
 	}

@@ -33,14 +33,16 @@ import org.slf4j.LoggerFactory;
  * failover executor treats it). A ratio of 0 bounds nothing (the pool alone).
  * <p>
  * Requests waiting on a route are counted against the route's maximum only (as
- * set on this manager); a request waiting because the pool's total is reached
+ * set on this manager, through {@link #setDefaultMaxPerRoute(int)} and
+ * {@link #setMaxPerRoute(HttpRoute, int)} only, the setters that keep its copy); a request waiting because the pool's total is reached
  * is not counted as waiting until its route is full too, so it is bounded by
  * the route's maximum plus its waiting cap.
  * <p>
  * The counts are updated without a lock, so the bound is approximate while a
  * connection passes from one request to another: they are updated in the order
  * that, for that moment, lets a request in rather than refusing it (by at most
- * one request per connection passing).
+ * one request per connection passing). A request is counted as waiting only
+ * once admitted, so requests arriving together do not refuse each other.
  * <p>
  * Cost per request: one map lookup, a few atomic increments and decrements, and
  * one map put and remove for the leased connection; no lock (the pool's own
@@ -360,13 +362,23 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 			final Timeout requestTimeout,
 			final Object state) {
 		final RouteLeases routeLeases = this.routesLeases.computeIfAbsent(route, newRoute -> new RouteLeases());
-		final int requested = routeLeases.requested.incrementAndGet();
-		final int leased = routeLeases.leased.get();
-		final int pending = (leased + requested) - this.routesMaxConnections.getOrDefault(route, this.defaultRouteMaxConnections);
+		final int routeMaxConnections = this.routesMaxConnections.getOrDefault(route, this.defaultRouteMaxConnections);
+		// Counted as requested only once admitted (compare-and-set), so requests
+		// arriving together never refuse each other.
+		boolean isAdmitted = false;
+		boolean isRefused = false;
+		int leased = 0;
+		int pending = 0;
+		while (!isAdmitted && !isRefused) {
+			final int requested = routeLeases.requested.get();
+			leased = routeLeases.leased.get();
+			pending = (leased + requested + 1) - routeMaxConnections;
+			// The cap is at least one, so it is computed only while a request already waits.
+			isRefused = this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(leased));
+			isAdmitted = !isRefused && routeLeases.requested.compareAndSet(requested, requested + 1);
+		}
 		final LeaseRequest leaseRequest;
-		// The cap is at least one, so it is computed only while a request already waits.
-		if (this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(leased))) {
-			routeLeases.requested.decrementAndGet();
+		if (isRefused) {
 			leaseRequest = this.refuse(route, pending, leased);
 		}
 		else {
