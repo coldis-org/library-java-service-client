@@ -96,6 +96,13 @@ import org.springframework.web.client.RestOperations;
  * and is a pool wait overload outcome of the concurrency limit, unless the
  * thread was already interrupted when the attempt started (it then never
  * waited).
+ * <p>
+ * An attempt refused at once because too many requests already waited for a
+ * pooled connection to its endpoint
+ * ({@link ServiceClientPendingLeaseLimitException}, see
+ * {@link ServiceClientConnectionManager}) failed with nothing sent: it is
+ * retried on the next endpoint (for any method), puts no endpoint in cooldown,
+ * and is a pool wait overload outcome of the concurrency limit.
  */
 public class ServiceClientFailoverExecutor {
 
@@ -171,18 +178,26 @@ public class ServiceClientFailoverExecutor {
 			NoRouteToHostException.class, UnknownHostException.class);
 
 	/**
-	 * Failures where the connection was never established (nothing was sent): the
-	 * cooldown failures, and running out of local pooled connections (retried, but
-	 * not the endpoint's failure, so no cooldown).
+	 * Requests refused because too many already waited for a local pooled
+	 * connection to the endpoint.
 	 */
-	private static final List<Class<? extends Throwable>> NOT_CONNECTED_FAILURES = Stream
-			.concat(ServiceClientFailoverExecutor.COOLDOWN_FAILURES.stream(), Stream.of(ConnectionRequestTimeoutException.class)).toList();
+	private static final List<Class<? extends Throwable>> PENDING_LEASE_LIMIT_FAILURES = List.of(ServiceClientPendingLeaseLimitException.class);
 
 	/**
-	 * Failures waiting for a local pooled connection (an overload signal of the
-	 * concurrency limit).
+	 * Failures waiting for a local pooled connection, by waiting too long for one
+	 * or with too many waiting (an overload signal of the concurrency limit).
 	 */
-	private static final List<Class<? extends Throwable>> POOL_WAIT_FAILURES = List.of(ConnectionRequestTimeoutException.class);
+	private static final List<Class<? extends Throwable>> POOL_WAIT_FAILURES = List.of(ConnectionRequestTimeoutException.class,
+			ServiceClientPendingLeaseLimitException.class);
+
+	/**
+	 * Failures where the connection was never established (nothing was sent): the
+	 * cooldown failures, and running out of local pooled connections, by waiting
+	 * too long for one or with too many waiting (retried, but not the endpoint's
+	 * failure, so no cooldown).
+	 */
+	private static final List<Class<? extends Throwable>> NOT_CONNECTED_FAILURES = Stream
+			.concat(ServiceClientFailoverExecutor.COOLDOWN_FAILURES.stream(), ServiceClientFailoverExecutor.POOL_WAIT_FAILURES.stream()).toList();
 
 	/**
 	 * Failures where the connection dropped before a response (the request may have
@@ -828,7 +843,8 @@ public class ServiceClientFailoverExecutor {
 	 * <li>Thread interrupted while it acquired a pooled connection: never (its
 	 * caller gave up), though nothing was sent.</li>
 	 * <li>Connection never established (refused, connect timeout, no route,
-	 * unknown host, no pooled connection in time): always, nothing was sent.</li>
+	 * unknown host, no pooled connection in time, too many requests waiting for
+	 * one): always, nothing was sent.</li>
 	 * <li>A body that can be written only once: nothing else (it was read).</li>
 	 * <li>Read timeout: only if enabled and the operation is idempotent.</li>
 	 * <li>Connection dropped before a response, or a retry status: only if the
@@ -938,6 +954,9 @@ public class ServiceClientFailoverExecutor {
 		if ((cooldownReason != null) && canStartCooldown) {
 			this.balancer.startCooldown(inFlightRequest, cooldownReason);
 			this.recordMetrics(() -> this.metrics.recordCooldown(target, cooldownReason.getTagValue()));
+		}
+		if ((failure != null) && ServiceClientFailoverExecutor.isCausedBy(failure, ServiceClientFailoverExecutor.PENDING_LEASE_LIMIT_FAILURES)) {
+			this.recordMetrics(() -> this.metrics.recordPendingLeaseRefused(target));
 		}
 		final String outcome = (failure == null ? ServiceClientFailoverExecutor.SUCCESS : failureKind.tagValue);
 		this.recordMetrics(() -> this.metrics.recordAttempt(target, outcome));

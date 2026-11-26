@@ -32,6 +32,7 @@ import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
 import org.coldis.library.service.client.ServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
 import org.coldis.library.service.client.ServiceClientTarget;
@@ -328,6 +329,10 @@ public class ServiceClientFailoverExecutorConcurrencyLimitTest {
 				new ExpectedEvent(new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE), "attempt sample overload"),
 				new ExpectedEvent(new ResourceAccessException("Read timeout.", new SocketTimeoutException("Read timed out")), "attempt sample overload"),
 				new ExpectedEvent(new ResourceAccessException("Pool.", new ConnectionRequestTimeoutException("Timeout.")), "attempt no-sample overload"),
+				new ExpectedEvent(
+						new ResourceAccessException("Pool.",
+								new RequestFailedException("Request execution failed", new ServiceClientPendingLeaseLimitException("Too many waiting."))),
+						"attempt no-sample overload"),
 				new ExpectedEvent(new ResourceAccessException("Aborted.", new RequestFailedException("Request aborted", new InterruptedException())),
 						"attempt no-sample overload"),
 				new ExpectedEvent(new CancellationException("Cancelled."), "attempt no-sample normal"),

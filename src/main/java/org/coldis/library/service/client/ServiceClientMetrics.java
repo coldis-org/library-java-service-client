@@ -131,6 +131,17 @@ public interface ServiceClientMetrics {
 	}
 
 	/**
+	 * Records an attempt refused at once because too many requests already waited
+	 * for a pooled connection to its endpoint.
+	 *
+	 * @param target Target.
+	 */
+	default void recordPendingLeaseRefused(
+			final String target) {
+		// Records nothing.
+	}
+
+	/**
 	 * Records a request started (in flight until {@link #recordRequestEnded}).
 	 *
 	 * @param target Target.

@@ -23,6 +23,7 @@ import io.micrometer.core.instrument.Tags;
  * <li>{@value #COOLDOWN_PROBES} (counter; tag {@code target}).</li>
  * <li>{@value #SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS} (counter; tag
  * {@code target}).</li>
+ * <li>{@value #PENDING_LEASES_REFUSED} (counter; tag {@code target}).</li>
  * <li>{@value #ATTEMPTS_STOPPED_BY_TIME_LIMIT} (counter; tags {@code target}, {@code reason}).</li>
  * <li>{@value #CALLS_ON_LAST_ENDPOINTS} (counter; tag {@code target}).</li>
  * <li>{@value #DEADLINE_EXPIRED} (counter; tags {@code target},
@@ -71,6 +72,12 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	 * of their list was cooling down after a connect timeout.
 	 */
 	public static final String SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS = "service.client.attempts.single.after.connect.timeouts";
+
+	/**
+	 * Attempts refused because too many requests already waited for a pooled
+	 * connection to their endpoint.
+	 */
+	public static final String PENDING_LEASES_REFUSED = "service.client.pool.pending.refused";
 
 	/**
 	 * Reason tag value of a cooldown recorded without a reason.
@@ -269,6 +276,15 @@ public class MicrometerServiceClientMetrics implements ServiceClientMetrics {
 	public void recordSingleAttemptAfterConnectTimeouts(
 			final String target) {
 		this.meterRegistry.counter(MicrometerServiceClientMetrics.SINGLE_ATTEMPT_AFTER_CONNECT_TIMEOUTS, "target", target).increment();
+	}
+
+	/**
+	 * @see ServiceClientMetrics#recordPendingLeaseRefused(String)
+	 */
+	@Override
+	public void recordPendingLeaseRefused(
+			final String target) {
+		this.meterRegistry.counter(MicrometerServiceClientMetrics.PENDING_LEASES_REFUSED, "target", target).increment();
 	}
 
 	/**
