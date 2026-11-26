@@ -11,7 +11,6 @@ import org.coldis.library.cache.LocalThrottleReservation;
 import org.coldis.library.helper.DateTimeHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisProperties;
@@ -53,19 +52,9 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	/**
 	 * Sets the send throttle metrics (none when there is no metrics bean).
 	 *
-	 * @param sendThrottleMetricsProvider Send throttle metrics provider.
-	 */
-	@Autowired
-	public void configureSendThrottleMetrics(
-			final ObjectProvider<JmsSendThrottleMetrics> sendThrottleMetricsProvider) {
-		this.sendThrottleMetrics = sendThrottleMetricsProvider.getIfAvailable(() -> JmsSendThrottleMetrics.NONE);
-	}
-
-	/**
-	 * Sets the send throttle metrics.
-	 *
 	 * @param sendThrottleMetrics Send throttle metrics.
 	 */
+	@Autowired(required = false)
 	public void setSendThrottleMetrics(
 			final JmsSendThrottleMetrics sendThrottleMetrics) {
 		this.sendThrottleMetrics = (sendThrottleMetrics == null ? JmsSendThrottleMetrics.NONE : sendThrottleMetrics);
@@ -138,8 +127,12 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	/**
 	 * Sends a message, unless it is throttled and a message with the same
 	 * throttle key was sent to the same destination within the throttle interval.
-	 * A send in a transaction gives its throttle key back if the transaction does
-	 * not commit (the message was not sent).
+	 * A transactional send (a session-transacted template, in a synchronized
+	 * transaction) gives its throttle key back if the transaction does not commit,
+	 * as the message is rolled back with it. A send that is not transactional
+	 * keeps the key: the message reached the broker whatever the transaction does.
+	 * A message skipped while that transaction was open is not replayed: the next
+	 * same-key send goes out.
 	 *
 	 * @param template                JMS template.
 	 * @param message                 Message.
@@ -158,11 +151,11 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 					message.getDestination() + ArtemisJmsTemplateHelper.THROTTLE_KEY_SEPARATOR + message.getThrottleKey(), message.getThrottleInterval(), null);
 			if (reservation == null) {
 				this.sendThrottleMetrics.recordSkipped(message.getDestination());
-				ArtemisJmsTemplateHelper.LOGGER.debug("Skipping a send to '{}': throttle key '{}' was sent within {}.", message.getDestination(),
-						message.getThrottleKey(), message.getThrottleInterval());
+				ArtemisJmsTemplateHelper.LOGGER.debug("Skipping a send to '{}': its throttle key was sent within {}.", message.getDestination(),
+						message.getThrottleInterval());
 			}
 			else {
-				if (releaseOnUncommittedEnd && TransactionSynchronizationManager.isSynchronizationActive()) {
+				if (releaseOnUncommittedEnd && template.isSessionTransacted() && TransactionSynchronizationManager.isSynchronizationActive()) {
 					TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 						@Override
 						public void afterCompletion(

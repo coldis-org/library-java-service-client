@@ -82,6 +82,42 @@ public class JmsTemplateTestService {
 	}
 
 	/**
+	 * Sends a throttled message.
+	 *
+	 * @param destination      Destination.
+	 * @param message          Message.
+	 * @param throttleKey      Throttle key.
+	 * @param throttleInterval Throttle interval.
+	 */
+	@Transactional
+	public void sendThrottledMessage(
+			final String destination,
+			final Object message,
+			final String throttleKey,
+			final Duration throttleInterval) {
+		this.jmsTemplateHelper.send(this.jmsTemplate,
+				new JmsMessage<>().withDestination(destination).withMessage(message).withThrottleKey(throttleKey).withThrottleInterval(throttleInterval));
+	}
+
+	/**
+	 * Sends a throttled message and fails, rolling the transaction back.
+	 *
+	 * @param destination      Destination.
+	 * @param message          Message.
+	 * @param throttleKey      Throttle key.
+	 * @param throttleInterval Throttle interval.
+	 */
+	@Transactional
+	public void sendThrottledMessageAndFail(
+			final String destination,
+			final Object message,
+			final String throttleKey,
+			final Duration throttleInterval) {
+		this.sendThrottledMessage(destination, message, throttleKey, throttleInterval);
+		throw new IllegalStateException("Rolls the send back.");
+	}
+
+	/**
 	 * Sends a message with a stale filter key.
 	 *
 	 * @param destination    Destination.

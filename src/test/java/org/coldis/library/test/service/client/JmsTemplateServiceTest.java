@@ -4,13 +4,18 @@ import java.time.Duration;
 import java.util.Random;
 
 import org.coldis.library.service.jms.JmsMessage;
+import org.coldis.library.service.jms.MicrometerJmsSendThrottleMetrics;
 import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import org.springframework.jms.core.JmsTemplate;
+
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 
@@ -31,6 +36,30 @@ public class JmsTemplateServiceTest extends AbstractServiceTest {
 	 */
 	@Autowired
 	private JmsTemplateTestService jmsTemplateTestService;
+
+	/**
+	 * JMS template.
+	 */
+	@Autowired
+	private JmsTemplate jmsTemplate;
+
+	/**
+	 * Meter registry.
+	 */
+	@Autowired
+	private MeterRegistry meterRegistry;
+
+	/**
+	 * Gets the number of throttled sends skipped for a destination.
+	 *
+	 * @param  destination Destination.
+	 * @return             The number of skipped sends.
+	 */
+	private double getThrottleSkippedCount(
+			final String destination) {
+		return this.meterRegistry.find(MicrometerJmsSendThrottleMetrics.SKIPPED).tag("destination", destination).counters().stream()
+				.mapToDouble(counter -> counter.count()).sum();
+	}
 
 	/**
 	 * Clears before tests.
@@ -147,6 +176,36 @@ public class JmsTemplateServiceTest extends AbstractServiceTest {
 		this.jmsTemplateTestService.consumeMessage(JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + random, 10L);
 		Assertions.assertTrue(JmsTemplateTestService.ACKED_MESSAGES.contains("testScheduled1-" + random));
 
+	}
+
+	/**
+	 * Tests the send throttle through the Spring-managed helper and the broker:
+	 * exactly one message per key reaches the queue within the interval, whatever
+	 * the transaction of the first send does, and the skipped sends are counted. A
+	 * transactional template rolls the first message back with its transaction
+	 * and gives the key back, so the next send goes out; a template that is not
+	 * transactional has already sent it, and keeps the key.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	@DisplayName("A throttled key reaches the queue once per interval, whatever the first send's transaction does")
+	public void testThrottledMessages() throws Exception {
+		final Integer random = JmsTemplateServiceTest.RANDOM.nextInt();
+		final String destination = JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + "throttled" + random;
+		final Duration interval = Duration.ofMinutes(1);
+		final boolean transactional = this.jmsTemplate.isSessionTransacted();
+
+		Assertions.assertThrows(IllegalStateException.class,
+				() -> this.jmsTemplateTestService.sendThrottledMessageAndFail(destination, "rolled-back-" + random, "key", interval));
+		this.jmsTemplateTestService.sendThrottledMessage(destination, "second-" + random, "key", interval);
+		this.jmsTemplateTestService.sendThrottledMessage(destination, "third-" + random, "key", interval);
+
+		final Message firstMessage = this.jmsTemplateTestService.consumeMessage(destination, 5000L);
+		Assertions.assertNotNull(firstMessage);
+		Assertions.assertEquals((transactional ? "second-" : "rolled-back-") + random, firstMessage.getBody(String.class));
+		Assertions.assertNull(this.jmsTemplateTestService.consumeMessage(destination, 1000L));
+		Assertions.assertEquals((transactional ? 1.0 : 2.0), this.getThrottleSkippedCount(destination));
 	}
 
 }

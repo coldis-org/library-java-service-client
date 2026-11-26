@@ -71,9 +71,10 @@ public class JmsMessage<MessageType> {
 	/**
 	 * Send throttle key. With {@link #throttleInterval}, the sender skips this
 	 * message when a message with the same key was sent to the same destination,
-	 * by the same instance, within the interval. Only suitable for messages whose
-	 * consumer re-reads current state (repeated triggers), never for messages
-	 * whose body carries state.
+	 * by the same instance, within the interval. A skipped message is dropped,
+	 * not delayed, and is not replayed if the send holding the key rolls back: only
+	 * use it for triggers whose consumer re-reads current state and that a later
+	 * trigger follows, never for messages whose body carries state.
 	 */
 	private String throttleKey;
 
