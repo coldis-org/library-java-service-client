@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -25,9 +26,11 @@ import org.apache.hc.client5.http.HttpRoute;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.io.LeaseRequest;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.util.Timeout;
 import org.coldis.library.service.client.ServiceClientConnectionManager;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
@@ -526,6 +529,42 @@ public class ServiceClientConnectionManagerTest {
 			httpClient.close();
 			connectionManager.close();
 		}
+	}
+
+	/**
+	 * A burst of lease requests on an idle route, all made before any is given its
+	 * connection, is bounded by the route's maximum, not by the connections
+	 * already handed out (none yet): the route's connections plus as many waiting
+	 * are admitted, and only the next is refused.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testBurstOnIdleRoute() throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
+		connectionManager.setDefaultMaxPerRoute(4);
+		final HttpRoute route = ServiceClientConnectionManagerTest.getRoute();
+		final List<LeaseRequest> leaseRequests = new ArrayList<>();
+		try {
+			for (Integer leaseIndex = 0; leaseIndex < 8; leaseIndex++) {
+				leaseRequests.add(connectionManager.lease("burst-" + leaseIndex, route, Timeout.ofSeconds(1), null));
+			}
+			Assertions.assertEquals(8, connectionManager.getRequested(route));
+			Assertions.assertEquals(0, connectionManager.getLeased(route));
+			Assertions.assertEquals(0, connectionManager.getRefusedLeases());
+			final LeaseRequest refusedLeaseRequest = connectionManager.lease("burst-refused", route, Timeout.ofSeconds(1), null);
+			final ExecutionException refusal = Assertions.assertThrows(ExecutionException.class, () -> refusedLeaseRequest.get(Timeout.ofSeconds(1)));
+			Assertions.assertInstanceOf(ServiceClientPendingLeaseLimitException.class, refusal.getCause());
+			Assertions.assertEquals(1, connectionManager.getRefusedLeases());
+			Assertions.assertEquals(8, connectionManager.getRequested(route));
+		}
+		finally {
+			for (final LeaseRequest leaseRequest : leaseRequests) {
+				leaseRequest.cancel();
+			}
+			connectionManager.close();
+		}
+		Assertions.assertEquals(0, connectionManager.getRequested(route));
 	}
 
 	/**

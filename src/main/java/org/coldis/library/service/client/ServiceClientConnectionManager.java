@@ -27,8 +27,12 @@ import org.slf4j.LoggerFactory;
  * them waits (up to its pool wait) for one to be released, and the pool itself
  * does not bound how many wait. Here a request that would wait is refused at
  * once, with nothing sent, when the requests already waiting on its route reach
- * {@code max(1, ceil(ratio x connections leased on the route))}: with ratio 1
- * and 32 connections in use, 32 more may wait and the next is refused. It fails
+ * {@code max(1, ceil(ratio x the route's maximum connections))}, its
+ * connections in use whenever a request waits (a request waits only once the
+ * route is full): with ratio 1 and 32 connections per route, 32 more may wait
+ * and the next is refused. The maximum, not the connections already handed
+ * out, is the base, so a burst on an idle route (its connections not yet
+ * handed out) is not refused under the bound. It fails
  * with a {@link ServiceClientPendingLeaseLimitException} (see there for how the
  * failover executor treats it). A ratio of 0 bounds nothing (the pool alone).
  * <p>
@@ -59,7 +63,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientConnectionManager.class);
 
 	/**
-	 * Requests waiting allowed on any route, whatever its connections in use.
+	 * Requests waiting allowed on any route, however small its maximum or the
+	 * ratio.
 	 */
 	public static final int MIN_PENDING = 1;
 
@@ -302,13 +307,14 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	/**
 	 * Gets the requests waiting allowed on a route.
 	 *
-	 * @param  leased Connections leased on the route.
-	 * @return        The requests waiting allowed.
+	 * @param  routeMaxConnections Maximum connections of the route (all in use
+	 *                                 whenever a request waits).
+	 * @return                     The requests waiting allowed.
 	 */
 	private int getMaxPending(
-			final int leased) {
+			final int routeMaxConnections) {
 		return Math.max(ServiceClientConnectionManager.MIN_PENDING,
-				BigDecimal.valueOf(leased).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING).intValue());
+				BigDecimal.valueOf(routeMaxConnections).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING).intValue());
 	}
 
 	/**
@@ -335,18 +341,18 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	/**
 	 * Refuses a lease request.
 	 *
-	 * @param  route   Route.
-	 * @param  pending Requests waiting with the refused one.
-	 * @param  leased  Connections leased on the route.
-	 * @return         The refused lease request.
+	 * @param  route               Route.
+	 * @param  pending             Requests waiting with the refused one.
+	 * @param  routeMaxConnections Maximum connections of the route.
+	 * @return                     The refused lease request.
 	 */
 	private LeaseRequest refuse(
 			final HttpRoute route,
 			final int pending,
-			final int leased) {
+			final int routeMaxConnections) {
 		this.refusedLeases.increment();
 		final String message = "Requests waiting for a pooled connection to " + route.getTargetHost() + " reached their limit (" + (pending - 1) + " waiting, "
-				+ leased + " in use, limit " + this.getMaxPending(leased) + "): request refused.";
+				+ routeMaxConnections + " connections, limit " + this.getMaxPending(routeMaxConnections) + "): request refused.";
 		ServiceClientConnectionManager.LOGGER.debug(message);
 		return new RefusedLeaseRequest(new ServiceClientPendingLeaseLimitException(message));
 	}
@@ -367,19 +373,17 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 		// arriving together never refuse each other.
 		boolean isAdmitted = false;
 		boolean isRefused = false;
-		int leased = 0;
 		int pending = 0;
 		while (!isAdmitted && !isRefused) {
 			final int requested = routeLeases.requested.get();
-			leased = routeLeases.leased.get();
-			pending = (leased + requested + 1) - routeMaxConnections;
+			pending = (routeLeases.leased.get() + requested + 1) - routeMaxConnections;
 			// The cap is at least one, so it is computed only while a request already waits.
-			isRefused = this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(leased));
+			isRefused = this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(routeMaxConnections));
 			isAdmitted = !isRefused && routeLeases.requested.compareAndSet(requested, requested + 1);
 		}
 		final LeaseRequest leaseRequest;
 		if (isRefused) {
-			leaseRequest = this.refuse(route, pending, leased);
+			leaseRequest = this.refuse(route, pending, routeMaxConnections);
 		}
 		else {
 			try {
