@@ -69,6 +69,21 @@ public class JmsMessage<MessageType> {
 	private String staleFilterKey;
 
 	/**
+	 * Send throttle key. With {@link #throttleInterval}, the sender skips this
+	 * message when a message with the same key was sent to the same destination,
+	 * by the same instance, within the interval. Only suitable for messages whose
+	 * consumer re-reads current state (repeated triggers), never for messages
+	 * whose body carries state.
+	 */
+	private String throttleKey;
+
+	/**
+	 * Send throttle interval (see {@link #throttleKey}). The message is not
+	 * throttled without a positive interval.
+	 */
+	private Duration throttleInterval;
+
+	/**
 	 * Fixed delay.
 	 */
 	private Duration fixedDelay;
@@ -287,6 +302,68 @@ public class JmsMessage<MessageType> {
 	}
 
 	/**
+	 * Gets the throttleKey.
+	 *
+	 * @return The throttleKey.
+	 */
+	public String getThrottleKey() {
+		return this.throttleKey;
+	}
+
+	/**
+	 * Sets the throttleKey.
+	 *
+	 * @param throttleKey New throttleKey.
+	 */
+	public void setThrottleKey(
+			final String throttleKey) {
+		this.throttleKey = throttleKey;
+	}
+
+	/**
+	 * Sets the throttleKey.
+	 *
+	 * @param  throttleKey New throttleKey.
+	 * @return             Message.
+	 */
+	public JmsMessage<MessageType> withThrottleKey(
+			final String throttleKey) {
+		this.setThrottleKey(throttleKey);
+		return this;
+	}
+
+	/**
+	 * Gets the throttleInterval.
+	 *
+	 * @return The throttleInterval.
+	 */
+	public Duration getThrottleInterval() {
+		return this.throttleInterval;
+	}
+
+	/**
+	 * Sets the throttleInterval.
+	 *
+	 * @param throttleInterval New throttleInterval.
+	 */
+	public void setThrottleInterval(
+			final Duration throttleInterval) {
+		this.throttleInterval = throttleInterval;
+	}
+
+	/**
+	 * Sets the throttleInterval.
+	 *
+	 * @param  throttleInterval New throttleInterval.
+	 * @return                  Message.
+	 */
+	public JmsMessage<MessageType> withThrottleInterval(
+			final Duration throttleInterval) {
+		this.setThrottleInterval(throttleInterval);
+		return this;
+	}
+
+	/**
 	 * Gets the fixedDelay.
 	 *
 	 * @return The fixedDelay.
@@ -483,7 +560,7 @@ public class JmsMessage<MessageType> {
 	@Override
 	public int hashCode() {
 		return Objects.hash(this.correlationId, this.destination, this.fixedDelay, this.lastValueKey, this.staleFilterKey, this.message, this.priority,
-				this.properties, this.randomDelay, this.scheduledAt);
+				this.properties, this.randomDelay, this.scheduledAt, this.throttleKey, this.throttleInterval);
 	}
 
 	/**
@@ -503,7 +580,8 @@ public class JmsMessage<MessageType> {
 				&& Objects.equals(this.fixedDelay, other.fixedDelay) && Objects.equals(this.lastValueKey, other.lastValueKey)
 				&& Objects.equals(this.staleFilterKey, other.staleFilterKey) && Objects.equals(this.message, other.message)
 				&& Objects.equals(this.priority, other.priority) && Objects.equals(this.properties, other.properties)
-				&& Objects.equals(this.randomDelay, other.randomDelay) && Objects.equals(this.scheduledAt, other.scheduledAt);
+				&& Objects.equals(this.randomDelay, other.randomDelay) && Objects.equals(this.scheduledAt, other.scheduledAt)
+				&& Objects.equals(this.throttleKey, other.throttleKey) && Objects.equals(this.throttleInterval, other.throttleInterval);
 	}
 
 }
