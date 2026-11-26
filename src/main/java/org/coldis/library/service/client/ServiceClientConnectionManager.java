@@ -1,0 +1,425 @@
+package org.coldis.library.service.client;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
+
+import org.apache.hc.client5.http.HttpRoute;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.io.ConnectionEndpoint;
+import org.apache.hc.client5.http.io.LeaseRequest;
+import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.core5.util.Timeout;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Pooled connection manager that bounds, per route (endpoint), the requests
+ * waiting for a pooled connection, relative to the connections in use on it.
+ * <p>
+ * The pool gives each route at most its maximum connections; a request beyond
+ * them waits (up to its pool wait) for one to be released, and the pool itself
+ * does not bound how many wait. Here a request that would wait is refused at
+ * once, with nothing sent, when the requests already waiting on its route reach
+ * {@code max(1, ceil(ratio x the route's maximum connections))}, its
+ * connections in use whenever a request waits (a request waits only once the
+ * route is full): with ratio 1 and 32 connections per route, 32 more may wait
+ * and the next is refused. The maximum, not the connections already handed
+ * out, is the base, so a burst on an idle route (its connections not yet
+ * handed out) is not refused under the bound. It fails
+ * with a {@link ServiceClientPendingLeaseLimitException} (see there for how the
+ * failover executor treats it). A ratio of 0 bounds nothing (the pool alone).
+ * <p>
+ * Requests waiting on a route are counted against the route's maximum only (as
+ * set on this manager, through {@link #setDefaultMaxPerRoute(int)} and
+ * {@link #setMaxPerRoute(HttpRoute, int)} only, the setters that keep its copy); a request waiting because the pool's total is reached
+ * is not counted as waiting until its route is full too, so it is bounded by
+ * the route's maximum plus its waiting cap.
+ * <p>
+ * The counts are updated without a lock, so the bound is approximate while a
+ * connection passes from one request to another: they are updated in the order
+ * that, for that moment, lets a request in rather than refusing it (by at most
+ * one request per connection passing). A request is counted as waiting only
+ * once admitted, so requests arriving together do not refuse each other.
+ * <p>
+ * Cost per request: one map lookup, a few atomic increments and decrements, and
+ * one map put and remove for the leased connection; no lock (the pool's own
+ * route statistics scan every waiting request under the pool's lock, so they
+ * are not used). The waiting cap is computed only while a request already
+ * waits. One small entry is kept per route ever leased, as the pool keeps its
+ * own per-route state.
+ */
+public class ServiceClientConnectionManager extends PoolingHttpClientConnectionManager {
+
+	/**
+	 * Logger.
+	 */
+	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceClientConnectionManager.class);
+
+	/**
+	 * Requests waiting allowed on any route, however small its maximum or the
+	 * ratio.
+	 */
+	public static final int MIN_PENDING = 1;
+
+	/**
+	 * Most requests waiting a route may allow (a larger cap, from a very large
+	 * ratio, is this one, so it never overflows).
+	 */
+	private static final BigDecimal MAX_PENDING = BigDecimal.valueOf(Integer.MAX_VALUE);
+
+	/**
+	 * Leases of a route.
+	 */
+	private static final class RouteLeases {
+
+		/**
+		 * Lease requests not yet given a connection (nor failed or cancelled).
+		 */
+		private final AtomicInteger requested = new AtomicInteger();
+
+		/**
+		 * Connections given and not yet released.
+		 */
+		private final AtomicInteger leased = new AtomicInteger();
+
+	}
+
+	/**
+	 * Lease request that keeps the route's counts.
+	 */
+	private final class CountedLeaseRequest implements LeaseRequest {
+
+		/**
+		 * Lease request of the pool.
+		 */
+		private final LeaseRequest poolLeaseRequest;
+
+		/**
+		 * Leases of the route.
+		 */
+		private final RouteLeases routeLeases;
+
+		/**
+		 * If the request is no longer counted as requested.
+		 */
+		private final AtomicBoolean isSettled = new AtomicBoolean();
+
+		/**
+		 * If the connection given is counted as leased.
+		 */
+		private final AtomicBoolean isLeaseCounted = new AtomicBoolean();
+
+		/**
+		 * Constructor.
+		 *
+		 * @param poolLeaseRequest Lease request of the pool.
+		 * @param routeLeases      Leases of the route.
+		 */
+		private CountedLeaseRequest(final LeaseRequest poolLeaseRequest, final RouteLeases routeLeases) {
+			this.poolLeaseRequest = poolLeaseRequest;
+			this.routeLeases = routeLeases;
+		}
+
+		/**
+		 * Stops counting the request as requested (once). Done before its connection
+		 * is counted as leased, so the request is never counted twice.
+		 */
+		private void settle() {
+			if (this.isSettled.compareAndSet(false, true)) {
+				this.routeLeases.requested.decrementAndGet();
+			}
+		}
+
+		/**
+		 * @see LeaseRequest#get(Timeout)
+		 */
+		@Override
+		public ConnectionEndpoint get(
+				final Timeout timeout) throws InterruptedException, ExecutionException, TimeoutException {
+			final ConnectionEndpoint endpoint;
+			try {
+				endpoint = this.poolLeaseRequest.get(timeout);
+			}
+			finally {
+				this.settle();
+			}
+			if ((endpoint != null) && this.isLeaseCounted.compareAndSet(false, true)) {
+				ServiceClientConnectionManager.this.leasedEndpoints.put(endpoint, this.routeLeases);
+				this.routeLeases.leased.incrementAndGet();
+			}
+			return endpoint;
+		}
+
+		/**
+		 * @see LeaseRequest#cancel()
+		 */
+		@Override
+		public boolean cancel() {
+			final boolean isCancelled = this.poolLeaseRequest.cancel();
+			this.settle();
+			return isCancelled;
+		}
+
+	}
+
+	/**
+	 * Lease request refused at once.
+	 */
+	private static final class RefusedLeaseRequest implements LeaseRequest {
+
+		/**
+		 * Refusal.
+		 */
+		private final ServiceClientPendingLeaseLimitException refusal;
+
+		/**
+		 * Constructor.
+		 *
+		 * @param refusal Refusal.
+		 */
+		private RefusedLeaseRequest(final ServiceClientPendingLeaseLimitException refusal) {
+			this.refusal = refusal;
+		}
+
+		/**
+		 * @see LeaseRequest#get(Timeout)
+		 */
+		@Override
+		public ConnectionEndpoint get(
+				final Timeout timeout) throws ExecutionException {
+			throw new ExecutionException(this.refusal.getMessage(), this.refusal);
+		}
+
+		/**
+		 * @see LeaseRequest#cancel()
+		 */
+		@Override
+		public boolean cancel() {
+			return false;
+		}
+
+	}
+
+	/**
+	 * Requests waiting allowed per connection of the route's maximum (0 for no
+	 * bound).
+	 */
+	private final BigDecimal maxPendingRatio;
+
+	/**
+	 * If the requests waiting are bounded.
+	 */
+	private final boolean isBounded;
+
+	/**
+	 * Leases per route.
+	 */
+	private final Map<HttpRoute, RouteLeases> routesLeases = new ConcurrentHashMap<>();
+
+	/**
+	 * Route of each connection leased.
+	 */
+	private final Map<ConnectionEndpoint, RouteLeases> leasedEndpoints = new ConcurrentHashMap<>();
+
+	/**
+	 * Maximum connections of the routes with a maximum of their own: a copy of
+	 * the pool's (whose getter takes the pool's lock), kept by the overridden
+	 * setters below. Any other way of changing a route's maximum must keep it too.
+	 */
+	private final Map<HttpRoute, Integer> routesMaxConnections = new ConcurrentHashMap<>();
+
+	/**
+	 * Maximum connections of the other routes (a copy of the pool's, as above).
+	 */
+	private volatile int defaultRouteMaxConnections;
+
+	/**
+	 * Requests refused.
+	 */
+	private final LongAdder refusedLeases = new LongAdder();
+
+	/**
+	 * Constructor.
+	 *
+	 * @param maxPendingRatio Requests waiting allowed per connection of the
+	 *                            route's maximum (0 for no bound; at least
+	 *                            {@value #MIN_PENDING} may always wait).
+	 */
+	public ServiceClientConnectionManager(final BigDecimal maxPendingRatio) {
+		super();
+		if ((maxPendingRatio == null) || (maxPendingRatio.signum() < 0)) {
+			throw new IllegalArgumentException("The ratio of requests waiting for a pooled connection must be zero or more: " + maxPendingRatio);
+		}
+		this.maxPendingRatio = maxPendingRatio;
+		this.isBounded = (maxPendingRatio.signum() > 0);
+		this.defaultRouteMaxConnections = super.getDefaultMaxPerRoute();
+	}
+
+	/**
+	 * Gets the requests waiting allowed per connection of the route's maximum.
+	 *
+	 * @return The ratio (0 for no bound).
+	 */
+	public BigDecimal getMaxPendingRatio() {
+		return this.maxPendingRatio;
+	}
+
+	/**
+	 * Gets the requests refused so far by this manager, whatever the caller (a
+	 * supported diagnostic; generated clients also count theirs per target in
+	 * {@code service.client.pool.pending.refused}).
+	 *
+	 * @return The requests refused.
+	 */
+	public long getRefusedLeases() {
+		return this.refusedLeases.sum();
+	}
+
+	/**
+	 * Gets the connections leased on a route, as counted here (a supported
+	 * diagnostic).
+	 *
+	 * @param  route Route.
+	 * @return       The connections leased.
+	 */
+	public int getLeased(
+			final HttpRoute route) {
+		final RouteLeases routeLeases = this.routesLeases.get(route);
+		return (routeLeases == null ? 0 : routeLeases.leased.get());
+	}
+
+	/**
+	 * Gets the lease requests of a route not yet given a connection (waiting for
+	 * one, or about to get one), as counted here (a supported diagnostic; the
+	 * pool's own statistics may still count a cancelled request until its
+	 * deadline).
+	 *
+	 * @param  route Route.
+	 * @return       The lease requests not yet given a connection.
+	 */
+	public int getRequested(
+			final HttpRoute route) {
+		final RouteLeases routeLeases = this.routesLeases.get(route);
+		return (routeLeases == null ? 0 : routeLeases.requested.get());
+	}
+
+	/**
+	 * Gets the requests waiting allowed on a route.
+	 *
+	 * @param  routeMaxConnections Maximum connections of the route (all in use
+	 *                                 whenever a request waits).
+	 * @return                     The requests waiting allowed.
+	 */
+	private int getMaxPending(
+			final int routeMaxConnections) {
+		return Math.max(ServiceClientConnectionManager.MIN_PENDING,
+				BigDecimal.valueOf(routeMaxConnections).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING)
+						.min(ServiceClientConnectionManager.MAX_PENDING).intValue());
+	}
+
+	/**
+	 * @see PoolingHttpClientConnectionManager#setDefaultMaxPerRoute(int)
+	 */
+	@Override
+	public void setDefaultMaxPerRoute(
+			final int max) {
+		super.setDefaultMaxPerRoute(max);
+		this.defaultRouteMaxConnections = max;
+	}
+
+	/**
+	 * @see PoolingHttpClientConnectionManager#setMaxPerRoute(HttpRoute, int)
+	 */
+	@Override
+	public void setMaxPerRoute(
+			final HttpRoute route,
+			final int max) {
+		super.setMaxPerRoute(route, max);
+		this.routesMaxConnections.put(route, max);
+	}
+
+	/**
+	 * Refuses a lease request.
+	 *
+	 * @param  route               Route.
+	 * @param  pending             Requests waiting with the refused one.
+	 * @param  routeMaxConnections Maximum connections of the route.
+	 * @return                     The refused lease request.
+	 */
+	private LeaseRequest refuse(
+			final HttpRoute route,
+			final int pending,
+			final int routeMaxConnections) {
+		this.refusedLeases.increment();
+		final String message = "Requests waiting for a pooled connection to " + route.getTargetHost() + " reached their limit (" + (pending - 1) + " waiting, "
+				+ routeMaxConnections + " connections, limit " + this.getMaxPending(routeMaxConnections) + "): request refused.";
+		ServiceClientConnectionManager.LOGGER.debug(message);
+		return new RefusedLeaseRequest(new ServiceClientPendingLeaseLimitException(message));
+	}
+
+	/**
+	 * @see PoolingHttpClientConnectionManager#lease(String, HttpRoute, Timeout,
+	 *      Object)
+	 */
+	@Override
+	public LeaseRequest lease(
+			final String id,
+			final HttpRoute route,
+			final Timeout requestTimeout,
+			final Object state) {
+		final RouteLeases routeLeases = this.routesLeases.computeIfAbsent(route, newRoute -> new RouteLeases());
+		final int routeMaxConnections = this.routesMaxConnections.getOrDefault(route, this.defaultRouteMaxConnections);
+		// Counted as requested only once admitted (compare-and-set), so requests
+		// arriving together never refuse each other.
+		boolean isAdmitted = false;
+		boolean isRefused = false;
+		int pending = 0;
+		while (!isAdmitted && !isRefused) {
+			final int requested = routeLeases.requested.get();
+			pending = (routeLeases.leased.get() + requested + 1) - routeMaxConnections;
+			// The cap is at least one, so it is computed only while a request already waits.
+			isRefused = this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(routeMaxConnections));
+			isAdmitted = !isRefused && routeLeases.requested.compareAndSet(requested, requested + 1);
+		}
+		final LeaseRequest leaseRequest;
+		if (isRefused) {
+			leaseRequest = this.refuse(route, pending, routeMaxConnections);
+		}
+		else {
+			try {
+				leaseRequest = new CountedLeaseRequest(super.lease(id, route, requestTimeout, state), routeLeases);
+			}
+			catch (final RuntimeException exception) {
+				routeLeases.requested.decrementAndGet();
+				throw exception;
+			}
+		}
+		return leaseRequest;
+	}
+
+	/**
+	 * @see PoolingHttpClientConnectionManager#release(ConnectionEndpoint, Object,
+	 *      TimeValue)
+	 */
+	@Override
+	public void release(
+			final ConnectionEndpoint endpoint,
+			final Object state,
+			final TimeValue keepAlive) {
+		// Counted as released before the pool hands the connection to a waiting
+		// request, so it is never counted as leased twice.
+		final RouteLeases routeLeases = this.leasedEndpoints.remove(endpoint);
+		if (routeLeases != null) {
+			routeLeases.leased.decrementAndGet();
+		}
+		super.release(endpoint, state, keepAlive);
+	}
+
+}

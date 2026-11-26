@@ -4,15 +4,18 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.hc.client5.http.impl.classic.RequestFailedException;
 import org.coldis.library.exception.IntegrationException;
 import org.coldis.library.service.client.GenericRestServiceClient;
 import org.coldis.library.service.client.MicrometerServiceClientMetrics;
 import org.coldis.library.service.client.ServiceClientConcurrencyLimiter;
 import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
+import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
 import org.coldis.library.service.client.ServiceClientTarget;
 import org.coldis.library.service.client.ServiceClientTargetObservationFilter;
 import org.coldis.library.test.service.AbstractServiceTest;
@@ -24,7 +27,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.FunctionCounter;
@@ -368,6 +375,41 @@ public class ServiceClientMetricsTest extends AbstractServiceTest {
 		finally {
 			permits.forEach(this.concurrencyLimiter::release);
 		}
+	}
+
+
+	/**
+	 * An attempt refused because too many requests already wait for a pooled
+	 * connection is counted in the context's meter registry
+	 * ({@value MicrometerServiceClientMetrics#PENDING_LEASES_REFUSED}, tag
+	 * {@code target}), once per refused attempt, through the context's failover
+	 * executor. A target of its own keeps the shared targets' limits untouched.
+	 */
+	@Test
+	public void testPendingLeaseRefusedMetric() {
+		final String target = "PendingLeaseMetricTestClient";
+		final RuntimeException refusal = new ResourceAccessException("Refused.",
+				new RequestFailedException("Request execution failed", new ServiceClientPendingLeaseLimitException("Too many waiting.")));
+		final RestTemplate refusingTemplate = new RestTemplate() {
+
+			@Override
+			public <ResponseType> ResponseEntity<ResponseType> exchange(
+					final String url,
+					final HttpMethod method,
+					final HttpEntity<?> requestEntity,
+					final ParameterizedTypeReference<ResponseType> responseType,
+					final Map<String, ?> uriVariables) {
+				throw refusal;
+			}
+		};
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientTarget.runFor(target,
+				() -> this.failoverExecutor.executeOverEndpoints(List.of("http://first", "http://second"), "/", HttpMethod.POST, new HttpEntity<>("body"),
+						new ParameterizedTypeReference<String>() {}, Map.of(), null, null, refusingTemplate));
+		Assertions.assertSame(refusal, outcome.failure());
+		final Counter refused = this.meterRegistry.find(MicrometerServiceClientMetrics.PENDING_LEASES_REFUSED).tag("target", target).counter();
+		Assertions.assertNotNull(refused);
+		Assertions.assertEquals(2, refused.count());
+		Assertions.assertEquals(List.of("target"), refused.getId().getTags().stream().map(Tag::getKey).toList());
 	}
 
 }

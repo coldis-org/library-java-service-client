@@ -1,5 +1,6 @@
 package org.coldis.library.service.client;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
@@ -105,10 +106,15 @@ public class ServiceClientAutoConfiguration {
 	 * @param  validateAfterInactivity Idle time after which a pooled connection is
 	 *                                     checked before it is reused (e.g.
 	 *                                     {@code 1s}).
+	 * @param  maxPendingRatio         Requests that may wait for a pooled
+	 *                                     connection to an endpoint per
+	 *                                     connection in use on it (0 for no
+	 *                                     bound; see
+	 *                                     {@link ServiceClientConnectionManager}).
 	 * @return                         HTTP client pooling manager.
 	 */
 	@Bean
-	public PoolingHttpClientConnectionManager httpClientPoolingManager(
+	public ServiceClientConnectionManager httpClientPoolingManager(
 			@Value("${org.coldis.library.service-client.max-total}")
 			final Integer maxTotal,
 			@Value("${org.coldis.library.service-client.default-max-per-route}")
@@ -120,8 +126,10 @@ public class ServiceClientAutoConfiguration {
 			@Value("${org.coldis.library.service-client.connection-time-to-live:60s}")
 			final String timeToLive,
 			@Value("${org.coldis.library.service-client.connection-validate-after-inactivity:1s}")
-			final String validateAfterInactivity) {
-		final PoolingHttpClientConnectionManager httpClientPoolingManager = new PoolingHttpClientConnectionManager();
+			final String validateAfterInactivity,
+			@Value("${org.coldis.library.service-client.max-pending-ratio:1.0}")
+			final BigDecimal maxPendingRatio) {
+		final ServiceClientConnectionManager httpClientPoolingManager = new ServiceClientConnectionManager(maxPendingRatio);
 		httpClientPoolingManager.setMaxTotal(maxTotal); // maximum total connections.
 		httpClientPoolingManager.setDefaultMaxPerRoute(defaultMaxPerRoute); // maximum connections per host.
 		httpClientPoolingManager.setDefaultConnectionConfig(ConnectionConfig.custom().setTimeToLive(ServiceClientAutoConfiguration.toTimeValue(timeToLive))
@@ -132,6 +140,9 @@ public class ServiceClientAutoConfiguration {
 		if (closeExpired) {
 			httpClientPoolingManager.closeExpired(); // close expired connections.
 		}
+		ServiceClientAutoConfiguration.LOGGER.info("Service client connection pool: {} connections in all, {} per endpoint, {}.", maxTotal, defaultMaxPerRoute,
+				(maxPendingRatio.signum() > 0 ? "at most " + maxPendingRatio.toPlainString() + " requests waiting per connection in use on an endpoint"
+						: "no bound on the requests waiting"));
 		return httpClientPoolingManager;
 	}
 

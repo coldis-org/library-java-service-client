@@ -39,6 +39,7 @@ import org.coldis.library.service.client.ServiceClientEndpointBalancer;
 import org.coldis.library.service.client.ServiceClientEndpointResolver;
 import org.coldis.library.service.client.ServiceClientFailoverExecutor;
 import org.coldis.library.service.client.ServiceClientMetrics;
+import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
 import org.coldis.library.service.client.ServiceClientReadTimeoutScope;
 import org.coldis.library.service.client.ServiceClientRequestDeadlinePolicy;
 import org.coldis.library.service.client.ServiceClientRequestFactory;
@@ -286,6 +287,44 @@ public class ServiceClientFailoverExecutorTest {
 		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
 		Assertions.assertEquals(0, balancer.getInFlightRequests("http://first"));
 		Assertions.assertEquals(0, balancer.getInFlightRequests("http://second"));
+	}
+
+	/**
+	 * An attempt refused because too many requests already wait for a pooled
+	 * connection to its endpoint goes to the next endpoint even for a
+	 * non-idempotent method (nothing was sent), puts no endpoint in its cooldown
+	 * (the queue is local), and is counted per attempt.
+	 */
+	@Test
+	public void testPendingLeaseRefusalTriesNextEndpoint() {
+		final ServiceClientEndpointBalancer balancer = new ServiceClientEndpointBalancer(ServiceClientEndpointBalancer.Strategy.LEAST_IN_FLIGHT,
+				Duration.ofSeconds(10));
+		final List<String> refusedTargets = new CopyOnWriteArrayList<>();
+		final ServiceClientMetrics metrics = new ServiceClientMetrics() {
+
+			@Override
+			public void recordPendingLeaseRefused(
+					final String target) {
+				refusedTargets.add(target);
+			}
+		};
+		final ServiceClientFailoverExecutor executor = new ServiceClientFailoverExecutor(true, 3, new String[] { "GET" }, new String[] { "503" },
+				new String[] { "503" }, false, Duration.ZERO, balancer, new ServiceClientEndpointResolver(Duration.ofMinutes(10), ServiceClientMetrics.NONE),
+				ServiceClientRequestFactory.READ_TIMEOUT_SCOPE, metrics);
+		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
+		final RuntimeException refusal = new ResourceAccessException("Attempt failed.",
+				new RequestFailedException("Request execution failed", new ServiceClientPendingLeaseLimitException("Too many waiting.")));
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientTarget.runFor("PendingLeaseTestClient",
+				() -> executor.executeOverEndpoints(List.of("http://first", "http://second"), "/", HttpMethod.POST, new HttpEntity<>("body"),
+						ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+						ServiceClientFailoverExecutorTest.createFailingTemplate(refusal, attemptedUrls)));
+		Assertions.assertSame(refusal, outcome.failure());
+		Assertions.assertEquals(2, attemptedUrls.size());
+		Assertions.assertEquals(2, attemptedUrls.stream().distinct().count());
+		// Counted per attempt, tagged with the client (target), not the endpoint.
+		Assertions.assertEquals(List.of("PendingLeaseTestClient", "PendingLeaseTestClient"), refusedTargets);
+		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
+		Assertions.assertTrue(executor.shouldRetry(refusal, false, false));
 	}
 
 	/**
