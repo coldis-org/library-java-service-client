@@ -266,10 +266,12 @@ public class JmsSendThrottleTest {
 	/**
 	 * Tests that moving the application clock does not change the throttle
 	 * window, which runs on the wall clock.
+	 *
+	 * @throws Exception If the test fails.
 	 */
 	@Test
 	@DisplayName("Moving the application clock does not change the throttle window")
-	public void testApplicationClockDoesNotChangeTheWindow() {
+	public void testApplicationClockDoesNotChangeTheWindow() throws Exception {
 		final Clock regularClock = DateTimeHelper.getClock();
 		try {
 			this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "key"));
@@ -277,11 +279,16 @@ public class JmsSendThrottleTest {
 			this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "key"));
 			Assertions.assertEquals(1, this.jmsTemplate.sentDestinations.size());
 
-			// Nor does moving it back: the key sent while it was moved stays throttled for the real interval.
-			this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "moved-key"));
+			// A key sent while the clock is moved is free again after the real interval, not a day later.
+			final Duration shortInterval = Duration.ofMillis(300);
+			this.jmsTemplateHelper.send(this.jmsTemplate,
+					this.buildMessage(JmsSendThrottleTest.DESTINATION, "moved-key").withThrottleInterval(shortInterval));
 			DateTimeHelper.setClock(regularClock);
-			this.jmsTemplateHelper.send(this.jmsTemplate, this.buildMessage(JmsSendThrottleTest.DESTINATION, "moved-key"));
-			Assertions.assertEquals(2, this.jmsTemplate.sentDestinations.size());
+			Assertions.assertTrue(TestHelper.waitUntilValid(() -> {
+				this.jmsTemplateHelper.send(this.jmsTemplate,
+						this.buildMessage(JmsSendThrottleTest.DESTINATION, "moved-key").withThrottleInterval(shortInterval));
+				return this.jmsTemplate.sentDestinations.size();
+			}, sentCount -> sentCount == 3, TestHelper.LONG_WAIT, TestHelper.SHORT_WAIT));
 		}
 		finally {
 			DateTimeHelper.setClock(regularClock);

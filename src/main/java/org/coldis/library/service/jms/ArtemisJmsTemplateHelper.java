@@ -61,12 +61,12 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 	}
 
 	/**
-	 * If a message is throttled: it has a throttle key and a positive interval.
+	 * If a message has a send throttle: a throttle key and a positive interval.
 	 *
 	 * @param  message Message.
-	 * @return         If the message is throttled.
+	 * @return         If the message has a send throttle.
 	 */
-	private static boolean isThrottled(
+	private static boolean hasSendThrottle(
 			final JmsMessage<?> message) {
 		return (message.getThrottleKey() != null) && (message.getThrottleInterval() != null) && message.getThrottleInterval().isPositive();
 	}
@@ -143,7 +143,7 @@ public class ArtemisJmsTemplateHelper implements JmsTemplateHelper {
 			final JmsTemplate template,
 			final JmsMessage<?> message,
 			final boolean releaseOnUncommittedEnd) {
-		if (!ArtemisJmsTemplateHelper.isThrottled(message)) {
+		if (!ArtemisJmsTemplateHelper.hasSendThrottle(message)) {
 			this.doSend(template, message);
 		}
 		else {

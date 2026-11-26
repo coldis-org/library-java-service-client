@@ -95,13 +95,34 @@ public class JmsTemplateTestService {
 			final Object message,
 			final String throttleKey,
 			final Duration throttleInterval) {
-		this.jmsTemplateHelper.send(this.jmsTemplate,
+		this.sendThrottledMessage(this.jmsTemplate, destination, message, throttleKey, throttleInterval);
+	}
+
+	/**
+	 * Sends a throttled message with a given template.
+	 *
+	 * @param template         JMS template.
+	 * @param destination      Destination.
+	 * @param message          Message.
+	 * @param throttleKey      Throttle key.
+	 * @param throttleInterval Throttle interval.
+	 */
+	@Transactional
+	public void sendThrottledMessage(
+			final JmsTemplate template,
+			final String destination,
+			final Object message,
+			final String throttleKey,
+			final Duration throttleInterval) {
+		this.jmsTemplateHelper.send(template,
 				new JmsMessage<>().withDestination(destination).withMessage(message).withThrottleKey(throttleKey).withThrottleInterval(throttleInterval));
 	}
 
 	/**
-	 * Sends a throttled message and fails, rolling the transaction back.
+	 * Sends a throttled message with a given template and fails, rolling the
+	 * transaction back.
 	 *
+	 * @param template         JMS template.
 	 * @param destination      Destination.
 	 * @param message          Message.
 	 * @param throttleKey      Throttle key.
@@ -109,11 +130,12 @@ public class JmsTemplateTestService {
 	 */
 	@Transactional
 	public void sendThrottledMessageAndFail(
+			final JmsTemplate template,
 			final String destination,
 			final Object message,
 			final String throttleKey,
 			final Duration throttleInterval) {
-		this.sendThrottledMessage(destination, message, throttleKey, throttleInterval);
+		this.sendThrottledMessage(template, destination, message, throttleKey, throttleInterval);
 		throw new IllegalStateException("Rolls the send back.");
 	}
 

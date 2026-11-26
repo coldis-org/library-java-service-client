@@ -179,33 +179,65 @@ public class JmsTemplateServiceTest extends AbstractServiceTest {
 	}
 
 	/**
-	 * Tests the send throttle through the Spring-managed helper and the broker:
-	 * exactly one message per key reaches the queue within the interval, whatever
-	 * the transaction of the first send does, and the skipped sends are counted. A
-	 * transactional template rolls the first message back with its transaction
-	 * and gives the key back, so the next send goes out; a template that is not
-	 * transactional has already sent it, and keeps the key.
+	 * Sends a key three times through the Spring-managed helper and the broker, the
+	 * first send in a transaction that rolls back, and checks the one message that
+	 * reaches the queue and the sends skipped.
+	 *
+	 * @param  template        JMS template.
+	 * @param  expectedMessage Prefix of the message that reaches the queue.
+	 * @param  expectedSkipped Sends expected to be skipped.
+	 * @throws Exception       If the test fails.
+	 */
+	private void assertThrottledSends(
+			final JmsTemplate template,
+			final String expectedMessage,
+			final double expectedSkipped) throws Exception {
+		final Integer random = JmsTemplateServiceTest.RANDOM.nextInt();
+		final String destination = JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + "throttled" + random;
+		final Duration interval = Duration.ofMinutes(1);
+
+		Assertions.assertThrows(IllegalStateException.class,
+				() -> this.jmsTemplateTestService.sendThrottledMessageAndFail(template, destination, "rolled-back-" + random, "key", interval));
+		this.jmsTemplateTestService.sendThrottledMessage(template, destination, "second-" + random, "key", interval);
+		this.jmsTemplateTestService.sendThrottledMessage(template, destination, "third-" + random, "key", interval);
+
+		final Message firstMessage = this.jmsTemplateTestService.consumeMessage(destination, 5000L);
+		Assertions.assertNotNull(firstMessage);
+		Assertions.assertEquals(expectedMessage + random, firstMessage.getBody(String.class));
+		Assertions.assertNull(this.jmsTemplateTestService.consumeMessage(destination, 1000L));
+		Assertions.assertEquals(expectedSkipped, this.getThrottleSkippedCount(destination));
+	}
+
+	/**
+	 * Tests the send throttle with a session-transacted template: the first
+	 * message is rolled back with its transaction and gives the key back, so the
+	 * second is sent and the third skipped.
 	 *
 	 * @throws Exception If the test fails.
 	 */
 	@Test
-	@DisplayName("A throttled key reaches the queue once per interval, whatever the first send's transaction does")
-	public void testThrottledMessages() throws Exception {
-		final Integer random = JmsTemplateServiceTest.RANDOM.nextInt();
-		final String destination = JmsTemplateTestService.JMS_TEMPLATE_TEST_QUEUE + "throttled" + random;
-		final Duration interval = Duration.ofMinutes(1);
-		final boolean transactional = this.jmsTemplate.isSessionTransacted();
+	@DisplayName("With a transactional template, a rolled-back send gives the key back to the next one")
+	public void testThrottledMessagesWithTransactionalTemplate() throws Exception {
+		final JmsTemplate transactionalTemplate = new JmsTemplate(this.jmsTemplate.getConnectionFactory());
+		transactionalTemplate.setMessageConverter(this.jmsTemplate.getMessageConverter());
+		transactionalTemplate.setSessionTransacted(true);
+		this.assertThrottledSends(transactionalTemplate, "second-", 1.0);
+	}
 
-		Assertions.assertThrows(IllegalStateException.class,
-				() -> this.jmsTemplateTestService.sendThrottledMessageAndFail(destination, "rolled-back-" + random, "key", interval));
-		this.jmsTemplateTestService.sendThrottledMessage(destination, "second-" + random, "key", interval);
-		this.jmsTemplateTestService.sendThrottledMessage(destination, "third-" + random, "key", interval);
-
-		final Message firstMessage = this.jmsTemplateTestService.consumeMessage(destination, 5000L);
-		Assertions.assertNotNull(firstMessage);
-		Assertions.assertEquals((transactional ? "second-" : "rolled-back-") + random, firstMessage.getBody(String.class));
-		Assertions.assertNull(this.jmsTemplateTestService.consumeMessage(destination, 1000L));
-		Assertions.assertEquals((transactional ? 1.0 : 2.0), this.getThrottleSkippedCount(destination));
+	/**
+	 * Tests the send throttle with a template that is not session-transacted: the
+	 * first message reaches the broker although its transaction rolls back, so it
+	 * keeps the key and the next two sends are skipped.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	@DisplayName("With a template that is not transactional, a rolled-back send keeps the key")
+	public void testThrottledMessagesWithNonTransactionalTemplate() throws Exception {
+		final JmsTemplate nonTransactionalTemplate = new JmsTemplate(this.jmsTemplate.getConnectionFactory());
+		nonTransactionalTemplate.setMessageConverter(this.jmsTemplate.getMessageConverter());
+		nonTransactionalTemplate.setSessionTransacted(false);
+		this.assertThrottledSends(nonTransactionalTemplate, "rolled-back-", 2.0);
 	}
 
 }
