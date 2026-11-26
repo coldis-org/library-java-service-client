@@ -3,6 +3,7 @@ package org.coldis.library.test.service.client;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -18,10 +19,12 @@ import java.util.function.IntSupplier;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.hc.client5.http.HttpRoute;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.coldis.library.service.client.ServiceClientConnectionManager;
 import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
 import org.junit.jupiter.api.AfterAll;
@@ -148,6 +151,7 @@ public class ServiceClientConnectionManagerTest {
 	private static RestTemplate createTemplate(
 			final ServiceClientConnectionManager connectionManager,
 			final Duration poolWait) {
+		connectionManager.setMaxTotal(1000);
 		final CloseableHttpClient httpClient = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true).build();
 		final HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
 		requestFactory.setConnectionRequestTimeout(poolWait);
@@ -156,22 +160,22 @@ public class ServiceClientConnectionManagerTest {
 
 	/**
 	 * Holds every connection of the route, then lets the given requests wait, and
-	 * checks that the next one is refused at once (with nothing sent), that the
-	 * held and waiting requests still finish, and that every count goes back to
-	 * zero.
+	 * checks that the next one is refused at once (with nothing sent) and that the
+	 * held and waiting requests still finish.
 	 *
-	 * @param  maxPerRoute     Connections of the route.
-	 * @param  maxPendingRatio Ratio of the requests waiting.
-	 * @param  allowedWaiting  Requests expected to be allowed to wait.
-	 * @throws Exception       If the test fails.
+	 * @param  connectionManager Connection manager.
+	 * @param  template          Template over the connection manager.
+	 * @param  maxPerRoute       Connections of the route.
+	 * @param  allowedWaiting    Requests expected to be allowed to wait.
+	 * @param  refusedBefore     Requests refused before.
+	 * @throws Exception         If the test fails.
 	 */
-	private static void assertWaitingBound(
+	private static void assertWaitingBoundOnce(
+			final ServiceClientConnectionManager connectionManager,
+			final RestTemplate template,
 			final int maxPerRoute,
-			final double maxPendingRatio,
-			final int allowedWaiting) throws Exception {
-		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(maxPendingRatio);
-		connectionManager.setDefaultMaxPerRoute(maxPerRoute);
-		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
+			final int allowedWaiting,
+			final long refusedBefore) throws Exception {
 		final ExecutorService callers = Executors.newCachedThreadPool();
 		ServiceClientConnectionManagerTest.RELEASE.set(new CountDownLatch(1));
 		ServiceClientConnectionManagerTest.RECEIVED_REQUESTS.set(0);
@@ -185,7 +189,7 @@ public class ServiceClientConnectionManagerTest {
 			for (Integer callIndex = 0; callIndex < allowedWaiting; callIndex++) {
 				calls.add(callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class)));
 			}
-			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getStats(ServiceClientConnectionManagerTest.getRoute()).getPending(),
+			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()),
 					allowedWaiting, "Waiting requests");
 			// One more is refused at once, with nothing sent.
 			final long startNanos = System.nanoTime();
@@ -194,7 +198,7 @@ public class ServiceClientConnectionManagerTest {
 			final Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
 			Assertions.assertTrue(ExceptionUtils.indexOfType(exception, ServiceClientPendingLeaseLimitException.class) >= 0, () -> "Not a refusal: " + exception);
 			Assertions.assertTrue(elapsed.compareTo(Duration.ofSeconds(1)) < 0, () -> "Refusal took " + elapsed);
-			Assertions.assertEquals(1, connectionManager.getRefusedLeases());
+			Assertions.assertEquals(refusedBefore + 1, connectionManager.getRefusedLeases());
 			Assertions.assertEquals(maxPerRoute, ServiceClientConnectionManagerTest.RECEIVED_REQUESTS.get());
 			// The held and waiting requests finish.
 			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
@@ -202,13 +206,34 @@ public class ServiceClientConnectionManagerTest {
 				Assertions.assertEquals("ok", call.get(ServiceClientConnectionManagerTest.MAX_WAIT.toSeconds(), TimeUnit.SECONDS));
 			}
 			Assertions.assertEquals(0, connectionManager.getLeased(ServiceClientConnectionManagerTest.getRoute()));
-			// With nothing in use, a request passes again.
-			Assertions.assertEquals("ok", template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
-			Assertions.assertEquals(1, connectionManager.getRefusedLeases());
 		}
 		finally {
 			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
 			callers.shutdownNow();
+		}
+	}
+
+	/**
+	 * Checks the waiting bound twice on the same manager: the counts left by the
+	 * first round (none, if every exit lowers them) would change the second.
+	 *
+	 * @param  maxPerRoute     Connections of the route.
+	 * @param  maxPendingRatio Ratio of the requests waiting.
+	 * @param  allowedWaiting  Requests expected to be allowed to wait.
+	 * @throws Exception       If the test fails.
+	 */
+	private static void assertWaitingBound(
+			final int maxPerRoute,
+			final String maxPendingRatio,
+			final int allowedWaiting) throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(new BigDecimal(maxPendingRatio));
+		connectionManager.setDefaultMaxPerRoute(maxPerRoute);
+		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
+		try {
+			ServiceClientConnectionManagerTest.assertWaitingBoundOnce(connectionManager, template, maxPerRoute, allowedWaiting, 0);
+			ServiceClientConnectionManagerTest.assertWaitingBoundOnce(connectionManager, template, maxPerRoute, allowedWaiting, 1);
+		}
+		finally {
 			connectionManager.close();
 		}
 	}
@@ -221,7 +246,7 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testWaitingAsManyAsInUse() throws Exception {
-		ServiceClientConnectionManagerTest.assertWaitingBound(3, 1.0, 3);
+		ServiceClientConnectionManagerTest.assertWaitingBound(3, "1.0", 3);
 	}
 
 	/**
@@ -232,8 +257,10 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testWaitingRelativeToInUse() throws Exception {
-		ServiceClientConnectionManagerTest.assertWaitingBound(4, 0.5, 2);
-		ServiceClientConnectionManagerTest.assertWaitingBound(3, 0.5, 2);
+		ServiceClientConnectionManagerTest.assertWaitingBound(4, "0.5", 2);
+		ServiceClientConnectionManagerTest.assertWaitingBound(3, "0.5", 2);
+		// Exact: 0.1 x 30 is 3 (3.0000000000000004 in binary floating point).
+		ServiceClientConnectionManagerTest.assertWaitingBound(30, "0.1", 3);
 	}
 
 	/**
@@ -243,7 +270,7 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testAtLeastOneWaiting() throws Exception {
-		ServiceClientConnectionManagerTest.assertWaitingBound(2, 0.1, 1);
+		ServiceClientConnectionManagerTest.assertWaitingBound(2, "0.1", 1);
 	}
 
 	/**
@@ -253,7 +280,7 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testNoBoundWithZeroRatio() throws Exception {
-		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(0);
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ZERO);
 		connectionManager.setDefaultMaxPerRoute(1);
 		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
 		final ExecutorService callers = Executors.newCachedThreadPool();
@@ -263,7 +290,7 @@ public class ServiceClientConnectionManagerTest {
 			for (Integer callIndex = 0; callIndex < 6; callIndex++) {
 				calls.add(callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class)));
 			}
-			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getStats(ServiceClientConnectionManagerTest.getRoute()).getPending(), 5,
+			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 5,
 					"Waiting requests");
 			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
 			for (final Future<String> call : calls) {
@@ -286,7 +313,7 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testTimedOutWaitNoLongerCounts() throws Exception {
-		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(1.0);
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
 		connectionManager.setDefaultMaxPerRoute(1);
 		final RestTemplate holdingTemplate = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
 		final RestTemplate waitingTemplate = ServiceClientConnectionManagerTest.createTemplate(connectionManager, Duration.ofMillis(200));
@@ -322,7 +349,7 @@ public class ServiceClientConnectionManagerTest {
 	 */
 	@Test
 	public void testRouteMaximum() throws Exception {
-		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(1.0);
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
 		connectionManager.setDefaultMaxPerRoute(10);
 		connectionManager.setMaxPerRoute(ServiceClientConnectionManagerTest.getRoute(), 1);
 		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
@@ -334,7 +361,7 @@ public class ServiceClientConnectionManagerTest {
 			calls.add(callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class)));
 			ServiceClientConnectionManagerTest.awaitValue(ServiceClientConnectionManagerTest.RECEIVED_REQUESTS::get, 1, "Held requests");
 			calls.add(callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class)));
-			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getStats(ServiceClientConnectionManagerTest.getRoute()).getPending(), 1,
+			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 1,
 					"Waiting requests");
 			final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
 					() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
@@ -352,13 +379,90 @@ public class ServiceClientConnectionManagerTest {
 	}
 
 	/**
-	 * A negative or not finite ratio is refused.
+	 * A negative or missing ratio is refused.
 	 */
 	@Test
 	public void testInvalidRatio() {
-		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientConnectionManager(-0.5));
-		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientConnectionManager(Double.NaN));
-		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientConnectionManager(Double.POSITIVE_INFINITY));
+		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientConnectionManager(new BigDecimal("-0.5")));
+		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientConnectionManager(null));
+	}
+
+	/**
+	 * Waits until a request waits for a pooled connection, then ends its wait, and
+	 * checks that the call is over and the request no longer counts as waiting.
+	 *
+	 * @param  connectionManager Connection manager.
+	 * @param  call              The waiting call.
+	 * @param  endWait           Ends the wait.
+	 * @throws Exception         If the test fails.
+	 */
+	private static void endWait(
+			final ServiceClientConnectionManager connectionManager,
+			final Future<?> call,
+			final Runnable endWait) throws Exception {
+		ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 1,
+				"Waiting requests");
+		endWait.run();
+		final long deadlineNanos = System.nanoTime() + ServiceClientConnectionManagerTest.MAX_WAIT.toNanos();
+		while (!call.isDone() && (System.nanoTime() < deadlineNanos)) {
+			Thread.sleep(10);
+		}
+		Assertions.assertTrue(call.isDone(), "Ended wait");
+		ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 0,
+				"Waiting requests");
+	}
+
+	/**
+	 * Requests whose wait was aborted (the request cancelled) or interrupted (its
+	 * thread) no longer count as waiting: afterwards, exactly as many requests as
+	 * before may wait, and the next is refused.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testAbortedAndInterruptedWaitsNoLongerCount() throws Exception {
+		final ServiceClientConnectionManager connectionManager = new ServiceClientConnectionManager(BigDecimal.ONE);
+		connectionManager.setDefaultMaxPerRoute(1);
+		final CloseableHttpClient httpClient = HttpClients.custom().setConnectionManager(connectionManager).setConnectionManagerShared(true).build();
+		final RestTemplate template = ServiceClientConnectionManagerTest.createTemplate(connectionManager, ServiceClientConnectionManagerTest.MAX_WAIT);
+		final ExecutorService callers = Executors.newCachedThreadPool();
+		ServiceClientConnectionManagerTest.RELEASE.set(new CountDownLatch(1));
+		ServiceClientConnectionManagerTest.RECEIVED_REQUESTS.set(0);
+		try {
+			final Future<String> holdingCall = callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
+			ServiceClientConnectionManagerTest.awaitValue(ServiceClientConnectionManagerTest.RECEIVED_REQUESTS::get, 1, "Held requests");
+			// A waiting request aborted.
+			for (Integer roundIndex = 0; roundIndex < 3; roundIndex++) {
+				final HttpGet abortedRequest = new HttpGet(ServiceClientConnectionManagerTest.getHoldUrl());
+				final Future<String> abortedCall = callers
+						.submit(() -> httpClient.execute(abortedRequest, response -> EntityUtils.toString(response.getEntity())));
+				ServiceClientConnectionManagerTest.endWait(connectionManager, abortedCall, abortedRequest::cancel);
+			}
+			// A waiting request interrupted.
+			for (Integer roundIndex = 0; roundIndex < 3; roundIndex++) {
+				final Future<String> interruptedCall = callers
+						.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
+				ServiceClientConnectionManagerTest.endWait(connectionManager, interruptedCall, () -> interruptedCall.cancel(true));
+			}
+			// Exactly one request may still wait, and the next is refused.
+			final Future<String> waitingCall = callers.submit(() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
+			ServiceClientConnectionManagerTest.awaitValue(() -> connectionManager.getRequested(ServiceClientConnectionManagerTest.getRoute()), 1,
+					"Waiting requests");
+			final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
+					() -> template.getForObject(ServiceClientConnectionManagerTest.getHoldUrl(), String.class));
+			Assertions.assertTrue(ExceptionUtils.indexOfType(exception, ServiceClientPendingLeaseLimitException.class) >= 0, () -> "Not a refusal: " + exception);
+			Assertions.assertEquals(1, connectionManager.getRefusedLeases());
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			Assertions.assertEquals("ok", holdingCall.get(ServiceClientConnectionManagerTest.MAX_WAIT.toSeconds(), TimeUnit.SECONDS));
+			Assertions.assertEquals("ok", waitingCall.get(ServiceClientConnectionManagerTest.MAX_WAIT.toSeconds(), TimeUnit.SECONDS));
+			Assertions.assertEquals(0, connectionManager.getLeased(ServiceClientConnectionManagerTest.getRoute()));
+		}
+		finally {
+			ServiceClientConnectionManagerTest.RELEASE.get().countDown();
+			callers.shutdownNow();
+			httpClient.close();
+			connectionManager.close();
+		}
 	}
 
 }

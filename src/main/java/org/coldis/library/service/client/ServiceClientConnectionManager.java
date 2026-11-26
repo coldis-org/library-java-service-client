@@ -1,5 +1,7 @@
 package org.coldis.library.service.client;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -35,11 +37,17 @@ import org.slf4j.LoggerFactory;
  * is not counted as waiting until its route is full too, so it is bounded by
  * the route's maximum plus its waiting cap.
  * <p>
+ * The counts are updated without a lock, so the bound is approximate while a
+ * connection passes from one request to another: they are updated in the order
+ * that, for that moment, lets a request in rather than refusing it (by at most
+ * one request per connection passing).
+ * <p>
  * Cost per request: one map lookup, a few atomic increments and decrements, and
  * one map put and remove for the leased connection; no lock (the pool's own
  * route statistics scan every waiting request under the pool's lock, so they
- * are not used). The ratio is a {@code double} (not {@code BigDecimal}): it is
- * a sizing factor on the hot path, not a business value.
+ * are not used). The waiting cap is computed only while a request already
+ * waits. One small entry is kept per route ever leased, as the pool keeps its
+ * own per-route state.
  */
 public class ServiceClientConnectionManager extends PoolingHttpClientConnectionManager {
 
@@ -107,7 +115,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 		}
 
 		/**
-		 * Stops counting the request as requested (once).
+		 * Stops counting the request as requested (once). Done before its connection
+		 * is counted as leased, so the request is never counted twice.
 		 */
 		private void settle() {
 			if (this.isSettled.compareAndSet(false, true)) {
@@ -124,13 +133,13 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 			final ConnectionEndpoint endpoint;
 			try {
 				endpoint = this.poolLeaseRequest.get(timeout);
-				if ((endpoint != null) && this.isLeaseCounted.compareAndSet(false, true)) {
-					this.routeLeases.leased.incrementAndGet();
-					ServiceClientConnectionManager.this.leasedEndpoints.put(endpoint, this.routeLeases);
-				}
 			}
 			finally {
 				this.settle();
+			}
+			if ((endpoint != null) && this.isLeaseCounted.compareAndSet(false, true)) {
+				ServiceClientConnectionManager.this.leasedEndpoints.put(endpoint, this.routeLeases);
+				this.routeLeases.leased.incrementAndGet();
 			}
 			return endpoint;
 		}
@@ -189,7 +198,12 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	 * Requests waiting allowed per connection leased on the route (0 for no
 	 * bound).
 	 */
-	private final double maxPendingRatio;
+	private final BigDecimal maxPendingRatio;
+
+	/**
+	 * If the requests waiting are bounded.
+	 */
+	private final boolean isBounded;
 
 	/**
 	 * Leases per route.
@@ -202,12 +216,14 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	private final Map<ConnectionEndpoint, RouteLeases> leasedEndpoints = new ConcurrentHashMap<>();
 
 	/**
-	 * Maximum connections of the routes with a maximum of their own.
+	 * Maximum connections of the routes with a maximum of their own: a copy of
+	 * the pool's (whose getter takes the pool's lock), kept by the overridden
+	 * setters below. Any other way of changing a route's maximum must keep it too.
 	 */
 	private final Map<HttpRoute, Integer> routesMaxConnections = new ConcurrentHashMap<>();
 
 	/**
-	 * Maximum connections of the other routes.
+	 * Maximum connections of the other routes (a copy of the pool's, as above).
 	 */
 	private volatile int defaultRouteMaxConnections;
 
@@ -223,12 +239,13 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	 *                            the route (0 for no bound; at least
 	 *                            {@value #MIN_PENDING} may always wait).
 	 */
-	public ServiceClientConnectionManager(final double maxPendingRatio) {
+	public ServiceClientConnectionManager(final BigDecimal maxPendingRatio) {
 		super();
-		if (!Double.isFinite(maxPendingRatio) || (maxPendingRatio < 0)) {
+		if ((maxPendingRatio == null) || (maxPendingRatio.signum() < 0)) {
 			throw new IllegalArgumentException("The ratio of requests waiting for a pooled connection must be zero or more: " + maxPendingRatio);
 		}
 		this.maxPendingRatio = maxPendingRatio;
+		this.isBounded = (maxPendingRatio.signum() > 0);
 		this.defaultRouteMaxConnections = super.getDefaultMaxPerRoute();
 	}
 
@@ -237,12 +254,14 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	 *
 	 * @return The ratio (0 for no bound).
 	 */
-	public double getMaxPendingRatio() {
+	public BigDecimal getMaxPendingRatio() {
 		return this.maxPendingRatio;
 	}
 
 	/**
-	 * Gets the requests refused so far.
+	 * Gets the requests refused so far by this manager, whatever the caller (a
+	 * supported diagnostic; generated clients also count theirs per target in
+	 * {@code service.client.pool.pending.refused}).
 	 *
 	 * @return The requests refused.
 	 */
@@ -251,7 +270,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	}
 
 	/**
-	 * Gets the connections leased on a route (as counted here).
+	 * Gets the connections leased on a route, as counted here (a supported
+	 * diagnostic).
 	 *
 	 * @param  route Route.
 	 * @return       The connections leased.
@@ -263,6 +283,21 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	}
 
 	/**
+	 * Gets the lease requests of a route not yet given a connection (waiting for
+	 * one, or about to get one), as counted here (a supported diagnostic; the
+	 * pool's own statistics may still count a cancelled request until its
+	 * deadline).
+	 *
+	 * @param  route Route.
+	 * @return       The lease requests not yet given a connection.
+	 */
+	public int getRequested(
+			final HttpRoute route) {
+		final RouteLeases routeLeases = this.routesLeases.get(route);
+		return (routeLeases == null ? 0 : routeLeases.requested.get());
+	}
+
+	/**
 	 * Gets the requests waiting allowed on a route.
 	 *
 	 * @param  leased Connections leased on the route.
@@ -270,7 +305,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 	 */
 	private int getMaxPending(
 			final int leased) {
-		return Math.max(ServiceClientConnectionManager.MIN_PENDING, (int) Math.ceil(this.maxPendingRatio * leased));
+		return Math.max(ServiceClientConnectionManager.MIN_PENDING,
+				BigDecimal.valueOf(leased).multiply(this.maxPendingRatio).setScale(0, RoundingMode.CEILING).intValue());
 	}
 
 	/**
@@ -328,7 +364,8 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 		final int leased = routeLeases.leased.get();
 		final int pending = (leased + requested) - this.routesMaxConnections.getOrDefault(route, this.defaultRouteMaxConnections);
 		final LeaseRequest leaseRequest;
-		if ((this.maxPendingRatio > 0) && (pending > this.getMaxPending(leased))) {
+		// The cap is at least one, so it is computed only while a request already waits.
+		if (this.isBounded && (pending > ServiceClientConnectionManager.MIN_PENDING) && (pending > this.getMaxPending(leased))) {
 			routeLeases.requested.decrementAndGet();
 			leaseRequest = this.refuse(route, pending, leased);
 		}
@@ -353,15 +390,13 @@ public class ServiceClientConnectionManager extends PoolingHttpClientConnectionM
 			final ConnectionEndpoint endpoint,
 			final Object state,
 			final TimeValue keepAlive) {
-		try {
-			super.release(endpoint, state, keepAlive);
+		// Counted as released before the pool hands the connection to a waiting
+		// request, so it is never counted as leased twice.
+		final RouteLeases routeLeases = this.leasedEndpoints.remove(endpoint);
+		if (routeLeases != null) {
+			routeLeases.leased.decrementAndGet();
 		}
-		finally {
-			final RouteLeases routeLeases = this.leasedEndpoints.remove(endpoint);
-			if (routeLeases != null) {
-				routeLeases.leased.decrementAndGet();
-			}
-		}
+		super.release(endpoint, state, keepAlive);
 	}
 
 }

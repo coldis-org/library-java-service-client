@@ -314,12 +314,15 @@ public class ServiceClientFailoverExecutorTest {
 		final List<String> attemptedUrls = new CopyOnWriteArrayList<>();
 		final RuntimeException refusal = new ResourceAccessException("Attempt failed.",
 				new RequestFailedException("Request execution failed", new ServiceClientPendingLeaseLimitException("Too many waiting.")));
-		final ServiceClientFailoverExecutor.Outcome<String> outcome = executor.executeOverEndpoints(List.of("http://first", "http://second"), "/",
-				HttpMethod.POST, new HttpEntity<>("body"), ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
-				ServiceClientFailoverExecutorTest.createFailingTemplate(refusal, attemptedUrls));
+		final ServiceClientFailoverExecutor.Outcome<String> outcome = ServiceClientTarget.runFor("PendingLeaseTestClient",
+				() -> executor.executeOverEndpoints(List.of("http://first", "http://second"), "/", HttpMethod.POST, new HttpEntity<>("body"),
+						ServiceClientFailoverExecutorTest.STRING_RESPONSE, Map.of(), null, null,
+						ServiceClientFailoverExecutorTest.createFailingTemplate(refusal, attemptedUrls)));
 		Assertions.assertSame(refusal, outcome.failure());
 		Assertions.assertEquals(2, attemptedUrls.size());
-		Assertions.assertEquals(2, refusedTargets.size());
+		Assertions.assertEquals(2, attemptedUrls.stream().distinct().count());
+		// Counted per attempt, tagged with the client (target), not the endpoint.
+		Assertions.assertEquals(List.of("PendingLeaseTestClient", "PendingLeaseTestClient"), refusedTargets);
 		Assertions.assertEquals(0, balancer.getCooldownEndpointsCount());
 		Assertions.assertTrue(executor.shouldRetry(refusal, false, false));
 	}

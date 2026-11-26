@@ -2,6 +2,7 @@ package org.coldis.library.test.service.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +22,7 @@ import org.apache.hc.core5.function.Resolver;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.message.BasicHttpResponse;
 import org.apache.hc.core5.util.TimeValue;
+import org.coldis.library.service.client.ServiceClientConnectionManager;
 import org.coldis.library.service.client.ServiceClientKeepAliveStrategy;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.AfterAll;
@@ -134,6 +136,10 @@ public class ServiceClientConnectionTest extends AbstractServiceTest {
 		response.setHeader("Keep-Alive", "timeout=5");
 		Assertions.assertEquals(TimeValue.ofSeconds(5), this.keepAliveStrategy.getKeepAliveDuration(response, HttpClientContext.create()));
 		Assertions.assertThrows(IllegalArgumentException.class, () -> new ServiceClientKeepAliveStrategy(Duration.ofSeconds(-1)));
+		// The pool bounds the requests waiting, with the shipped ratio.
+		Assertions.assertInstanceOf(ServiceClientConnectionManager.class, this.httpClientPoolingManager);
+		Assertions.assertEquals(0, new BigDecimal("1.0").compareTo(((ServiceClientConnectionManager) this.httpClientPoolingManager).getMaxPendingRatio()));
+		Assertions.assertSame(this.httpClientPoolingManager, FieldUtils.readField(this.httpClient, "connManager", true));
 	}
 
 	/**

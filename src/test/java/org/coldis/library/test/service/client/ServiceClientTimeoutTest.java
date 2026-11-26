@@ -20,8 +20,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.HttpRoute;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.HttpHost;
+import org.coldis.library.service.client.ServiceClientPendingLeaseLimitException;
 import org.coldis.library.test.TestHelper;
 import org.coldis.library.test.service.AbstractServiceTest;
 import org.junit.jupiter.api.AfterAll;
@@ -285,6 +288,61 @@ public class ServiceClientTimeoutTest extends AbstractServiceTest {
 					() -> "Not a pool wait timeout: " + exception);
 			Assertions.assertTrue((elapsed.compareTo(Duration.ofSeconds(4)) > 0) && (elapsed.compareTo(ServiceClientTimeoutTest.HOLD_DELAY) < 0),
 					() -> "Pool wait took " + elapsed);
+			// The held requests still finish.
+			for (final Future<String> holdingCall : holdingCalls) {
+				Assertions.assertEquals("slow", holdingCall.get());
+			}
+		}
+		finally {
+			// Frees the pool before the next test.
+			callers.shutdown();
+			callers.awaitTermination(ServiceClientTimeoutTest.HOLD_DELAY.toSeconds() * 2, TimeUnit.SECONDS);
+		}
+	}
+
+	/**
+	 * With every pooled connection to a host busy, as many requests as the
+	 * connections in use may wait for one (the shipped ratio, 1.0), and the next is
+	 * refused at once by the default template, with nothing sent.
+	 *
+	 * @throws Exception If the test fails.
+	 */
+	@Test
+	public void testDefaultTemplateRefusesBeyondWaitingBound() throws Exception {
+		final String holdUrl = "http://localhost:" + ServiceClientTimeoutTest.SLOW_SERVER.getAddress().getPort() + "/hold";
+		final HttpRoute route = new HttpRoute(new HttpHost("http", "localhost", ServiceClientTimeoutTest.SLOW_SERVER.getAddress().getPort()));
+		final int maxPerRoute = this.httpClientPoolingManager.getDefaultMaxPerRoute();
+		final ExecutorService callers = Executors.newFixedThreadPool(maxPerRoute * 2);
+		try {
+			// Holds every connection of the route.
+			ServiceClientTimeoutTest.HOLD_REQUESTS.set(0);
+			final List<Future<String>> holdingCalls = new ArrayList<>();
+			for (Integer callIndex = 0; callIndex < maxPerRoute; callIndex++) {
+				holdingCalls.add(callers.submit(() -> this.restTemplate.getForObject(holdUrl, String.class)));
+			}
+			final long holdStartNanos = System.nanoTime();
+			while ((ServiceClientTimeoutTest.HOLD_REQUESTS.get() < maxPerRoute) && (Duration.ofNanos(System.nanoTime() - holdStartNanos).toMillis() < 2000)) {
+				Thread.sleep(10);
+			}
+			Assertions.assertEquals(maxPerRoute, ServiceClientTimeoutTest.HOLD_REQUESTS.get());
+			// As many wait (and give up after the pool wait).
+			for (Integer callIndex = 0; callIndex < maxPerRoute; callIndex++) {
+				callers.submit(() -> this.restTemplate.getForObject(holdUrl, String.class));
+			}
+			final long waitStartNanos = System.nanoTime();
+			while ((this.httpClientPoolingManager.getStats(route).getPending() < maxPerRoute)
+					&& (Duration.ofNanos(System.nanoTime() - waitStartNanos).toMillis() < 2000)) {
+				Thread.sleep(10);
+			}
+			Assertions.assertEquals(maxPerRoute, this.httpClientPoolingManager.getStats(route).getPending());
+			// The next is refused at once.
+			final long startNanos = System.nanoTime();
+			final ResourceAccessException exception = Assertions.assertThrows(ResourceAccessException.class,
+					() -> this.restTemplate.getForObject(holdUrl, String.class));
+			final Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+			Assertions.assertTrue(ExceptionUtils.indexOfType(exception, ServiceClientPendingLeaseLimitException.class) >= 0, () -> "Not a refusal: " + exception);
+			Assertions.assertTrue(elapsed.compareTo(Duration.ofSeconds(1)) < 0, () -> "Refusal took " + elapsed);
+			Assertions.assertEquals(maxPerRoute, ServiceClientTimeoutTest.HOLD_REQUESTS.get());
 			// The held requests still finish.
 			for (final Future<String> holdingCall : holdingCalls) {
 				Assertions.assertEquals("slow", holdingCall.get());

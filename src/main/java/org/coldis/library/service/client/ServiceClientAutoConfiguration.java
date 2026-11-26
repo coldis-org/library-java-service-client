@@ -1,5 +1,6 @@
 package org.coldis.library.service.client;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
@@ -127,7 +128,7 @@ public class ServiceClientAutoConfiguration {
 			@Value("${org.coldis.library.service-client.connection-validate-after-inactivity:1s}")
 			final String validateAfterInactivity,
 			@Value("${org.coldis.library.service-client.max-pending-ratio:1.0}")
-			final Double maxPendingRatio) {
+			final BigDecimal maxPendingRatio) {
 		final ServiceClientConnectionManager httpClientPoolingManager = new ServiceClientConnectionManager(maxPendingRatio);
 		httpClientPoolingManager.setMaxTotal(maxTotal); // maximum total connections.
 		httpClientPoolingManager.setDefaultMaxPerRoute(defaultMaxPerRoute); // maximum connections per host.
@@ -139,8 +140,9 @@ public class ServiceClientAutoConfiguration {
 		if (closeExpired) {
 			httpClientPoolingManager.closeExpired(); // close expired connections.
 		}
-		ServiceClientAutoConfiguration.LOGGER.info("Service client connection pool: {} connections in all, {} per endpoint, at most {} waiting per connection in use on an endpoint.",
-				maxTotal, defaultMaxPerRoute, (maxPendingRatio > 0 ? maxPendingRatio : "any number of requests"));
+		ServiceClientAutoConfiguration.LOGGER.info("Service client connection pool: {} connections in all, {} per endpoint, {}.", maxTotal, defaultMaxPerRoute,
+				(maxPendingRatio.signum() > 0 ? "at most " + maxPendingRatio.toPlainString() + " requests waiting per connection in use on an endpoint"
+						: "no bound on the requests waiting"));
 		return httpClientPoolingManager;
 	}
 
